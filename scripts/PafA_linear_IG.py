@@ -78,8 +78,10 @@ print(f"Using WT sequence as baseline: {wt_seq}")
 
 
 # 2. Tokenize & embed with ESM (directly, configurable layer/pooling)
+
 print("Loading ESM model...")
-esm_model_name = 'esm2_t6_8M_UR50D'
+# Use the 650M parameter ESM-2 model
+esm_model_name = 'esm2_t33_650M_UR50D'
 esm_model, alphabet = esm.pretrained.load_model_and_alphabet(esm_model_name)
 esm_model.eval()
 batch_converter = alphabet.get_batch_converter()
@@ -138,10 +140,10 @@ import torch.optim as optim
 # Hyperparameters
 hidden_dim1 = 256
 hidden_dim2 = 128
-dropout_rate = 0.3
-learning_rate = 5e-4
+dropout_rate = 0.1
+learning_rate = 1e-3
 weight_decay = 1e-3  # L2 regularization
-batch_size = 32  # You can increase this for less noisy training
+batch_size = 64  # You can increase this for less noisy training
 use_early_stopping = False  # Set to False to disable early stopping
 patience = 30    # Early stopping patience
 lr_decay_factor = 0.5
@@ -201,7 +203,13 @@ class AttentionConvPoolingModel(nn.Module):
         x = self.fc3(x)
         return x
 
-# Select model
+
+# Select device
+import torch
+from tqdm import tqdm
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
+
 if POOLING_METHOD == 'mean':
     model = MeanPoolingModel(L, D, hidden_dim1=hidden_dim1, hidden_dim2=hidden_dim2, dropout_rate=dropout_rate)
 elif POOLING_METHOD == 'attention':
@@ -209,7 +217,7 @@ elif POOLING_METHOD == 'attention':
 else:
     raise ValueError(f"Unknown pooling method: {POOLING_METHOD}")
 
-
+model = model.to(device)
 optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 criterion = nn.MSELoss()
 # Learning rate scheduler
@@ -233,10 +241,12 @@ epochs = 500
 best_val_loss = float('inf')
 epochs_no_improve = 0
 
-for epoch in range(epochs):
+for epoch in tqdm(range(epochs), desc='Epochs'):
     model.train()
     batch_train_losses = []
     for xb, yb in train_loader:
+        xb = xb.to(device)
+        yb = yb.to(device)
         optimizer.zero_grad()
         output = model(xb)
         loss = criterion(output, yb)
@@ -250,6 +260,8 @@ for epoch in range(epochs):
     batch_val_losses = []
     with torch.no_grad():
         for xb, yb in val_loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
             val_output = model(xb)
             val_loss = criterion(val_output, yb)
             batch_val_losses.append(val_loss.item())
@@ -289,12 +301,16 @@ plt.show()
 
 
 
+
 print("Evaluating...")
 model.eval()
+# Test set
 pred_norm = []
 y_true_norm = []
 with torch.no_grad():
     for xb, yb in val_loader:
+        xb = xb.to(device)
+        yb = yb.to(device)
         out = model(xb).squeeze(-1).cpu().numpy()
         pred_norm.append(out)
         y_true_norm.append(yb.squeeze(-1).cpu().numpy())
@@ -319,6 +335,36 @@ spearman_rho, spearman_p = spearmanr(y_true, pred)
 print(f"Test MSE (original scale): {mse:.4f}, MAE: {mae:.4f}, R2: {r2:.4f}")
 print(f"Pearson r: {pearson_r:.4f}")
 print(f"Spearman rho: {spearman_rho:.4f}, p={spearman_p:.4g}")
+
+# Training set
+train_pred_norm = []
+train_true_norm = []
+with torch.no_grad():
+    for xb, yb in train_loader:
+        xb = xb.to(device)
+        yb = yb.to(device)
+        out = model(xb).squeeze(-1).cpu().numpy()
+        train_pred_norm.append(out)
+        train_true_norm.append(yb.squeeze(-1).cpu().numpy())
+train_pred_norm = np.concatenate(train_pred_norm)
+train_true_norm = np.concatenate(train_true_norm)
+train_pred_log = train_pred_norm * y_log_std + y_log_mean
+train_true_log = train_true_norm * y_log_std + y_log_mean
+train_pred = np.expm1(train_pred_log)
+train_true = np.expm1(train_true_log)
+
+# Plot predicted vs actual for train and test
+plt.figure(figsize=(6,6))
+plt.scatter(train_true, train_pred, alpha=0.5, label='Train', color='blue')
+plt.scatter(y_true, pred, alpha=0.5, label='Test', color='orange')
+plt.plot([min(y_true), max(y_true)], [min(y_true), max(y_true)], 'k--', lw=2)
+plt.xlabel('Actual')
+plt.ylabel('Predicted')
+plt.title('Predicted vs Actual (Train & Test)')
+plt.legend()
+plt.grid(True)
+plt.savefig(os.path.join(results_dir, 'pred_vs_actual_train_test.png'), bbox_inches='tight', dpi=200)
+plt.show()
 
 # 7. Residue-level Integrated Gradients
 
