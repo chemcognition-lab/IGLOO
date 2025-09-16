@@ -5,6 +5,7 @@ import esm
 import numpy as np
 import torch
 from safetensors.torch import load_file, save_file
+from sklearn.preprocessing import StandardScaler
 
 # Determine script directory and set paths relative to it
 

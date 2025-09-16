@@ -20,7 +20,6 @@ import seaborn as sns
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from safetensors.torch import load_file, save_file
 from sklearn.model_selection import KFold
 
 from src.erbc_analysis.embedding import get_embeddings
@@ -54,7 +53,23 @@ y_raw = df[col].values.astype(np.float32)
 # Config: select ESM layer and pooling method
 ESM_LAYER = 33  # Change this to try other layers
 POOLING_METHOD = 'linear'  # Options: 'mean', 'attention', 'conv_attention', 'linear'
-LOSS_TYPE = 'combined'  # Options: 'mse', 'mae', 'huber', 'quantile', 'combined'
+LOSS_TYPE = 'huber'  # Options: 'mse', 'mae', 'huber', 'quantile', 'combined'
+
+# Hyperparameters (global scope)
+hidden_dim1 = 1024 # 1024
+hidden_dim2 = 512 # 512
+hidden_dim3 = 255 # 255
+hidden_dim4 = 128 # 128
+dropout_rate = 0.6
+learning_rate = 1e-3
+weight_decay = 1e-4  # L2 regularization
+batch_size = 64  # 32 # Increased for more stable gradients
+use_early_stopping = True  # Set to False to disable early stopping
+patience = 30    # Early stopping patience
+lr_decay_factor = 0.5
+lr_decay_patience = 40
+epochs = 500
+final_activation = None  # 'tanh', 'sigmoid', or None
 
 
 # Log-transform and z-score normalize target
@@ -110,22 +125,6 @@ all_reps_diff = all_reps - wt_reps[0]  # (N, L, D)
 all_reps_combined = all_reps_diff  # (N, L, D)
 
 # 3. Train-test split, preserving original indices
-# Hyperparameters (global scope)
-hidden_dim1 = 1024 # 1024
-hidden_dim2 = 512 # 512
-hidden_dim3 = 255 # 255
-hidden_dim4 = 128 # 128
-dropout_rate = 0.6
-learning_rate = 1e-3
-weight_decay = 1e-4  # L2 regularization
-batch_size = 64  # 32 # Increased for more stable gradients
-use_early_stopping = True  # Set to False to disable early stopping
-patience = 30    # Early stopping patience
-lr_decay_factor = 0.5
-lr_decay_patience = 40
-epochs = 500
-final_activation = 'sigmoid'  # 'tanh', 'sigmoid', or None
-
 
 # Select device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

@@ -6,9 +6,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from scipy.stats import spearmanr
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 from tqdm import trange
 
+from src.erbc_analysis.data_processing import CustomDataset, batch_pad_and_normalize
 from src.erbc_analysis.loss import combined_loss, huber_loss, mae_loss, mse_loss, quantile_loss
 from src.erbc_analysis.models import AttentionConvPoolingModel, LinearRegressionModel, MeanPoolingModel
 
@@ -82,16 +83,10 @@ def train_and_evaluate(
 
     print(f"Training {POOLING_METHOD} model for fold {fold_idx+1} with {LOSS_TYPE} loss...")
 
-    train_dataset = TensorDataset(
-        torch.tensor(X_train, dtype=torch.float32),
-        torch.tensor(y_train, dtype=torch.float32).unsqueeze(1)
-    )
-    val_dataset = TensorDataset(
-        torch.tensor(X_val, dtype=torch.float32),
-        torch.tensor(y_val, dtype=torch.float32).unsqueeze(1)
-    )
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    train_dataset = CustomDataset(X_train, y_train)
+    val_dataset = CustomDataset(X_val, y_val)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=batch_pad_and_normalize)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=batch_pad_and_normalize)
 
     train_losses = []
     val_losses = []
@@ -102,7 +97,7 @@ def train_and_evaluate(
     for epoch in epoch_iter:
         model.train()
         batch_train_losses = []
-        for xb, yb in train_loader:
+        for xb, lengths, yb in train_loader:
             xb = xb.to(device)
             yb = yb.to(device)
             optimizer.zero_grad()
@@ -132,7 +127,7 @@ def train_and_evaluate(
         model.eval()
         batch_val_losses = []
         with torch.no_grad():
-            for xb, yb in val_loader:
+            for xb, lengths, yb in val_loader:
                 xb = xb.to(device)
                 yb = yb.to(device)
                 val_output = model(xb)
@@ -173,7 +168,7 @@ def train_and_evaluate(
     plt.plot(train_losses, label='Train Loss')
     plt.plot(val_losses, label='Val Loss')
     plt.xlabel('Epoch')
-    plt.ylabel('Loss')
+    plt.ylabel(f'Loss ({LOSS_TYPE})')
     plt.title(f'Training and Validation Loss (Fold {fold_idx+1})')
     plt.legend()
     plt.grid(True)
@@ -188,7 +183,7 @@ def train_and_evaluate(
     pred_norm = []
     y_true_norm = []
     with torch.no_grad():
-        for xb, yb in val_loader:
+        for xb, lengths, yb in val_loader:
             xb = xb.to(device)
             yb = yb.to(device)
             out = model(xb).squeeze(-1).cpu().numpy()
