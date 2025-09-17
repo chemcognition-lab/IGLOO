@@ -11,7 +11,7 @@ from tqdm import trange
 
 from src.erbc_analysis.data_processing import CustomDataset, batch_pad_and_normalize
 from src.erbc_analysis.loss import combined_loss, huber_loss, mae_loss, mse_loss, quantile_loss
-from src.erbc_analysis.models import AttentionConvPoolingModel, LinearRegressionModel, MeanPoolingModel
+from src.erbc_analysis.models import AttentionConvPoolingModel, LinearRegressionModel, MeanPoolingModel, ESMAttention1d
 
 
 def train_and_evaluate(
@@ -70,6 +70,8 @@ def train_and_evaluate(
             final_activation=final_activation,
             target_min=target_min, target_max=target_max
         )
+    elif POOLING_METHOD == 'esm_attention':
+        model = ESMAttention1d(max_length=L, d_embedding=input_dim_combined)
     else:
         raise ValueError(f"Unknown pooling method: {POOLING_METHOD}")
     model = model.to(device)

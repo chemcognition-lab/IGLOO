@@ -12,14 +12,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from pathlib import Path
 
-import esm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
-import torch.nn as nn
-import torch.optim as optim
 from sklearn.model_selection import KFold
 
 from src.erbc_analysis.embedding import get_embeddings
@@ -52,7 +49,7 @@ y_raw = df[col].values.astype(np.float32)
 
 # Config: select ESM layer and pooling method
 ESM_LAYER = 33  # Change this to try other layers
-POOLING_METHOD = 'linear'  # Options: 'mean', 'attention', 'conv_attention', 'linear'
+POOLING_METHOD = 'linear'  # Options: 'mean', 'attention', 'conv_attention', 'linear', 'esm_attention'
 LOSS_TYPE = 'huber'  # Options: 'mse', 'mae', 'huber', 'quantile', 'combined'
 
 # Hyperparameters (global scope)
@@ -122,7 +119,7 @@ baseline = wt_reps
 
 # Compute difference embeddings: X_variant - X_WT
 all_reps_diff = all_reps - wt_reps[0]  # (N, L, D)
-all_reps_combined = all_reps_diff  # (N, L, D)
+all_reps_combined = all_reps #all_reps_diff  # (N, L, D)
 
 # 3. Train-test split, preserving original indices
 
