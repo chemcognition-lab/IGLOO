@@ -60,10 +60,10 @@ hidden_dim1 = 1024 # 1024
 hidden_dim2 = 512 # 512
 hidden_dim3 = 255 # 255
 hidden_dim4 = 128 # 128
-dropout_rate = 0.6
-learning_rate = 1e-3
+dropout_rate = 0.5
+learning_rate = 1e-4
 weight_decay = 1e-4  # L2 regularization
-batch_size = 64  # 32 # Increased for more stable gradients
+batch_size = 256  # 32 # Increased for more stable gradients
 use_early_stopping = True  # Set to False to disable early stopping
 patience = 30    # Early stopping patience
 lr_decay_factor = 0.5
@@ -74,7 +74,7 @@ final_activation = None  # 'tanh', 'sigmoid', or None
 
 # Log-transform and z-score normalize target
 print("Applying log1p transform to target...")
-y_log = np.log1p(y_raw)
+y_log = y_raw # np.log1p(y_raw)
 y_log_mean = np.mean(y_log)
 y_log_std = np.std(y_log)
 y = (y_log - y_log_mean) / y_log_std

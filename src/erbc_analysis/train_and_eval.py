@@ -193,8 +193,8 @@ def train_and_evaluate(
     y_true_norm = np.concatenate(y_true_norm)
     pred_log = pred_norm * y_log_std + y_log_mean
     y_true_log = y_true_norm * y_log_std + y_log_mean
-    pred = np.expm1(pred_log)
-    y_true = np.expm1(y_true_log)
+    pred = pred_log #np.expm1(pred_log)
+    y_true = y_true_log # np.expm1(y_true_log)
     mse = np.mean((pred - y_true) ** 2)
     mae = np.mean(np.abs(pred - y_true))
     ss_res = np.sum((y_true - pred) ** 2)

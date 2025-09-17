@@ -13,7 +13,7 @@ import seaborn as sns
 import xgboost as xgb
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import KFold, GridSearchCV
+from sklearn.model_selection import GridSearchCV, KFold
 
 from src.erbc_analysis.embedding import get_embeddings
 
@@ -36,7 +36,7 @@ sequences = df['SEQ'].astype(str).tolist()
 y_raw = df[col].values.astype(np.float32)
 
 # Log-transform and z-score normalize target
-y_log = np.log1p(y_raw)
+y_log = y_raw #np.log1p(y_raw)
 y_log_mean = np.mean(y_log)
 y_log_std = np.std(y_log)
 y = (y_log - y_log_mean) / y_log_std
