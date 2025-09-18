@@ -7,15 +7,13 @@ of which amino acids at which positions contribute to predictions.
 """
 
 import os
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
 import esm
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
-import torch.nn.functional as F
 from tqdm import tqdm
 
 
@@ -60,7 +58,7 @@ class ESMBasedPredictor(torch.nn.Module):
 
     def __init__(
         self, 
-        esm_model: torch.nn.Module, 
+        esm_model: torch.nn.Module,
         predictor_model: torch.nn.Module,
         esm_layer: int = 33,
         pooling_method: str = 'linear'
@@ -116,7 +114,7 @@ def integrated_gradients_tokens(
     """
     Compute integrated gradients with respect to input tokens.
 
-    Since tokens are discrete, we'll compute gradients with respect to 
+    Since tokens are discrete, we'll compute gradients with respect to
     the token embeddings and then project back to token space.
 
     Args:
@@ -291,7 +289,7 @@ def plot_amino_acid_heatmap(
     sequence: str,
     title: str = "Amino Acid Attribution Heatmap",
     save_path: Optional[str] = None,
-    figsize: Tuple[int, int] = (20, 8)
+    figsize: tuple[int, int] = (20, 8)
 ) -> None:
     """
     Create a heatmap showing attribution scores for all amino acids at all positions.
@@ -308,8 +306,8 @@ def plot_amino_acid_heatmap(
 
     # Create pivot table for heatmap
     heatmap_data = mutations_df.pivot(
-        index='target_aa', 
-        columns='position', 
+        index='target_aa',
+        columns='position',
         values='attribution'
     )
 
@@ -332,7 +330,7 @@ def plot_amino_acid_heatmap(
 
     # Add WT sequence as reference
     for i, aa in enumerate(sequence):
-        ax2.text(i + 0.5, 0.5, aa, ha='center', va='center', 
+        ax2.text(i + 0.5, 0.5, aa, ha='center', va='center',
                 fontsize=8, fontweight='bold')
         ax2.add_patch(plt.Rectangle((i, 0), 1, 1, fill=False, edgecolor='black'))
 
@@ -379,8 +377,10 @@ def analyze_position_sensitivity(
     position_stats['sensitivity'] = position_stats['attribution_std']  # Standard deviation as sensitivity measure
     position_stats['max_improvement'] = position_stats['attribution_max']
     position_stats['max_detriment'] = position_stats['attribution_min']
-    position_stats['beneficial_mutations'] = mutations_df.groupby('position')['attribution'].apply(lambda x: (x > 0).sum())
-    position_stats['detrimental_mutations'] = mutations_df.groupby('position')['attribution'].apply(lambda x: (x < 0).sum())
+    position_stats['beneficial_mutations'] = mutations_df.groupby(
+        'position')['attribution'].apply(lambda x: (x > 0).sum())
+    position_stats['detrimental_mutations'] = mutations_df.groupby(
+        'position')['attribution'].apply(lambda x: (x < 0).sum())
 
     # Sort by sensitivity (most variable positions first)
     position_stats = position_stats.sort_values('sensitivity', ascending=False)
@@ -410,7 +410,7 @@ def export_sequence_analysis_results(
 
     # 1. Full attribution matrix
     attributions_df.to_csv(
-        os.path.join(output_dir, 'full_amino_acid_attributions.csv'), 
+        os.path.join(output_dir, 'full_amino_acid_attributions.csv'),
         index=False
     )
 
@@ -471,7 +471,7 @@ def run_complete_sequence_analysis(
     esm_layer: int = 33,
     pooling_method: str = 'linear',
     device: Optional[torch.device] = None
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Run complete sequence-level attribution analysis.
 

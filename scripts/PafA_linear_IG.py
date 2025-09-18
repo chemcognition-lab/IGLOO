@@ -10,7 +10,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # save both the IG plot and attribution DataFrame,
 # and produce a sequence alignment highlighting hotspots.
 
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,14 +22,8 @@ from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader
 
 # Import analysis modules
-from src.erbc_analysis.advanced_ig import (
-    compare_attribution_methods,
-    export_attribution_results,
-    plot_attribution_landscape,
-)
 from src.erbc_analysis.data_processing import CustomDataset, batch_pad_and_normalize
 from src.erbc_analysis.embedding import get_embeddings
-from src.erbc_analysis.models import ESMAttention1d, LinearRegressionModel
 from src.erbc_analysis.mutagenesis import (
     analyze_position_preferences,
     compute_mutation_effects,
@@ -38,7 +31,7 @@ from src.erbc_analysis.mutagenesis import (
     plot_mutation_landscape,
 )
 from src.erbc_analysis.sequence_ig import run_complete_sequence_analysis
-from src.erbc_analysis.train_and_eval import train, train_and_evaluate
+from src.erbc_analysis.train_and_eval import train, train_and_evaluate  # noqa: F401
 
 # Determine script directory and set paths relative to it
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -405,6 +398,6 @@ print("    * top_beneficial_mutations.csv - Best mutations from sequence analysi
 print("    * analysis_summary.txt - Human-readable summary")
 print("\nKey insights:")
 print("1. Check 'PafA_top_mutations.csv' for the best mutations to try experimentally")
-print("2. Review 'sequence_analysis_*/position_sensitivity_analysis.csv' for most mutable positions") 
+print("2. Review 'sequence_analysis_*/position_sensitivity_analysis.csv' for most mutable positions")
 print("3. Use 'sequence_analysis_*/amino_acid_attribution_heatmap.png' to see AA preferences")
 print("4. Compare different variants in their respective sequence_analysis_*/ folders")

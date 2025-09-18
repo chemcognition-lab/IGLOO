@@ -5,7 +5,7 @@ This module provides functions to systematically mutate protein sequences
 and predict the effects using trained models.
 """
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -43,7 +43,7 @@ def compute_mutation_effects(
         progress: Whether to show progress bar
 
     Returns:
-        DataFrame with columns: position, wt_aa, mut_aa, mutation, 
+        DataFrame with columns: position, wt_aa, mut_aa, mutation,
                                predicted_activity, effect_vs_wt, percentile_rank
     """
     amino_acids = 'ACDEFGHIKLMNPQRSTVWY'
@@ -88,7 +88,10 @@ def compute_mutation_effects(
     print(f"Computing embeddings for {len(sequences_to_embed)} mutations...")
 
     # Get embeddings for all mutants
-    all_embeddings = get_embeddings(sequences_to_embed, layer=esm_layer, batch_size=batch_size, dataset_name='PafA_mutagenesis')
+    all_embeddings = get_embeddings(sequences_to_embed,
+                                    layer=esm_layer,
+                                    batch_size=batch_size,
+                                    dataset_name='PafA_mutagenesis')
 
     print(f"Predicting activities for {len(sequences_to_embed)} mutations...")
 
@@ -143,7 +146,7 @@ def analyze_position_preferences(
     mutation_df: pd.DataFrame,
     top_n: int = 10,
     min_effect: float = None
-) -> Dict:
+) -> dict:
     """
     Analyze amino acid preferences at each position.
 
@@ -200,7 +203,7 @@ def plot_mutation_landscape(
     mutation_df: pd.DataFrame,
     wt_sequence: str,
     save_path: Optional[str] = None,
-    figsize: Tuple[int, int] = (20, 12),
+    figsize: tuple[int, int] = (20, 12),
     top_n_label: int = 10
 ) -> None:
     """
@@ -219,10 +222,10 @@ def plot_mutation_landscape(
     pivot_data = mutation_df.pivot(index='mut_aa', columns='position', values='effect_vs_wt')
 
     sns.heatmap(
-        pivot_data, 
-        ax=axes[0, 0], 
-        cmap='RdBu_r', 
-        center=0, 
+        pivot_data,
+        ax=axes[0, 0],
+        cmap='RdBu_r',
+        center=0,
         cbar_kws={'label': 'Effect vs WT'},
         xticklabels=True,
         yticklabels=True
@@ -234,7 +237,7 @@ def plot_mutation_landscape(
     # 2. Best mutations per position
     best_per_position = mutation_df.loc[mutation_df.groupby('position')['effect_vs_wt'].idxmax()]
 
-    axes[0, 1].bar(best_per_position['position'], best_per_position['effect_vs_wt'], 
+    axes[0, 1].bar(best_per_position['position'], best_per_position['effect_vs_wt'],
                    color=['green' if x > 0 else 'red' for x in best_per_position['effect_vs_wt']])
     axes[0, 1].axhline(y=0, color='black', linestyle='--', alpha=0.5)
     axes[0, 1].set_title('Best Mutation Effect per Position')
@@ -254,7 +257,7 @@ def plot_mutation_landscape(
     top_mutations = mutation_df.head(top_n_label)
 
     scatter = axes[1, 1].scatter(
-        mutation_df['position'], 
+        mutation_df['position'],
         mutation_df['effect_vs_wt'],
         c=mutation_df['effect_vs_wt'],
         cmap='RdBu_r',
