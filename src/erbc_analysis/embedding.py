@@ -9,13 +9,19 @@ from sklearn.preprocessing import StandardScaler
 
 # Determine script directory and set paths relative to it
 
-def get_embeddings(sequences, layer=33, batch_size=16):
-    # Always compute project_root relative to the caller script
+def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA'):
+    # Always compute project_root as the top-level project directory (containing 'data')
     import inspect
     caller_frame = inspect.stack()[1]
     caller_file = caller_frame.filename
+    # Find the project root by searching upwards for a directory containing 'data'
     script_dir = os.path.dirname(os.path.abspath(caller_file))
-    project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
+    project_root = script_dir
+    while not os.path.isdir(os.path.join(project_root, 'data')):
+        parent = os.path.dirname(project_root)
+        if parent == project_root:
+            raise RuntimeError("Could not find project root containing 'data' directory.")
+        project_root = parent
 
     embeddings = []
     emb_dir = Path(project_root) / 'data' / 'embeddings'
@@ -25,7 +31,7 @@ def get_embeddings(sequences, layer=33, batch_size=16):
     for i in range(0, n, batch_size):
         start = i
         end = min(i + batch_size, n)
-        batch_file = emb_dir / f"PafA_embeddings_batch_{start}_{end-1}.safetensors"
+        batch_file = emb_dir / f"{dataset_name}_embeddings_batch_{start}_{end-1}.safetensors"
         batch_files.append(batch_file)
 
     # If all batch files exist, load and return them (skip ESM model)

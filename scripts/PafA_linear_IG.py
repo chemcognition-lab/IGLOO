@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Train a linear model on ERBC variant data using ESM embeddings,
+# Train a model on PafA variant data using ESM embeddings,
 # compute residue-level IG attributions using the WT variant as baseline,
 # save both the IG plot and attribution DataFrame,
 # and produce a sequence alignment highlighting hotspots.
@@ -15,12 +15,30 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scipy.stats as stats
 import seaborn as sns
 import torch
+from sklearn.metrics import r2_score
 from sklearn.model_selection import KFold
+from torch.utils.data import DataLoader
 
+# Import analysis modules
+from src.erbc_analysis.advanced_ig import (
+    compare_attribution_methods,
+    export_attribution_results,
+    plot_attribution_landscape,
+)
+from src.erbc_analysis.data_processing import CustomDataset, batch_pad_and_normalize
 from src.erbc_analysis.embedding import get_embeddings
-from src.erbc_analysis.train_and_eval import train_and_evaluate
+from src.erbc_analysis.models import ESMAttention1d, LinearRegressionModel
+from src.erbc_analysis.mutagenesis import (
+    analyze_position_preferences,
+    compute_mutation_effects,
+    export_top_mutations,
+    plot_mutation_landscape,
+)
+from src.erbc_analysis.sequence_ig import run_complete_sequence_analysis
+from src.erbc_analysis.train_and_eval import train, train_and_evaluate
 
 # Determine script directory and set paths relative to it
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -134,68 +152,50 @@ kf = KFold(n_splits=5, shuffle=True, random_state=42)
 fold_metrics = []
 
 wt_idx = len(sequences) - 1  # WT is last in the list
-for fold_idx, (train_index, val_index) in enumerate(kf.split(all_reps_combined)):
-    print(f"Fold {fold_idx+1}/5")
-    # Ensure WT is in training set
-    if wt_idx not in train_index:
-        train_index = np.append(train_index, wt_idx)
-        val_index = val_index[val_index != wt_idx]
-    X_train, X_val = all_reps_combined[train_index], all_reps_combined[val_index]
-    y_train, y_val = y[train_index], y[val_index]
-    metrics = train_and_evaluate(
-        X_train, y_train, X_val, y_val, fold_idx,
-        L=L,
-        results_dir=results_dir,
-        batch_size=batch_size,
-        learning_rate=learning_rate,
-        weight_decay=weight_decay,
-        hidden_dim1=hidden_dim1,
-        hidden_dim2=hidden_dim2,
-        hidden_dim3=hidden_dim3,
-        hidden_dim4=hidden_dim4,
-        dropout_rate=dropout_rate,
-        use_early_stopping=use_early_stopping,
-        patience=patience,
-        lr_decay_factor=lr_decay_factor,
-        lr_decay_patience=lr_decay_patience,
-        epochs=epochs,
-        final_activation=final_activation,
-        device=device,
-        POOLING_METHOD=POOLING_METHOD,
-        LOSS_TYPE=LOSS_TYPE,
-        y_log_std=y_log_std,
-        y_log_mean=y_log_mean
-    )
-    fold_metrics.append(metrics)
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+# for fold_idx, (train_index, val_index) in enumerate(kf.split(all_reps_combined)):
+#     print(f"Fold {fold_idx+1}/5")
+#     # Ensure WT is in training set
+#     if wt_idx not in train_index:
+#         train_index = np.append(train_index, wt_idx)
+#         val_index = val_index[val_index != wt_idx]
+#     X_train, X_val = all_reps_combined[train_index], all_reps_combined[val_index]
+#     y_train, y_val = y[train_index], y[val_index]
+#     metrics = train_and_evaluate(
+#         X_train, y_train, X_val, y_val, fold_idx,
+#         L=L,
+#         results_dir=results_dir,
+#         batch_size=batch_size,
+#         learning_rate=learning_rate,
+#         weight_decay=weight_decay,
+#         hidden_dim1=hidden_dim1,
+#         hidden_dim2=hidden_dim2,
+#         hidden_dim3=hidden_dim3,
+#         hidden_dim4=hidden_dim4,
+#         dropout_rate=dropout_rate,
+#         use_early_stopping=use_early_stopping,
+#         patience=patience,
+#         lr_decay_factor=lr_decay_factor,
+#         lr_decay_patience=lr_decay_patience,
+#         epochs=epochs,
+#         final_activation=final_activation,
+#         device=device,
+#         POOLING_METHOD=POOLING_METHOD,
+#         LOSS_TYPE=LOSS_TYPE,
+#         y_log_std=y_log_std,
+#         y_log_mean=y_log_mean
+#     )
+#     fold_metrics.append(metrics)
+#     if torch.cuda.is_available():
+#         torch.cuda.empty_cache()
 
-metric_names = ['mse', 'mae', 'r2', 'pearson_r', 'spearman_rho']
-print("\nCross-validation results:")
-for name in metric_names:
-    values = [fm[name] for fm in fold_metrics]
-    print(f"{name}: mean={np.mean(values):.4f}, std={np.std(values):.4f}")
+# metric_names = ['mse', 'mae', 'r2', 'pearson_r', 'spearman_rho']
+# print("\nCross-validation results:")
+# for name in metric_names:
+#     values = [fm[name] for fm in fold_metrics]
+#     print(f"{name}: mean={np.mean(values):.4f}, std={np.std(values):.4f}")
 
 
-# Import analysis modules
-from src.erbc_analysis.mutagenesis import (
-    compute_mutation_effects,
-    analyze_position_preferences, 
-    plot_mutation_landscape,
-    export_top_mutations
-)
 
-from src.erbc_analysis.advanced_ig import (
-    compare_attribution_methods,
-    plot_attribution_landscape,
-    export_attribution_results
-)
-
-from src.erbc_analysis.sequence_ig import (
-    run_complete_sequence_analysis
-)
-
-from src.erbc_analysis.models import LinearRegressionModel, ESMAttention1d
 
 # Train a final model on all data for analysis
 print("\nTraining final model on all data for variant analysis...")
@@ -203,56 +203,83 @@ input_dim_combined = all_reps_combined.shape[2]
 target_min = np.min(y)
 target_max = np.max(y)
 
-if POOLING_METHOD == 'linear':
-    final_model = LinearRegressionModel(
-        L, input_dim_combined,
-        final_activation=final_activation,
-        target_min=target_min, target_max=target_max
-    )
-elif POOLING_METHOD == 'esm_attention':
-    final_model = ESMAttention1d(max_length=L, d_embedding=input_dim_combined)
-else:
-    # Add other model types as needed
-    final_model = LinearRegressionModel(L, input_dim_combined)
+final_model, train_metrics = train(
+    all_reps_combined, y,
+    L=L,
+    batch_size=batch_size,
+    learning_rate=learning_rate,
+    weight_decay=weight_decay,
+    hidden_dim1=hidden_dim1,
+    hidden_dim2=hidden_dim2,
+    hidden_dim3=hidden_dim3,
+    hidden_dim4=hidden_dim4,
+    dropout_rate=dropout_rate,
+    epochs=50,  # Fewer epochs since we're using all data
+    final_activation=final_activation,
+    device=device,
+    POOLING_METHOD=POOLING_METHOD,
+    LOSS_TYPE=LOSS_TYPE,
+    y_log_std=y_log_std,
+    y_log_mean=y_log_mean
+)
+print("Final model training completed.")
+print("Training set metrics:")
+for k, v in train_metrics.items():
+    print(f"  {k}: {v:.4f}")
 
-final_model = final_model.to(device)
-final_optimizer = torch.optim.AdamW(final_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-
-# Quick training on all data
-from torch.utils.data import DataLoader
-from src.erbc_analysis.data_processing import CustomDataset, batch_pad_and_normalize
-
-final_dataset = CustomDataset(all_reps_combined, y)
-final_loader = DataLoader(final_dataset, batch_size=batch_size, shuffle=True, collate_fn=batch_pad_and_normalize)
-
-print("Training final model...")
-for epoch in range(50):  # Fewer epochs since we're using all data
-    final_model.train()
-    epoch_loss = 0
-    for xb, lengths, yb in final_loader:
+# --- Predicted vs Actual Scatter Plot with Performance Metrics ---
+# Get predictions on all data using DataLoader (to match train function)
+final_model.eval()
+pred_norm = []
+y_true_norm = []
+eval_dataset = CustomDataset(all_reps_combined, y)
+eval_loader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=False, collate_fn=batch_pad_and_normalize)
+with torch.no_grad():
+    for xb, lengths, yb in eval_loader:
         xb = xb.to(device)
         yb = yb.to(device)
-        final_optimizer.zero_grad()
-        
         if POOLING_METHOD == 'esm_attention':
             input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
             for i, length in enumerate(lengths):
                 input_mask[i, :length] = 1
-            output = final_model(xb, input_mask)
+            out = final_model(xb, input_mask).squeeze(-1).cpu().numpy()
         else:
-            output = final_model(xb)
-            
-        from src.erbc_analysis.loss import huber_loss
-        loss = huber_loss(output, yb, delta=1.0)
-        loss.backward()
-        final_optimizer.step()
-        epoch_loss += loss.item()
-    
-    if epoch % 10 == 0:
-        print(f"  Epoch {epoch}, Loss: {epoch_loss/len(final_loader):.4f}")
+            out = final_model(xb).squeeze(-1).cpu().numpy()
+        pred_norm.append(out)
+        y_true_norm.append(yb.squeeze(-1).cpu().numpy())
+pred_norm = np.concatenate(pred_norm)
+y_true_norm = np.concatenate(y_true_norm)
+y_pred_unnorm = pred_norm * y_log_std + y_log_mean
+y_true = y_true_norm * y_log_std + y_log_mean
 
-final_model.eval()
-print("Final model training completed.")
+# Print a sample of predictions and targets for debugging
+print("Sample predictions vs targets (unnormalized):")
+for i in range(min(10, len(y_pred_unnorm))):
+    print(f"  Pred: {y_pred_unnorm[i]:.3f}  Target: {y_true[i]:.3f}")
+
+# Compute metrics
+r2 = r2_score(y_true, y_pred_unnorm)
+pearson_r, _ = stats.pearsonr(y_true, y_pred_unnorm)
+spearman_rho, _ = stats.spearmanr(y_true, y_pred_unnorm)
+
+# Plot
+plt.figure(figsize=(7,7))
+sns.scatterplot(x=y_true, y=y_pred_unnorm, s=40, alpha=0.7)
+plt.xlabel('Actual')
+plt.ylabel('Predicted')
+plt.title('Final Model: Predicted vs Actual')
+plt.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], 'k--', lw=2, label='Ideal')
+
+# Annotate metrics in top left
+metrics_text = f"$R^2$ = {r2:.3f}\nPearson r = {pearson_r:.3f}\nSpearman $\\rho$ = {spearman_rho:.3f}"
+plt.gca().text(0.05, 0.95, metrics_text, transform=plt.gca().transAxes,
+               fontsize=12, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+plt.legend()
+plt.tight_layout()
+scatter_path = os.path.join(results_dir, 'PafA_pred_vs_actual_final.png')
+plt.savefig(scatter_path, dpi=200)
+plt.close()
+print(f"Saved predicted vs actual scatter plot to {scatter_path}")
 
 # Perform in-silico mutagenesis analysis
 print("\n" + "="*60)
@@ -310,16 +337,16 @@ print("="*60)
 
 # Analyze top beneficial variants using sequence-level IG
 top_variants = mutation_df.head(3)  # Analyze top 3 for speed
-for idx, variant in top_variants.iterrows():
+for _idx, variant in top_variants.iterrows():
     print(f"\nAnalyzing variant: {variant['mutation']}")
-    
+
     # Reconstruct the mutant sequence
     pos = variant['position'] - 1  # Convert to 0-based
     mut_seq = wt_seq[:pos] + variant['mut_aa'] + wt_seq[pos+1:]
-    
+
     # Create output directory for this variant
     variant_dir = os.path.join(results_dir, f"sequence_analysis_{variant['mutation']}")
-    
+
     # Run complete sequence-level analysis
     attributions_df, position_stats = run_complete_sequence_analysis(
         predictor_model=final_model,
@@ -331,21 +358,21 @@ for idx, variant in top_variants.iterrows():
         pooling_method=POOLING_METHOD,
         device=device
     )
-    
+
     print(f"  Results saved to: {variant_dir}")
     print(f"  Most sensitive positions: {position_stats.head(5).index.tolist()}")
-    
+
     # Show top beneficial mutations from this analysis
     beneficial_muts = attributions_df[
         (attributions_df['is_mutation']) & (attributions_df['attribution'] > 0)
     ].sort_values('attribution', ascending=False).head(5)
-    
-    print(f"  Top 5 beneficial mutations from this variant:")
+
+    print("  Top 5 beneficial mutations from this variant:")
     for _, mut in beneficial_muts.iterrows():
         print(f"    {mut['mutation']}: {mut['attribution']:.4f}")
 
 # Also run sequence-level analysis on the wild-type for comparison
-print(f"\nAnalyzing wild-type sequence for comparison...")
+print("\nAnalyzing wild-type sequence for comparison...")
 wt_analysis_dir = os.path.join(results_dir, "sequence_analysis_WT")
 
 wt_attributions_df, wt_position_stats = run_complete_sequence_analysis(
@@ -366,16 +393,16 @@ print("ANALYSIS COMPLETE!")
 print("="*60)
 print(f"Results saved to: {results_dir}")
 print("Generated files:")
-print(f"  - Cross-validation plots: PafA_training_loss_curve_fold*.png, PafA_pred_vs_actual_fold*.png")
-print(f"  - Mutation landscape: PafA_mutation_landscape.png")
-print(f"  - All mutations: PafA_all_mutations.csv")
-print(f"  - Top mutations: PafA_top_mutations.csv")
-print(f"  - Sequence-level analyses: sequence_analysis_*/")
-print(f"    * amino_acid_attribution_heatmap.png - Heatmap of all AA substitutions")
-print(f"    * full_amino_acid_attributions.csv - Complete attribution matrix")
-print(f"    * position_sensitivity_analysis.csv - Position-level sensitivity metrics")
-print(f"    * top_beneficial_mutations.csv - Best mutations from sequence analysis")
-print(f"    * analysis_summary.txt - Human-readable summary")
+print("  - Cross-validation plots: PafA_training_loss_curve_fold*.png, PafA_pred_vs_actual_fold*.png")
+print("  - Mutation landscape: PafA_mutation_landscape.png")
+print("  - All mutations: PafA_all_mutations.csv")
+print("  - Top mutations: PafA_top_mutations.csv")
+print("  - Sequence-level analyses: sequence_analysis_*/")
+print("    * amino_acid_attribution_heatmap.png - Heatmap of all AA substitutions")
+print("    * full_amino_acid_attributions.csv - Complete attribution matrix")
+print("    * position_sensitivity_analysis.csv - Position-level sensitivity metrics")
+print("    * top_beneficial_mutations.csv - Best mutations from sequence analysis")
+print("    * analysis_summary.txt - Human-readable summary")
 print("\nKey insights:")
 print("1. Check 'PafA_top_mutations.csv' for the best mutations to try experimentally")
 print("2. Review 'sequence_analysis_*/position_sensitivity_analysis.csv' for most mutable positions") 

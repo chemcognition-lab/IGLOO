@@ -1,5 +1,3 @@
-
-
 import os
 
 import matplotlib.pyplot as plt
@@ -11,7 +9,7 @@ from tqdm import trange
 
 from src.erbc_analysis.data_processing import CustomDataset, batch_pad_and_normalize
 from src.erbc_analysis.loss import combined_loss, huber_loss, mae_loss, mse_loss, quantile_loss
-from src.erbc_analysis.models import AttentionConvPoolingModel, LinearRegressionModel, MeanPoolingModel, ESMAttention1d
+from src.erbc_analysis.models import AttentionConvPoolingModel, ESMAttention1d, LinearRegressionModel, MeanPoolingModel
 
 
 def train_and_evaluate(
@@ -218,7 +216,7 @@ def train_and_evaluate(
     y_true_log = y_true_norm * y_log_std + y_log_mean
     pred = pred_log #np.expm1(pred_log)
     y_true = y_true_log # np.expm1(y_true_log)
-    
+
     # Clip predictions to reasonable range based on training data
     y_train_original = y_train * y_log_std + y_log_mean  # Convert back to original scale
     data_min = np.min(y_train_original)
@@ -227,7 +225,7 @@ def train_and_evaluate(
     buffer = 0.05 * (data_max - data_min)
     pred_unclipped = pred.copy()
     pred = np.clip(pred, data_min - buffer, data_max + buffer)
-    
+
     # Report clipping statistics
     n_clipped = np.sum((pred_unclipped < data_min - buffer) | (pred_unclipped > data_max + buffer))
     if n_clipped > 0:
@@ -261,3 +259,159 @@ def train_and_evaluate(
     plt.close()
 
     return dict(mse=mse, mae=mae, r2=r2, pearson_r=pearson_r, spearman_rho=spearman_rho)
+
+
+def train(
+    X_train, y_train,
+    L,
+    batch_size,
+    learning_rate,
+    weight_decay,
+    hidden_dim1,
+    hidden_dim2,
+    hidden_dim3,
+    hidden_dim4,
+    dropout_rate,
+    epochs,
+    final_activation,
+    device,
+    POOLING_METHOD,
+    LOSS_TYPE,
+    y_log_std,
+    y_log_mean
+):
+    """
+    Train a protein variant regression model on all data (no validation set).
+    Returns the trained model and metrics on the training set.
+    """
+    input_dim_combined = X_train.shape[2]
+    target_min = np.min(y_train)
+    target_max = np.max(y_train)
+    if POOLING_METHOD == 'mean':
+        model = MeanPoolingModel(
+            L, input_dim_combined,
+            hidden_dim1=hidden_dim1, hidden_dim2=hidden_dim2,
+            hidden_dim3=hidden_dim3, hidden_dim4=hidden_dim4,
+            dropout_rate=dropout_rate,
+            final_activation=final_activation,
+            target_min=target_min, target_max=target_max
+        )
+    elif POOLING_METHOD == 'attention':
+        model = AttentionConvPoolingModel(
+            L, input_dim_combined,
+            conv_dim=256, kernel_size=5,
+            hidden_dim1=hidden_dim1, hidden_dim2=hidden_dim2,
+            hidden_dim3=hidden_dim3, hidden_dim4=hidden_dim4,
+            dropout_rate=dropout_rate,
+            final_activation=final_activation,
+            target_min=target_min, target_max=target_max
+        )
+    elif POOLING_METHOD == 'linear':
+        model = LinearRegressionModel(
+            L, input_dim_combined,
+            final_activation=final_activation,
+            target_min=target_min, target_max=target_max
+        )
+    elif POOLING_METHOD == 'esm_attention':
+        model = ESMAttention1d(max_length=L, d_embedding=input_dim_combined)
+    else:
+        raise ValueError(f"Unknown pooling method: {POOLING_METHOD}")
+    model = model.to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+
+    quantile_weight = 0.3
+    mse_weight = 0.7
+
+    train_dataset = CustomDataset(X_train, y_train)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=batch_pad_and_normalize)
+
+    train_losses = []
+    from tqdm import trange
+    epoch_iter = trange(epochs, desc="Training", leave=True)
+    for _epoch in epoch_iter:
+        model.train()
+        batch_train_losses = []
+        for xb, lengths, yb in train_loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
+            optimizer.zero_grad()
+            if POOLING_METHOD == 'esm_attention':
+                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                for i, length in enumerate(lengths):
+                    input_mask[i, :length] = 1
+                output = model(xb, input_mask)
+            else:
+                output = model(xb)
+            if LOSS_TYPE == 'mse':
+                loss = mse_loss(output, yb)
+            elif LOSS_TYPE == 'mae':
+                loss = mae_loss(output, yb)
+            elif LOSS_TYPE == 'huber':
+                loss = huber_loss(output, yb, delta=1.0)
+            elif LOSS_TYPE == 'quantile':
+                loss = quantile_loss(output, yb, quantile=0.5)
+            elif LOSS_TYPE == 'combined':
+                loss = combined_loss(
+                    output, yb,
+                    loss_fns=[(quantile_loss, {'quantile': 0.5}), (mse_loss, {})],
+                    weights=[quantile_weight, mse_weight]
+                )
+            else:
+                raise ValueError(f"Unknown LOSS_TYPE: {LOSS_TYPE}")
+            loss.backward()
+            optimizer.step()
+            batch_train_losses.append(loss.item())
+        train_loss = np.mean(batch_train_losses)
+        train_losses.append(train_loss)
+        epoch_iter.set_postfix({"train_loss": train_loss})
+
+    # Compute metrics on training set
+    model.eval()
+    eval_dataset = CustomDataset(X_train, y_train)
+    eval_loader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=False, collate_fn=batch_pad_and_normalize)
+    pred_norm = []
+    y_true_norm = []
+    with torch.no_grad():
+        for xb, lengths, yb in eval_loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
+            if POOLING_METHOD == 'esm_attention':
+                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                for i, length in enumerate(lengths):
+                    input_mask[i, :length] = 1
+                out = model(xb, input_mask).squeeze(-1).cpu().numpy()
+            else:
+                out = model(xb).squeeze(-1).cpu().numpy()
+            pred_norm.append(out)
+            y_true_norm.append(yb.squeeze(-1).cpu().numpy())
+    pred_norm = np.concatenate(pred_norm)
+    y_true_norm = np.concatenate(y_true_norm)
+    pred_log = pred_norm * y_log_std + y_log_mean
+    y_true_log = y_true_norm * y_log_std + y_log_mean
+    pred = pred_log
+    y_true = y_true_log
+
+    # Print a sample of predictions and targets for debugging
+    print("Sample predictions vs targets (unnormalized):")
+    for i in range(min(10, len(pred))):
+        print(f"  Pred: {pred[i]:.3f}  Target: {y_true[i]:.3f}")
+
+    # Clip predictions to reasonable range based on training data
+    y_train_original = y_train * y_log_std + y_log_mean
+    data_min = np.min(y_train_original)
+    data_max = np.max(y_train_original)
+    buffer = 0.05 * (data_max - data_min)
+    pred_unclipped = pred.copy()
+    pred = np.clip(pred, data_min - buffer, data_max + buffer)
+    n_clipped = np.sum((pred_unclipped < data_min - buffer) | (pred_unclipped > data_max + buffer))
+    if n_clipped > 0:
+        print(f"  Clipped {n_clipped}/{len(pred)} predictions to range [{data_min - buffer:.2f}, {data_max + buffer:.2f}]")
+    mse = np.mean((pred - y_true) ** 2)
+    mae = np.mean(np.abs(pred - y_true))
+    ss_res = np.sum((y_true - pred) ** 2)
+    ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+    r2 = 1 - ss_res / ss_tot if ss_tot != 0 else float('nan')
+    pearson_r = np.corrcoef(y_true, pred)[0, 1]
+    spearman_rho, spearman_p = spearmanr(y_true, pred)
+
+    return model, dict(mse=mse, mae=mae, r2=r2, pearson_r=pearson_r, spearman_rho=spearman_rho)

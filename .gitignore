@@ -109,3 +109,4 @@ ENV/
 .idea/
 
 /data/embeddings
+/src/erbc_analysis/data
