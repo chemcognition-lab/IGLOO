@@ -1,4 +1,4 @@
-"""Top-level package for ERBC Analysis."""
+"""Top-level package for IGLOO."""
 
 __author__ = """Rana Barghout"""
 __email__ = 'ranamoneim@gmail.com'

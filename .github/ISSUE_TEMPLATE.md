@@ -1,4 +1,4 @@
-* ERBC Analysis version:
+* IGLOO version:
 * Python version:
 * Operating System:
 

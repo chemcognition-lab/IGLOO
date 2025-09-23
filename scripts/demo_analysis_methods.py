@@ -16,14 +16,14 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
 sys.path.insert(0, project_root)
 
-from src.erbc_analysis.mutagenesis import (
+from src.igloo.mutagenesis import (
     compute_mutation_effects,
     analyze_position_preferences, 
     plot_mutation_landscape,
     export_top_mutations
 )
 
-from src.erbc_analysis.advanced_ig import (
+from src.igloo.advanced_ig import (
     integrated_gradients_embeddings,
     compute_residue_attributions,
     compute_amino_acid_contributions,
@@ -33,8 +33,8 @@ from src.erbc_analysis.advanced_ig import (
     export_attribution_results
 )
 
-from src.erbc_analysis.embedding import get_embeddings
-from src.erbc_analysis.models import LinearRegressionModel, ESMAttention1d
+from src.igloo.embedding import get_embeddings
+from src.igloo.models import LinearRegressionModel, ESMAttention1d
 
 
 def demo_mutagenesis_analysis(

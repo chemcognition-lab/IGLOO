@@ -1,4 +1,4 @@
-name: erbc_analysis
+name: igloo
 channels:
   - conda-forge
   - pytorch

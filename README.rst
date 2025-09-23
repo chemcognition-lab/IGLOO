@@ -1,23 +1,23 @@
-=============
-ERBC Analysis
-=============
+=====
+IGLOO
+=====
 
 
-.. image:: https://img.shields.io/pypi/v/erbc_analysis.svg
-        :target: https://pypi.python.org/pypi/erbc_analysis
+.. image:: https://img.shields.io/pypi/v/igloo.svg
+        :target: https://pypi.python.org/pypi/igloo
 
-.. image:: https://readthedocs.org/projects/erbc-analysis/badge/?version=latest
-        :target: https://erbc-analysis.readthedocs.io/en/latest/?version=latest
+.. image:: https://readthedocs.org/projects/igloo/badge/?version=latest
+        :target: https://igloo.readthedocs.io/en/latest/?version=latest
         :alt: Documentation Status
 
 
 
 
-An ML pipeline for analyzing structural contributions to performance in ERBC variants.
+IGLOO (Integrated Gradients for LOcational sensitivity in prOteins) - An ML pipeline for analyzing structural contributions to performance in protein variants.
 
 
 * Free software: MIT license
-* Documentation: https://erbc-analysis.readthedocs.io.
+* Documentation: https://igloo.readthedocs.io.
 
 
 Features

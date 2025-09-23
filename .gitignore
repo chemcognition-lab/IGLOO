@@ -109,4 +109,4 @@ ENV/
 .idea/
 
 /data/embeddings
-/src/erbc_analysis/data
+/src/igloo/data

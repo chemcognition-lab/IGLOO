@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "erbc_analysis"
-description = "An ML pipeline for analyzing structural contributions to performance in ERBC variants."
+name = "igloo"
+description = "IGLOO (Integrated Gradients for LOcational sensitivity in prOteins) - An ML pipeline for analyzing structural contributions to performance in protein variants."
 readme = "README.rst"
 authors = [
   {name = "Rana Barghout", email = "ranamoneim@gmail.com"}
@@ -44,9 +44,9 @@ dev = [
 
 [project.urls]
 
-bugs = "https://github.com/ranaabarghout/erbc_analysis/issues"
-changelog = "https://github.com/ranaabarghout/erbc_analysis/blob/master/changelog.md"
-homepage = "https://github.com/ranaabarghout/erbc_analysis"
+bugs = "https://github.com/ranaabarghout/IGLOO/issues"
+changelog = "https://github.com/ranaabarghout/IGLOO/blob/master/changelog.md"
+homepage = "https://github.com/ranaabarghout/IGLOO"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -56,11 +56,11 @@ package-dir = {"" = "src"}
 
 
 [project.scripts]
-erbc_analysis = "erbc_analysis.cli:app"
+igloo = "igloo.cli:app"
 
 
 [tool.setuptools.dynamic]
-version = {attr = "erbc_analysis.__version__"}
+version = {attr = "igloo.__version__"}
 
 # Mypy
 # ----

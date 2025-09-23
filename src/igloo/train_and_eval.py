@@ -7,9 +7,9 @@ from scipy.stats import spearmanr
 from torch.utils.data import DataLoader
 from tqdm import trange
 
-from src.erbc_analysis.data_processing import CustomDataset, batch_pad_and_normalize
-from src.erbc_analysis.loss import combined_loss, huber_loss, mae_loss, mse_loss, quantile_loss
-from src.erbc_analysis.models import AttentionConvPoolingModel, ESMAttention1d, LinearRegressionModel, MeanPoolingModel
+from src.igloo.data_processing import CustomDataset, batch_pad_and_normalize
+from src.igloo.loss import combined_loss, huber_loss, mae_loss, mse_loss, quantile_loss
+from src.igloo.models import AttentionConvPoolingModel, ESMAttention1d, LinearRegressionModel, MeanPoolingModel
 
 
 def train_and_evaluate(

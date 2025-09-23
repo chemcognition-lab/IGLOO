@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 import pytest
 
-"""Tests for `erbc_analysis` package."""
+"""Tests for `igloo` package."""
 
-# from erbc_analysis import erbc_analysis
+# from igloo import igloo
 
 
 @pytest.fixture

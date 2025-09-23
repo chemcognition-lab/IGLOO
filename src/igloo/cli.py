@@ -1,9 +1,9 @@
-"""Console script for erbc_analysis."""
+"""Console script for igloo."""
 
 import typer
 from rich.console import Console
 
-from erbc_analysis import utils
+from igloo import utils
 
 app = typer.Typer()
 console = Console()
@@ -11,9 +11,9 @@ console = Console()
 
 @app.command()
 def main():
-    """Console script for erbc_analysis."""
+    """Console script for igloo."""
     console.print("Replace this message by putting your code into "
-               "erbc_analysis.cli.main")
+               "igloo.cli.main")
     console.print("See Typer documentation at https://typer.tiangolo.com/")
     utils.do_something_useful()
 

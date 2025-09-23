@@ -15,7 +15,7 @@ Types of Contributions
 Report Bugs
 ~~~~~~~~~~~
 
-Report bugs at https://github.com/ranaabarghout/erbc_analysis/issues.
+Report bugs at https://github.com/ranaabarghout/IGLOO/issues.
 
 If you are reporting a bug, please include:
 
@@ -45,7 +45,7 @@ articles, and such.
 Submit Feedback
 ~~~~~~~~~~~~~~~
 
-The best way to send feedback is to file an issue at https://github.com/ranaabarghout/erbc_analysis/issues.
+The best way to send feedback is to file an issue at https://github.com/ranaabarghout/IGLOO/issues.
 
 If you are proposing a feature:
 
@@ -57,17 +57,17 @@ If you are proposing a feature:
 Get Started!
 ------------
 
-Ready to contribute? Here's how to set up `erbc_analysis` for local development.
+Ready to contribute? Here's how to set up `igloo` for local development.
 
-1. Fork the `erbc_analysis` repo on GitHub.
+1. Fork the `igloo` repo on GitHub.
 2. Clone your fork locally::
 
-    $ git clone git@github.com:your_name_here/erbc_analysis.git
+    $ git clone git@github.com:your_name_here/IGLOO.git
 
 3. Install your local copy into a virtualenv. Assuming you have virtualenvwrapper installed, this is how you set up your fork for local development::
 
-    $ mkvirtualenv erbc_analysis
-    $ cd erbc_analysis/
+    $ mkvirtualenv igloo
+    $ cd igloo/
     $ python setup.py develop
 
 4. Create a branch for local development::
@@ -112,7 +112,7 @@ Tips
 To run a subset of tests::
 
 
-    $ python -m unittest tests.test_erbc_analysis
+    $ python -m unittest tests.test_igloo
 
 Deploying
 ---------

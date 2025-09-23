@@ -1,4 +1,6 @@
-.PHONY: clean clean-build clean-pyc clean-test coverage dist docs help install lint lint/flake8
+.PHONY: clean clean-build clean-pyc clean-test coverage dist docs hel	rm -f docs/igloo.rst
+	rm -rf docs/modules.rst
+	sphinx-apidoc -o docs/ igloonstall lint lint/flake8
 
 .DEFAULT_GOAL := help
 
@@ -49,7 +51,7 @@ clean-test: ## remove test and coverage artifacts
 	rm -fr .pytest_cache
 
 lint/flake8: ## check style with flake8
-	flake8 erbc_analysis tests
+	flake8 igloo tests
 
 
 lint: lint/flake8 ## check style
@@ -61,7 +63,7 @@ test-all: ## run tests on every Python version with tox
 	tox
 
 coverage: ## check code coverage quickly with the default Python
-	coverage run --source erbc_analysis setup.py test
+	coverage run --source igloo setup.py test
 	coverage report -m
 	coverage html
 	$(BROWSER) htmlcov/index.html

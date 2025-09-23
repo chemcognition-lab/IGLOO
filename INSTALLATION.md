@@ -1,6 +1,6 @@
 # Environment Setup Guide
 
-This guide provides multiple options for setting up the ERBC Analysis environment.
+This guide provides multiple options for setting up the IGLOO environment.
 
 ## Quick Setup (Recommended)
 

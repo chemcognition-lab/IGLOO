@@ -2,6 +2,6 @@
 Usage
 =====
 
-To use ERBC Analysis in a project::
+To use IGLOO in a project::
 
-    import erbc_analysis
+    import igloo

@@ -13,7 +13,7 @@ from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import GridSearchCV, KFold
 
-from src.erbc_analysis.embedding import get_embeddings
+from src.igloo.embedding import get_embeddings
 
 # Determine script directory and set paths relative to it
 script_dir = os.path.dirname(os.path.abspath(__file__))

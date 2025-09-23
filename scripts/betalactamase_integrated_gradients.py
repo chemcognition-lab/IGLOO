@@ -19,15 +19,14 @@ from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
 # Import analysis modules
-from src.erbc_analysis.data_processing import CustomDataset, batch_pad_and_normalize
-from src.erbc_analysis.embedding import get_embeddings
-from src.erbc_analysis.sequence_ig import (
+from src.igloo.data_processing import CustomDataset, batch_pad_and_normalize
+from src.igloo.embedding import get_embeddings
+from src.igloo.sequence_ig import (
     ESMBasedPredictor,
-    integrated_gradients_tokens,
+    analyze_sequence_with_integrated_gradients,
     load_esm_model,
-    sequence_to_tokens,
 )
-from src.erbc_analysis.train_and_eval import train
+from src.igloo.train_and_eval import train
 
 # Determine script directory and set paths relative to it
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -179,60 +178,6 @@ combined_model = ESMBasedPredictor(
     pooling_method=POOLING_METHOD
 ).to(device)
 
-def analyze_sequence_with_integrated_gradients(
-    sequence: str,
-    baseline_sequence: str,
-    model: ESMBasedPredictor,
-    alphabet,
-    device: torch.device,
-    steps: int = 50,
-    batch_size: int = 10
-) -> dict:
-    """
-    Analyze a sequence using integrated gradients.
-
-    Returns:
-        dict with keys: sequence, baseline_sequence, token_gradients,
-                       predicted_activity, baseline_activity, positions, amino_acids
-    """
-    # Convert sequences to tokens
-    sequence_tokens = sequence_to_tokens(sequence, alphabet).to(device)
-    baseline_tokens = sequence_to_tokens(baseline_sequence, alphabet).to(device)
-
-    # Get predictions
-    with torch.no_grad():
-        seq_pred_norm = model(sequence_tokens).item()
-        baseline_pred_norm = model(baseline_tokens).item()
-        # Convert to original scale
-        seq_pred = seq_pred_norm * y_log_std + y_log_mean
-        baseline_pred = baseline_pred_norm * y_log_std + y_log_mean
-
-    # Compute integrated gradients
-    print(f"Computing integrated gradients for sequence (steps={steps})...")
-    token_gradients = integrated_gradients_tokens(
-        combined_model=model,
-        input_tokens=sequence_tokens,
-        baseline_tokens=baseline_tokens,
-        alphabet=alphabet,
-        steps=steps,
-        batch_size=batch_size
-    )
-
-    # Extract gradients for sequence positions (excluding special tokens)
-    # ESM adds <cls> at start and <eos> at end, so we take [1:-1]
-    position_gradients = token_gradients[0, 1:-1].cpu().numpy()
-
-    return {
-        'sequence': sequence,
-        'baseline_sequence': baseline_sequence,
-        'predicted_activity': seq_pred,
-        'baseline_activity': baseline_pred,
-        'effect_vs_baseline': seq_pred - baseline_pred,
-        'position_gradients': position_gradients,
-        'positions': list(range(1, len(sequence) + 1)),
-        'amino_acids': list(sequence)
-    }
-
 # Analyze several interesting sequences using integrated gradients
 sequences_to_analyze = []
 
@@ -263,9 +208,11 @@ for name, sequence, baseline in sequences_to_analyze:
     result = analyze_sequence_with_integrated_gradients(
         sequence=sequence,
         baseline_sequence=baseline,
-        model=combined_model,
+        combined_model=combined_model,
         alphabet=alphabet,
         device=device,
+        y_log_mean=y_log_mean,
+        y_log_std=y_log_std,
         steps=50,
         batch_size=10
     )

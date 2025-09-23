@@ -14,9 +14,9 @@ import torch
 from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
-from src.erbc_analysis.data_processing import CustomDataset, batch_pad_and_normalize
-from src.erbc_analysis.embedding import get_embeddings
-from src.erbc_analysis.train_and_eval import train
+from src.igloo.data_processing import CustomDataset, batch_pad_and_normalize
+from src.igloo.embedding import get_embeddings
+from src.igloo.train_and_eval import train
 
 # Determine script directory and set paths relative to it
 script_dir = os.path.dirname(os.path.abspath(__file__))

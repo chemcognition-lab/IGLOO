@@ -1,1 +1,1 @@
-"""Unit test package for erbc_analysis."""
+"""Unit test package for igloo."""

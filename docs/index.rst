@@ -1,5 +1,5 @@
-Welcome to ERBC Analysis's documentation!
-======================================
+Welcome to IGLOO's documentation!
+==================================
 
 .. toctree::
    :maxdepth: 2

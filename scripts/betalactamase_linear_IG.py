@@ -19,16 +19,16 @@ from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
 # Import analysis modules
-from src.erbc_analysis.data_processing import CustomDataset, batch_pad_and_normalize
-from src.erbc_analysis.embedding import get_embeddings
-from src.erbc_analysis.mutagenesis import (
+from src.igloo.data_processing import CustomDataset, batch_pad_and_normalize
+from src.igloo.embedding import get_embeddings
+from src.igloo.mutagenesis import (
     analyze_position_preferences,
     compute_mutation_effects,
     export_top_mutations,
     plot_mutation_landscape,
 )
-from src.erbc_analysis.sequence_ig import run_complete_sequence_analysis
-from src.erbc_analysis.train_and_eval import train
+from src.igloo.sequence_ig import run_complete_sequence_analysis
+from src.igloo.train_and_eval import train
 
 # Determine script directory and set paths relative to it
 script_dir = os.path.dirname(os.path.abspath(__file__))

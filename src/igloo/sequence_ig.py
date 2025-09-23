@@ -461,6 +461,75 @@ def export_sequence_analysis_results(
     print(f"Analysis results exported to {output_dir}")
 
 
+def analyze_sequence_with_integrated_gradients(
+    sequence: str,
+    baseline_sequence: str,
+    combined_model: ESMBasedPredictor,
+    alphabet,
+    device: torch.device,
+    y_log_mean: float = 0.0,
+    y_log_std: float = 1.0,
+    steps: int = 50,
+    batch_size: int = 10
+) -> dict:
+    """
+    Analyze a sequence using integrated gradients.
+
+    Args:
+        sequence: Input protein sequence
+        baseline_sequence: Baseline sequence (usually wild-type)
+        combined_model: Combined ESM + predictor model
+        alphabet: ESM alphabet
+        device: PyTorch device
+        y_log_mean: Mean for denormalization (default 0.0 for no normalization)
+        y_log_std: Std for denormalization (default 1.0 for no normalization)
+        steps: Number of integration steps
+        batch_size: Batch size for gradient computation
+
+    Returns:
+        dict with keys: sequence, baseline_sequence, predicted_activity,
+                       baseline_activity, effect_vs_baseline, position_gradients,
+                       positions, amino_acids
+    """
+    # Convert sequences to tokens
+    sequence_tokens = sequence_to_tokens(sequence, alphabet).to(device)
+    baseline_tokens = sequence_to_tokens(baseline_sequence, alphabet).to(device)
+
+    # Get predictions
+    with torch.no_grad():
+        seq_pred_norm = combined_model(sequence_tokens).item()
+        baseline_pred_norm = combined_model(baseline_tokens).item()
+        # Convert to original scale
+        seq_pred = seq_pred_norm * y_log_std + y_log_mean
+        baseline_pred = baseline_pred_norm * y_log_std + y_log_mean
+
+    # Compute integrated gradients
+    print(f"Computing integrated gradients for sequence (steps={steps})...")
+    token_gradients = integrated_gradients_tokens(
+        combined_model=combined_model,
+        input_tokens=sequence_tokens,
+        baseline_tokens=baseline_tokens,
+        alphabet=alphabet,
+        steps=steps,
+        batch_size=batch_size
+    )
+
+    # Extract gradients for sequence positions (excluding special tokens)
+    # ESM adds <cls> at start and <eos> at end, so we take [1:-1]
+    position_gradients = token_gradients[0, 1:-1].cpu().numpy()
+
+    return {
+        'sequence': sequence,
+        'baseline_sequence': baseline_sequence,
+        'predicted_activity': seq_pred,
+        'baseline_activity': baseline_pred,
+        'effect_vs_baseline': seq_pred - baseline_pred,
+        'position_gradients': position_gradients,
+        'positions': list(range(1, len(sequence) + 1)),
+        'amino_acids': list(sequence)
+    }
+
+
 # Example usage function
 def run_complete_sequence_analysis(
     predictor_model: torch.nn.Module,

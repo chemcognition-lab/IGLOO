@@ -16,8 +16,8 @@ import seaborn as sns
 import torch
 from sklearn.model_selection import KFold
 
-from src.erbc_analysis.embedding import get_embeddings
-from src.erbc_analysis.train_and_eval import train_and_evaluate
+from src.igloo.embedding import get_embeddings
+from src.igloo.train_and_eval import train_and_evaluate
 
 # Determine script directory and set paths relative to it
 script_dir = os.path.dirname(os.path.abspath(__file__))
