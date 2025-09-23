@@ -39,7 +39,7 @@ project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
 
 # Paths
 data_path = os.path.join(project_root, 'data', 'PafA_data_processed.csv')
-results_dir = os.path.join(script_dir, 'results')
+results_dir = os.path.join(project_root, 'results', 'PafA')
 plot_path = os.path.join(results_dir, 'PafA_residue_ig_vs_WT.png')
 df_path = os.path.join(results_dir, 'PafA_residue_ig_attributions.csv')
 align_plot_path = os.path.join(results_dir, 'PafA_alignment_hotspots.png')
@@ -339,6 +339,7 @@ for _idx, variant in top_variants.iterrows():
 
     # Create output directory for this variant
     variant_dir = os.path.join(results_dir, f"sequence_analysis_{variant['mutation']}")
+    os.makedirs(variant_dir, exist_ok=True)
 
     # Run complete sequence-level analysis
     attributions_df, position_stats = run_complete_sequence_analysis(
@@ -367,6 +368,7 @@ for _idx, variant in top_variants.iterrows():
 # Also run sequence-level analysis on the wild-type for comparison
 print("\nAnalyzing wild-type sequence for comparison...")
 wt_analysis_dir = os.path.join(results_dir, "sequence_analysis_WT")
+os.makedirs(wt_analysis_dir, exist_ok=True)
 
 wt_attributions_df, wt_position_stats = run_complete_sequence_analysis(
     predictor_model=final_model,

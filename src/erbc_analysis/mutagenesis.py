@@ -12,8 +12,10 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from .data_processing import CustomDataset, batch_pad_and_normalize
 from .embedding import get_embeddings
 
 
@@ -49,20 +51,29 @@ def compute_mutation_effects(
     amino_acids = 'ACDEFGHIKLMNPQRSTVWY'
     model.eval()
 
-    # Get WT prediction for baseline
+    # Get WT prediction for baseline using the same method as mutants
+    print("Computing WT baseline prediction...")
     wt_embedding = get_embeddings([wt_sequence], layer=esm_layer, batch_size=1, dataset_name='PafA_mutagenesis')
-    wt_tensor = torch.tensor(wt_embedding, dtype=torch.float32).to(device)
+
+    # Use DataLoader approach for consistency
+    dummy_target = np.zeros(1)
+    wt_dataset = CustomDataset(wt_embedding, dummy_target)
+    wt_loader = DataLoader(wt_dataset, batch_size=1, shuffle=False, collate_fn=batch_pad_and_normalize)
 
     with torch.no_grad():
-        if pooling_method == 'esm_attention':
-            # Create input mask for WT
-            input_mask = torch.ones(1, len(wt_sequence), device=device)
-            wt_pred_norm = model(wt_tensor, input_mask).item()
-        else:
-            wt_pred_norm = model(wt_tensor).item()
+        for xb, lengths, _yb in wt_loader:
+            xb = xb.to(device)
+            if pooling_method == 'esm_attention':
+                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                for i, length in enumerate(lengths):
+                    input_mask[i, :length] = 1
+                wt_pred_norm = model(xb, input_mask).item()
+            else:
+                wt_pred_norm = model(xb).item()
 
     # Convert back to original scale
     wt_pred = wt_pred_norm * y_log_std + y_log_mean
+    print(f"WT predicted activity: {wt_pred:.4f}")
 
     mutation_effects = []
     sequences_to_embed = []
@@ -95,29 +106,33 @@ def compute_mutation_effects(
 
     print(f"Predicting activities for {len(sequences_to_embed)} mutations...")
 
-    # Predict activities in batches (to match training/eval logic)
+    # Predict activities using DataLoader (to match training/eval logic)
     predictions = []
     model.eval()
-    batch_size_pred = batch_size if batch_size > 0 else 32
-    n = len(all_embeddings)
+
+    # Create dummy target values (not used for prediction, but required by CustomDataset)
+    dummy_targets = np.zeros(len(all_embeddings))
+
+    # Create dataset and dataloader
+    eval_dataset = CustomDataset(all_embeddings, dummy_targets)
+    eval_loader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=False, collate_fn=batch_pad_and_normalize)
+
+    pred_norm = []
     with torch.no_grad():
-        for start in tqdm(range(0, n, batch_size_pred), disable=not progress, desc="Predicting"):
-            end = min(start + batch_size_pred, n)
-            batch_emb = all_embeddings[start:end]
-            tensor = torch.tensor(batch_emb, dtype=torch.float32).to(device)
+        for xb, lengths, _yb in tqdm(eval_loader, disable=not progress, desc="Predicting"):
+            xb = xb.to(device)
             if pooling_method == 'esm_attention':
-                # Create input mask for each sequence in the batch
-                max_len = tensor.shape[1]
-                input_mask = torch.zeros(tensor.size(0), max_len, device=device)
-                for i, seq_idx in enumerate(range(start, end)):
-                    seq_len = len(sequences_to_embed[seq_idx])
-                    input_mask[i, :seq_len] = 1
-                pred_norm = model(tensor, input_mask).squeeze(-1).cpu().numpy()
+                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                for i, length in enumerate(lengths):
+                    input_mask[i, :length] = 1
+                out = model(xb, input_mask).squeeze(-1).cpu().numpy()
             else:
-                pred_norm = model(tensor).squeeze(-1).cpu().numpy()
-            # Convert back to original scale
-            pred = pred_norm * y_log_std + y_log_mean
-            predictions.extend(pred.tolist())
+                out = model(xb).squeeze(-1).cpu().numpy()
+            pred_norm.append(out)
+
+    pred_norm = np.concatenate(pred_norm)
+    # Convert back to original scale
+    predictions = pred_norm * y_log_std + y_log_mean
 
     # Combine results
     for info, pred in zip(mutation_info, predictions):
@@ -256,7 +271,7 @@ def plot_mutation_landscape(
     # 4. Top mutations scatter plot
     top_mutations = mutation_df.head(top_n_label)
 
-    scatter = axes[1, 1].scatter(
+    axes[1, 1].scatter(
         mutation_df['position'],
         mutation_df['effect_vs_wt'],
         c=mutation_df['effect_vs_wt'],

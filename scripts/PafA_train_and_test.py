@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # save both the IG plot and attribution DataFrame,
 # and produce a sequence alignment highlighting hotspots.
 
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -26,7 +25,7 @@ project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
 
 # Paths
 data_path = os.path.join(project_root, 'data', 'PafA_data_processed.csv')
-results_dir = os.path.join(script_dir, 'results')
+results_dir = os.path.join(project_root, 'results', 'PafA')
 plot_path = os.path.join(results_dir, 'PafA_residue_ig_vs_WT.png')
 df_path = os.path.join(results_dir, 'PafA_residue_ig_attributions.csv')
 align_plot_path = os.path.join(results_dir, 'PafA_alignment_hotspots.png')

@@ -49,7 +49,7 @@ def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA'):
     for i in range(0, n, batch_size):
         start = i
         end = min(i + batch_size, n)
-        batch_file = emb_dir / f"PafA_embeddings_batch_{start}_{end-1}.safetensors"
+        batch_file = emb_dir / f"{dataset_name}_embeddings_batch_{start}_{end-1}.safetensors"
         if batch_file.exists():
             emb = load_file(str(batch_file))["embedding"]
             embeddings.append(emb)

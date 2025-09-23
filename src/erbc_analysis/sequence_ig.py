@@ -225,7 +225,9 @@ def compute_amino_acid_attributions(
     sequence: str,
     baseline_sequence: str,
     alphabet,
-    device: torch.device
+    device: torch.device,
+    y_log_mean: float = 0.0,
+    y_log_std: float = 1.0
 ) -> pd.DataFrame:
     """
     Compute attribution scores for each amino acid at each position.
@@ -239,6 +241,8 @@ def compute_amino_acid_attributions(
         baseline_sequence: Baseline sequence (usually WT)
         alphabet: ESM alphabet
         device: PyTorch device
+        y_log_mean: Mean used for target normalization (to convert back)
+        y_log_std: Std used for target normalization (to convert back)
 
     Returns:
         DataFrame with attribution scores for each position and amino acid
@@ -249,7 +253,9 @@ def compute_amino_acid_attributions(
     # Get baseline prediction
     baseline_tokens = sequence_to_tokens(baseline_sequence, alphabet).to(device)
     with torch.no_grad():
-        baseline_pred = combined_model(baseline_tokens).item()
+        baseline_pred_norm = combined_model(baseline_tokens).item()
+        # Convert back to original scale
+        baseline_pred = baseline_pred_norm * y_log_std + y_log_mean
 
     attributions = []
 
@@ -265,7 +271,9 @@ def compute_amino_acid_attributions(
             # Get prediction for mutant
             mutant_tokens = sequence_to_tokens(mutant_seq, alphabet).to(device)
             with torch.no_grad():
-                mutant_pred = combined_model(mutant_tokens).item()
+                mutant_pred_norm = combined_model(mutant_tokens).item()
+                # Convert back to original scale
+                mutant_pred = mutant_pred_norm * y_log_std + y_log_mean
 
             # Calculate attribution
             attribution = mutant_pred - baseline_pred
@@ -470,12 +478,26 @@ def run_complete_sequence_analysis(
     esm_model_name: str = 'esm2_t33_650M_UR50D',
     esm_layer: int = 33,
     pooling_method: str = 'linear',
+    y_log_mean: float = 0.0,
+    y_log_std: float = 1.0,
     device: Optional[torch.device] = None
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Run complete sequence-level attribution analysis.
 
     This is the main function to call for comprehensive analysis.
+    
+    Args:
+        predictor_model: Trained predictor model
+        sequence: Input protein sequence
+        baseline_sequence: Baseline sequence (usually WT)
+        output_dir: Directory to save results
+        esm_model_name: ESM model name
+        esm_layer: ESM layer to use
+        pooling_method: Pooling method used by predictor
+        y_log_mean: Mean used for target normalization
+        y_log_std: Std used for target normalization
+        device: PyTorch device
     """
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -497,7 +519,9 @@ def run_complete_sequence_analysis(
         sequence=sequence,
         baseline_sequence=baseline_sequence,
         alphabet=alphabet,
-        device=device
+        device=device,
+        y_log_mean=y_log_mean,
+        y_log_std=y_log_std
     )
 
     print("Analyzing position sensitivity...")

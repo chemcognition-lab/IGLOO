@@ -2,14 +2,12 @@
 
 import os
 import sys
-from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import xgboost as xgb
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -23,7 +21,7 @@ project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
 
 # Paths
 data_path = os.path.join(project_root, 'data', 'PafA_data_processed.csv')
-results_dir = os.path.join(script_dir, 'results_xgb')
+results_dir = os.path.join(project_root, 'results', 'PafA_XGB')
 os.makedirs(results_dir, exist_ok=True)
 
 # 1. Load dataset

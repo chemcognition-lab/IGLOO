@@ -1,0 +1,33 @@
+SEQUENCE-LEVEL ATTRIBUTION ANALYSIS SUMMARY
+==================================================
+
+Input sequence length: 546
+Baseline sequence length: 546
+Total mutations analyzed: 10374
+Beneficial mutations: 8693
+Detrimental mutations: 1680
+Neutral mutations: 1
+
+TOP 10 MOST SENSITIVE POSITIONS:
+ 1. Position 352: sensitivity=0.2010
+ 2. Position 383: sensitivity=0.1794
+ 3. Position 305: sensitivity=0.1708
+ 4. Position 422: sensitivity=0.1697
+ 5. Position 26: sensitivity=0.1626
+ 6. Position 361: sensitivity=0.1572
+ 7. Position 23: sensitivity=0.1455
+ 8. Position 338: sensitivity=0.1434
+ 9. Position 486: sensitivity=0.1415
+10. Position 38: sensitivity=0.1385
+
+TOP 10 BENEFICIAL MUTATIONS:
+ 1. Q386V: 0.6652
+ 2. W7S: 0.6400
+ 3. W7T: 0.6334
+ 4. W7K: 0.6292
+ 5. W7N: 0.6059
+ 6. P27V: 0.5915
+ 7. P27E: 0.5814
+ 8. K378V: 0.5688
+ 9. R327V: 0.5630
+10. W443V: 0.5538
