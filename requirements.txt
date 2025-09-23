@@ -1,0 +1,34 @@
+# Core scientific computing
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.7.0
+
+# Machine learning
+scikit-learn>=1.0.0
+xgboost>=1.5.0
+
+# Deep learning
+torch>=1.12.0
+torchvision>=0.13.0
+
+# ESM protein language model
+fair-esm>=2.0.0
+
+# Data visualization
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# Tensor storage
+safetensors>=0.3.0
+
+# Progress bars
+tqdm>=4.62.0
+
+# Development and testing (optional)
+pytest>=7.0.0
+coverage>=6.0.0
+ruff>=0.1.0
+
+# Jupyter notebooks (optional)
+jupyter>=1.0.0
+ipykernel>=6.0.0

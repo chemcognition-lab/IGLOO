@@ -37,7 +37,19 @@ def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA'):
         for f in batch_files:
             emb = load_file(str(f))["embedding"]
             embeddings.append(emb)
-        return torch.cat(embeddings, dim=0).numpy()
+        # Handle variable sequence lengths by padding to max length
+        if embeddings:
+            max_len = max(emb.shape[1] for emb in embeddings)
+            padded_embeddings = []
+            for emb in embeddings:
+                if emb.shape[1] < max_len:
+                    # Pad with zeros to match max length
+                    padding = torch.zeros(emb.shape[0], max_len - emb.shape[1], emb.shape[2])
+                    emb = torch.cat([emb, padding], dim=1)
+                padded_embeddings.append(emb)
+            return torch.cat(padded_embeddings, dim=0).numpy()
+        else:
+            return torch.empty(0).numpy()
 
     # Only load ESM model if needed
     print("Loading ESM model...")
@@ -63,4 +75,17 @@ def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA'):
         emb = reps[:, 1:Lp2-1, :].contiguous()  # (batch, L, D)
         save_file({"embedding": emb}, str(batch_file))
         embeddings.append(emb)
-    return torch.cat(embeddings, dim=0).numpy()
+
+    # Handle variable sequence lengths by padding to max length
+    if embeddings:
+        max_len = max(emb.shape[1] for emb in embeddings)
+        padded_embeddings = []
+        for emb in embeddings:
+            if emb.shape[1] < max_len:
+                # Pad with zeros to match max length
+                padding = torch.zeros(emb.shape[0], max_len - emb.shape[1], emb.shape[2])
+                emb = torch.cat([emb, padding], dim=1)
+            padded_embeddings.append(emb)
+        return torch.cat(padded_embeddings, dim=0).numpy()
+    else:
+        return torch.empty(0).numpy()

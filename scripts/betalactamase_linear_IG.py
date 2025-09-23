@@ -85,38 +85,43 @@ lr_decay_patience = 20  # Reduced from 40
 epochs = 200  # Reduced from 500
 final_activation = None  # 'tanh', 'sigmoid', or None
 
-# Normalize target (no log transform for beta-lactamase)
-print("Normalizing targets...")
-y_log = y_raw  # No log transform
-y_log_mean = np.mean(y_log)
-y_log_std = np.std(y_log)
-y = (y_log - y_log_mean) / y_log_std
-print(f"Target mean: {y_log_mean:.4f}, std: {y_log_std:.4f}")
+# No normalization needed for beta-lactamase dataset
+print("Using raw target values without normalization...")
+y = y_raw  # Use raw values directly
+y_log_mean = 0.0  # No normalization
+y_log_std = 1.0   # No normalization
+print(f"Target range: {np.min(y):.4f} to {np.max(y):.4f}")
 
-# Plot distribution of normalized target values
+# Plot distribution of target values
 plt.figure(figsize=(8,4))
 sns.histplot(y, bins=30, kde=True)
-plt.xlabel('Normalized Target Value')
+plt.xlabel('Target Value (Raw)')
 plt.ylabel('Count')
-plt.title('Distribution of Normalized Target Values')
-plt.grid(True)
-plt.savefig(os.path.join(results_dir, 'target_distribution_normalized.png'), bbox_inches='tight', dpi=200)
-plt.close()
-
-# Plot distribution of raw target values
-plt.figure(figsize=(8,4))
-sns.histplot(y_raw, bins=30, kde=True)
-plt.xlabel('Raw Target Value')
-plt.ylabel('Count')
-plt.title('Distribution of Raw Target Values')
+plt.title('Distribution of Target Values')
 plt.grid(True)
 plt.savefig(os.path.join(results_dir, 'target_distribution.png'), bbox_inches='tight', dpi=200)
 plt.close()
 
-# Identify WT sequence for baseline (use most common or first sequence as WT)
-# For beta-lactamase, we'll use the first sequence as WT reference
-wt_seq = sequences[0]
-print(f"Using WT sequence as baseline: {wt_seq[:50]}...")
+# Use the specific WT sequence provided
+wt_seq = ("MSIQHFRVALIPFFAAFCLPVFAHPETLVKVKDAEDQLGARVGYIELDLNSGKILESFRPEERFPMMSTFKVLLCGAVLSRVDAG"
+          "QEQLGRRIHYSQNDLVEYSPVTEKHLTDGMTVRELCSAAITMSDNTAANLLLTTIGGPKELTAFLHNMGDHVTRLDRWEPELN"
+          "EAIPNDERDTTMPAAMATTLRKLLTGELLTLASRQQLIDWMEADKVAGPLLRSALPAGWFIADKSGAGERGSRGIIAALGPDG"
+          "KPSRIVVIYTTGSQATMDERNRQIAEIGASLIKHW")
+print(f"Using specified WT sequence as baseline: {wt_seq[:50]}...")
+print(f"WT sequence length: {len(wt_seq)}")
+
+# Check if WT sequence is in the dataset
+wt_in_dataset = wt_seq in sequences
+print(f"WT sequence found in dataset: {wt_in_dataset}")
+if wt_in_dataset:
+    wt_idx = sequences.index(wt_seq)
+    dataset_wt_value = y_raw[wt_idx]
+    print(f"WT functional value from dataset: {dataset_wt_value:.4f}")
+    print("Note: Using specified WT functional value of 1.0 instead of dataset value")
+
+# Set WT functional value to 1.0 as specified (raw, unnormalized value)
+wt_functional_value = 1.0
+print(f"Using WT functional value: {wt_functional_value:.4f}")
 
 # 2. Tokenize & embed with ESM (directly, configurable layer/pooling)
 print("Computing ESM embeddings...")
@@ -192,22 +197,23 @@ with torch.no_grad():
         y_true_norm.append(yb.squeeze(-1).cpu().numpy())
 pred_norm = np.concatenate(pred_norm)
 y_true_norm = np.concatenate(y_true_norm)
-y_pred_unnorm = pred_norm * y_log_std + y_log_mean
-y_true = y_true_norm * y_log_std + y_log_mean
+# Since we're not normalizing, predictions and targets are already in original scale
+y_pred = pred_norm
+y_true = y_true_norm
 
-# Print a sample of predictions and targets for debugging
-print("Sample predictions vs targets (unnormalized):")
-for i in range(min(10, len(y_pred_unnorm))):
-    print(f"  Pred: {y_pred_unnorm[i]:.3f}  Target: {y_true[i]:.3f}")
+# Print a sample of predictions and targets
+print("Sample predictions vs targets:")
+for i in range(min(10, len(y_pred))):
+    print(f"  Pred: {y_pred[i]:.3f}  Target: {y_true[i]:.3f}")
 
 # Compute metrics
-r2 = r2_score(y_true, y_pred_unnorm)
-pearson_r, _ = stats.pearsonr(y_true, y_pred_unnorm)
-spearman_rho, _ = stats.spearmanr(y_true, y_pred_unnorm)
+r2 = r2_score(y_true, y_pred)
+pearson_r, _ = stats.pearsonr(y_true, y_pred)
+spearman_rho, _ = stats.spearmanr(y_true, y_pred)
 
 # Plot
 plt.figure(figsize=(7,7))
-sns.scatterplot(x=y_true, y=y_pred_unnorm, s=40, alpha=0.7)
+sns.scatterplot(x=y_true, y=y_pred, s=40, alpha=0.7)
 plt.xlabel('Actual')
 plt.ylabel('Predicted')
 plt.title('Final Model: Predicted vs Actual (Beta-lactamase)')
@@ -228,6 +234,7 @@ print(f"Saved predicted vs actual scatter plot to {scatter_path}")
 print("\n" + "="*60)
 print("PERFORMING IN-SILICO MUTAGENESIS ANALYSIS")
 print("="*60)
+print(f"Using WT functional value as baseline: {wt_functional_value:.4f}")
 
 mutation_df = compute_mutation_effects(
     model=final_model,
@@ -344,9 +351,9 @@ print("="*50)
 
 # Separate predictions for training and test sets
 train_size = len(train_df)
-train_pred = y_pred_unnorm[:train_size]
+train_pred = y_pred[:train_size]
 train_actual = y_true[:train_size]
-test_pred = y_pred_unnorm[train_size:train_size+len(test_df)]
+test_pred = y_pred[train_size:train_size+len(test_df)]
 test_actual = y_true[train_size:train_size+len(test_df)]
 
 # Calculate separate metrics

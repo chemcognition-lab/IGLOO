@@ -1,0 +1,45 @@
+name: erbc_analysis
+channels:
+  - conda-forge
+  - pytorch
+  - bioconda
+  - defaults
+dependencies:
+  # Python
+  - python=3.9
+
+  # Core scientific computing
+  - numpy>=1.21.0
+  - pandas>=1.3.0
+  - scipy>=1.7.0
+
+  # Machine learning
+  - scikit-learn>=1.0.0
+  - xgboost>=1.5.0
+
+  # Deep learning (PyTorch)
+  - pytorch>=1.12.0
+  - torchvision>=0.13.0
+  - pytorch-cuda=11.8  # or pytorch-cuda=12.1 for newer CUDA
+
+  # Data visualization
+  - matplotlib>=3.5.0
+  - seaborn>=0.11.0
+
+  # Development tools
+  - pytest>=7.0.0
+  - coverage>=6.0.0
+  - ruff>=0.1.0
+
+  # Jupyter notebooks
+  - jupyter>=1.0.0
+  - ipykernel>=6.0.0
+
+  # Additional tools
+  - tqdm>=4.62.0
+
+  # pip dependencies (not available in conda)
+  - pip
+  - pip:
+    - fair-esm>=2.0.0
+    - safetensors>=0.3.0
