@@ -1,0 +1,50 @@
+PAFA INTEGRATED GRADIENTS ANALYSIS SUMMARY
+==================================================
+
+Model Performance:
+  R² = -0.0019
+  Pearson r = 0.6181
+  Spearman ρ = 0.6441
+
+Sequences Analyzed:
+  WT:
+    Predicted Activity: 89.4572
+    Effect vs Baseline: 0.0000
+    Top 5 Important Positions: [np.int64(2), np.int64(35), np.int64(45), np.int64(146), np.int64(107)]
+
+  Lowest_Activity:
+    Predicted Activity: 88.8889
+    Effect vs Baseline: -0.5683
+    Top 5 Important Positions: [np.int64(2), np.int64(35), np.int64(45), np.int64(146), np.int64(107)]
+
+  Highest_Activity:
+    Predicted Activity: 90.1291
+    Effect vs Baseline: 0.6719
+    Top 5 Important Positions: [np.int64(2), np.int64(35), np.int64(45), np.int64(146), np.int64(107)]
+
+  Median_Activity:
+    Predicted Activity: 89.0328
+    Effect vs Baseline: -0.4244
+    Top 5 Important Positions: [np.int64(2), np.int64(35), np.int64(45), np.int64(146), np.int64(107)]
+
+  High_10th:
+    Predicted Activity: 89.5185
+    Effect vs Baseline: 0.0613
+    Top 5 Important Positions: [np.int64(2), np.int64(35), np.int64(45), np.int64(146), np.int64(107)]
+
+  Low_10th:
+    Predicted Activity: 88.7812
+    Effect vs Baseline: -0.6759
+    Top 5 Important Positions: [np.int64(2), np.int64(35), np.int64(45), np.int64(146), np.int64(107)]
+
+TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
+ 1. Position 222 (L): importance = 0.0241
+ 2. Position 498 (L): importance = 0.0211
+ 3. Position 61 (L): importance = 0.0211
+ 4. Position 427 (L): importance = 0.0211
+ 5. Position 437 (L): importance = 0.0211
+ 6. Position 107 (L): importance = 0.0211
+ 7. Position 476 (L): importance = 0.0211
+ 8. Position 35 (L): importance = 0.0211
+ 9. Position 499 (L): importance = 0.0211
+10. Position 67 (L): importance = 0.0211

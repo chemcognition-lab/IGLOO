@@ -29,6 +29,7 @@ from src.igloo.mutagenesis import (
 )
 from src.igloo.sequence_ig import run_complete_sequence_analysis
 from src.igloo.train_and_eval import train
+from src.igloo.utils import create_model
 
 # Determine script directory and set paths relative to it
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -145,35 +146,88 @@ print("Skipping cross-validation for speed...")
 # kf = KFold(n_splits=5, shuffle=True, random_state=42)
 # fold_metrics = []
 
-# Train a final model on all data for analysis
-print("\nTraining final model on all data for variant analysis...")
+# Check for existing model and load if available
+model_path = os.path.join(results_dir, 'betalactamase_model.pth')
+final_model = None
 input_dim_combined = all_reps_combined.shape[2]
 target_min = np.min(y)
 target_max = np.max(y)
 
-final_model, train_metrics = train(
-    all_reps_combined, y,
-    L=L,
-    batch_size=batch_size,
-    learning_rate=learning_rate,
-    weight_decay=weight_decay,
-    hidden_dim1=hidden_dim1,
-    hidden_dim2=hidden_dim2,
-    hidden_dim3=hidden_dim3,
-    hidden_dim4=hidden_dim4,
-    dropout_rate=dropout_rate,
-    epochs=50,  # Fewer epochs since we're using all data
-    final_activation=final_activation,
-    device=device,
-    POOLING_METHOD=POOLING_METHOD,
-    LOSS_TYPE=LOSS_TYPE,
-    y_log_std=y_log_std,
-    y_log_mean=y_log_mean
-)
-print("Final model training completed.")
-print("Training set metrics:")
-for k, v in train_metrics.items():
-    print(f"  {k}: {v:.4f}")
+if os.path.exists(model_path):
+    print(f"\nFound existing model at {model_path}")
+    print("Loading pre-trained model...")
+    try:
+        checkpoint = torch.load(model_path, map_location=device)
+        model_config = checkpoint['model_config']
+
+        # Verify configuration matches current parameters
+        config_match = (
+            model_config.get('hidden_dim1') == hidden_dim1 and
+            model_config.get('hidden_dim2') == hidden_dim2 and
+            model_config.get('hidden_dim3') == hidden_dim3 and
+            model_config.get('hidden_dim4') == hidden_dim4 and
+            model_config.get('dropout_rate') == dropout_rate and
+            model_config.get('final_activation') == final_activation and
+            model_config.get('pooling_method') == POOLING_METHOD and
+            model_config.get('input_dim') == input_dim_combined and
+            model_config.get('L') == L
+        )
+
+        if config_match:
+            final_model = create_model(model_config, device)
+            final_model.load_state_dict(checkpoint['model_state_dict'])
+            final_model.eval()
+
+            # Load performance metrics if available
+            if 'performance' in checkpoint:
+                perf = checkpoint['performance']
+                print("Pre-trained model performance:")
+                for k, v in perf.items():
+                    print(f"  {k}: {v:.4f}")
+
+            print("Successfully loaded pre-trained model!")
+            train_model = False
+        else:
+            print("Model configuration doesn't match current parameters. Training new model.")
+            train_model = True
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        print("Training new model.")
+        train_model = True
+else:
+    print("\nNo existing model found. Training new model.")
+    train_model = True
+
+# Train model if needed
+if train_model:
+    print("\nTraining final model on all data for variant analysis...")
+    final_model, train_metrics = train(
+        all_reps_combined, y,
+        L=L,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        hidden_dim1=hidden_dim1,
+        hidden_dim2=hidden_dim2,
+        hidden_dim3=hidden_dim3,
+        hidden_dim4=hidden_dim4,
+        dropout_rate=dropout_rate,
+        epochs=50,  # Fewer epochs since we're using all data
+        final_activation=final_activation,
+        device=device,
+        POOLING_METHOD=POOLING_METHOD,
+        LOSS_TYPE=LOSS_TYPE,
+        y_log_std=y_log_std,
+        y_log_mean=y_log_mean
+    )
+    print("Final model training completed.")
+    print("Training set metrics:")
+    for k, v in train_metrics.items():
+        print(f"  {k}: {v:.4f}")
+else:
+    print("Using pre-trained model for analysis.")
+    # Create dummy train_metrics for consistency
+    train_metrics = {'note': 'using_pretrained_model'}
 
 # --- Predicted vs Actual Scatter Plot with Performance Metrics ---
 # Get predictions on all data using DataLoader (to match train function)
@@ -416,12 +470,12 @@ print("3. Use 'sequence_analysis_*/amino_acid_attribution_heatmap.png' to see AA
 print("4. Compare different variants in their respective sequence_analysis_*/ folders")
 print("5. Training vs test performance comparison shows generalization ability")
 
-# Save the model and parameters
+# Save the model and parameters (update even if using pre-trained model)
 model_path = os.path.join(results_dir, 'betalactamase_model.pth')
 torch.save({
     'model_state_dict': final_model.state_dict(),
     'model_config': {
-        'input_dim': D,
+        'input_dim': input_dim_combined,
         'L': L,
         'hidden_dim1': hidden_dim1,
         'hidden_dim2': hidden_dim2,
@@ -439,6 +493,15 @@ torch.save({
         'overall_r2': r2,
         'train_r2': train_r2,
         'test_r2': test_r2
+    },
+    'training_info': {
+        'was_retrained': train_model,
+        'train_metrics': train_metrics if train_model else 'using_pretrained'
+    },
+    'data_info': {
+        'wt_sequence': wt_seq,
+        'wt_functional_value': wt_functional_value,
+        'target_column': col
     }
 }, model_path)
-print("  - betalactamase_model.pth: Trained model with metadata")
+print("  - betalactamase_model.pth: Model saved with updated metadata")

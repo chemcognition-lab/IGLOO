@@ -9,11 +9,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # and perform TRUE integrated gradients analysis using the integrated_gradients_tokens function.
 # This is an alternative to the brute-force mutation approach.
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-import seaborn as sns
 import torch
 from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
@@ -21,12 +19,14 @@ from torch.utils.data import DataLoader
 # Import analysis modules
 from src.igloo.data_processing import CustomDataset, batch_pad_and_normalize
 from src.igloo.embedding import get_embeddings
+from src.igloo.plot import plot_gradients_heatmap, plot_integrated_gradients
 from src.igloo.sequence_ig import (
     ESMBasedPredictor,
     analyze_sequence_with_integrated_gradients,
     load_esm_model,
 )
 from src.igloo.train_and_eval import train
+from src.igloo.utils import create_model
 
 # Determine script directory and set paths relative to it
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -99,32 +99,86 @@ N, L, D = all_reps.shape
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-# 3. Train model on all data
-print("\nTraining model on all data for integrated gradients analysis...")
-final_model, train_metrics = train(
-    all_reps, y,
-    L=L,
-    batch_size=batch_size,
-    learning_rate=learning_rate,
-    weight_decay=weight_decay,
-    hidden_dim1=hidden_dim1,
-    hidden_dim2=hidden_dim2,
-    hidden_dim3=hidden_dim3,
-    hidden_dim4=hidden_dim4,
-    dropout_rate=dropout_rate,
-    epochs=epochs,
-    final_activation=final_activation,
-    device=device,
-    POOLING_METHOD=POOLING_METHOD,
-    LOSS_TYPE=LOSS_TYPE,
-    y_log_std=y_log_std,
-    y_log_mean=y_log_mean
-)
+# 3. Check for existing model and load if available
+model_path = os.path.join(results_dir, 'betalactamase_ig_model.pth')
+final_model = None
 
-print("Training completed.")
-print("Training metrics:")
-for k, v in train_metrics.items():
-    print(f"  {k}: {v:.4f}")
+if os.path.exists(model_path):
+    print(f"\nFound existing model at {model_path}")
+    print("Loading pre-trained model...")
+    try:
+        checkpoint = torch.load(model_path, map_location=device)
+        model_config = checkpoint['model_config']
+
+        # Verify configuration matches current parameters
+        config_match = (
+            model_config.get('hidden_dim1') == hidden_dim1 and
+            model_config.get('hidden_dim2') == hidden_dim2 and
+            model_config.get('hidden_dim3') == hidden_dim3 and
+            model_config.get('hidden_dim4') == hidden_dim4 and
+            model_config.get('dropout_rate') == dropout_rate and
+            model_config.get('final_activation') == final_activation and
+            model_config.get('pooling_method') == POOLING_METHOD and
+            model_config.get('input_dim') == D and
+            model_config.get('L') == L
+        )
+
+        if config_match:
+            final_model = create_model(model_config, device)
+            final_model.load_state_dict(checkpoint['model_state_dict'])
+            final_model.eval()
+
+            # Load performance metrics if available
+            if 'performance' in checkpoint:
+                perf = checkpoint['performance']
+                print("Pre-trained model performance:")
+                for k, v in perf.items():
+                    print(f"  {k}: {v:.4f}")
+
+            print("Successfully loaded pre-trained model!")
+            train_model = False
+        else:
+            print("Model configuration doesn't match current parameters. Training new model.")
+            train_model = True
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        print("Training new model.")
+        train_model = True
+else:
+    print("\nNo existing model found. Training new model.")
+    train_model = True
+
+# Train model if needed
+if train_model:
+    print("\nTraining model on all data for integrated gradients analysis...")
+    final_model, train_metrics = train(
+        all_reps, y,
+        L=L,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        hidden_dim1=hidden_dim1,
+        hidden_dim2=hidden_dim2,
+        hidden_dim3=hidden_dim3,
+        hidden_dim4=hidden_dim4,
+        dropout_rate=dropout_rate,
+        epochs=epochs,
+        final_activation=final_activation,
+        device=device,
+        POOLING_METHOD=POOLING_METHOD,
+        LOSS_TYPE=LOSS_TYPE,
+        y_log_std=y_log_std,
+        y_log_mean=y_log_mean
+    )
+
+    print("Training completed.")
+    print("Training metrics:")
+    for k, v in train_metrics.items():
+        print(f"  {k}: {v:.4f}")
+else:
+    print("Using pre-trained model for analysis.")
+    # Create dummy train_metrics for consistency
+    train_metrics = {'note': 'using_pretrained_model'}
 
 # 4. Evaluate model performance
 print("\nEvaluating model performance...")
@@ -205,10 +259,13 @@ for name, seq, _ in sequences_to_analyze:
 ig_results = {}
 for name, sequence, baseline in sequences_to_analyze:
     print(f"\nAnalyzing {name}...")
+    # Get actual activity for comparison
+    actual_activity = y_raw[sequences.index(sequence)] if sequence in sequences else "N/A"
+
     result = analyze_sequence_with_integrated_gradients(
         sequence=sequence,
         baseline_sequence=baseline,
-        combined_model=combined_model,
+        model=combined_model,
         alphabet=alphabet,
         device=device,
         y_log_mean=y_log_mean,
@@ -218,51 +275,17 @@ for name, sequence, baseline in sequences_to_analyze:
     )
     ig_results[name] = result
 
+    print(f"  Actual activity: {actual_activity}")
     print(f"  Predicted activity: {result['predicted_activity']:.4f}")
     print(f"  Baseline activity: {result['baseline_activity']:.4f}")
     print(f"  Effect vs baseline: {result['effect_vs_baseline']:.4f}")
+    if isinstance(actual_activity, (int, float)):
+        prediction_error = result['predicted_activity'] - actual_activity
+        print(f"  Prediction error: {prediction_error:.4f}")
     print(f"  Top 5 gradient positions: {np.argsort(np.abs(result['position_gradients']))[-5:][::-1] + 1}")
 
 # 6. Create visualizations
 print("\nCreating visualizations...")
-
-def plot_integrated_gradients(results_dict: dict, save_path: str = None):
-    """Plot integrated gradients for multiple sequences."""
-    n_sequences = len(results_dict)
-    fig, axes = plt.subplots(n_sequences, 1, figsize=(20, 4 * n_sequences))
-
-    if n_sequences == 1:
-        axes = [axes]
-
-    for idx, (name, result) in enumerate(results_dict.items()):
-        ax = axes[idx]
-        positions = result['positions']
-        gradients = result['position_gradients']
-        amino_acids = result['amino_acids']
-
-        # Create bar plot
-        colors = ['red' if g < 0 else 'blue' for g in gradients]
-        ax.bar(positions, gradients, color=colors, alpha=0.7)
-
-        # Add amino acid labels
-        for pos, aa, grad in zip(positions, amino_acids, gradients):
-            if abs(grad) > np.percentile(np.abs(gradients), 90):  # Label top 10% gradients
-                ax.text(pos, grad + np.sign(grad) * 0.01 * max(np.abs(gradients)),
-                       aa, ha='center', va='bottom' if grad > 0 else 'top',
-                       fontweight='bold', fontsize=8)
-
-        ax.set_xlabel('Position')
-        ax.set_ylabel('Integrated Gradient')
-        ax.set_title(f'{name}\nPredicted: {result["predicted_activity"]:.3f}, '
-                    f'Effect vs Baseline: {result["effect_vs_baseline"]:.3f}')
-        ax.grid(True, alpha=0.3)
-        ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
-
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Integrated gradients plot saved to {save_path}")
-    plt.close()
 
 # Create integrated gradients plots
 ig_plot_path = os.path.join(results_dir, 'integrated_gradients_analysis.png')
@@ -330,22 +353,8 @@ with open(summary_path, 'w') as f:
 print("Creating gradient heatmap...")
 pivot_data = results_df.pivot(index='sequence_name', columns='position', values='integrated_gradient')
 
-plt.figure(figsize=(20, 8))
-sns.heatmap(
-    pivot_data,
-    cmap='RdBu_r',
-    center=0,
-    cbar_kws={'label': 'Integrated Gradient'},
-    xticklabels=True,
-    yticklabels=True
-)
-plt.title('Integrated Gradients Heatmap Across Sequences')
-plt.xlabel('Position')
-plt.ylabel('Sequence')
-plt.tight_layout()
 heatmap_path = os.path.join(results_dir, 'integrated_gradients_heatmap.png')
-plt.savefig(heatmap_path, dpi=300, bbox_inches='tight')
-plt.close()
+plot_gradients_heatmap(pivot_data, 'Integrated Gradients Heatmap Across Sequences', heatmap_path)
 
 print("\n" + "="*60)
 print("INTEGRATED GRADIENTS ANALYSIS COMPLETE!")
@@ -364,7 +373,7 @@ print("3. Review 'integrated_gradients_analysis.png' for position-specific effec
 print("4. Integrated gradients show which positions contribute most to predictions")
 print("5. Unlike brute-force mutations, this shows the gradient-based importance")
 
-# Save model and analysis parameters
+# Save model and analysis parameters (update even if using pre-trained model)
 model_path = os.path.join(results_dir, 'betalactamase_ig_model.pth')
 torch.save({
     'model_state_dict': final_model.state_dict(),
@@ -382,12 +391,23 @@ torch.save({
     'analysis_config': {
         'esm_layer': ESM_LAYER,
         'ig_steps': 50,
-        'ig_batch_size': 10
+        'ig_batch_size': 10,
+        'target_column': 'quantitative_function',
+        'normalization': 'log1p_zscore'
     },
     'performance': {
         'r2': r2,
         'pearson_r': pearson_r,
         'spearman_rho': spearman_rho
+    },
+    'data_info': {
+        'target_mean': y_log_mean,
+        'target_std': y_log_std,
+        'wt_sequence': wt_seq
+    },
+    'training_info': {
+        'was_retrained': train_model,
+        'train_metrics': train_metrics if train_model else 'using_pretrained'
     }
 }, model_path)
-print("  - betalactamase_ig_model.pth: Trained model with analysis parameters")
+print("  - betalactamase_ig_model.pth: Model saved with updated analysis parameters")

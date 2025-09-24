@@ -9,24 +9,22 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # and perform TRUE integrated gradients analysis using the integrated_gradients_tokens function.
 # This is an alternative to the brute-force mutation approach.
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-import seaborn as sns
 import torch
 from sklearn.metrics import r2_score
-from torch.utils.data import DataLoader
 
 # Import analysis modules
-from src.igloo.data_processing import CustomDataset, batch_pad_and_normalize
 from src.igloo.embedding import get_embeddings
+from src.igloo.plot import plot_gradients_heatmap, plot_integrated_gradients, plot_variants_vs_wt_gradients
 from src.igloo.sequence_ig import (
     ESMBasedPredictor,
     analyze_sequence_with_integrated_gradients,
     load_esm_model,
 )
 from src.igloo.train_and_eval import train
+from src.igloo.utils import create_model
 
 # Determine script directory and set paths relative to it
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -53,7 +51,7 @@ print(f"Total dataset size: {len(sequences)} sequences")
 
 # Config: select ESM layer and pooling method
 ESM_LAYER = 33
-POOLING_METHOD = 'esm_attention'
+POOLING_METHOD = 'mean'  # Changed from 'esm_attention' to use deeper model architecture
 LOSS_TYPE = 'huber'
 
 # Hyperparameters
@@ -90,57 +88,102 @@ N, L, D = all_reps.shape
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-# 3. Train model on all data
-print("\nTraining model on all data for integrated gradients analysis...")
-final_model, train_metrics = train(
-    all_reps, y,
-    L=L,
-    batch_size=batch_size,
-    learning_rate=learning_rate,
-    weight_decay=weight_decay,
-    hidden_dim1=hidden_dim1,
-    hidden_dim2=hidden_dim2,
-    hidden_dim3=hidden_dim3,
-    hidden_dim4=hidden_dim4,
-    dropout_rate=dropout_rate,
-    epochs=epochs,
-    final_activation=final_activation,
-    device=device,
-    POOLING_METHOD=POOLING_METHOD,
-    LOSS_TYPE=LOSS_TYPE,
-    y_log_std=y_log_std,
-    y_log_mean=y_log_mean
-)
+# 3. Check for existing model and load if available
+model_path = os.path.join(results_dir, 'PafA_ig_model.pth')
+final_model = None
 
-print("Training completed.")
-print("Training metrics:")
-for k, v in train_metrics.items():
-    print(f"  {k}: {v:.4f}")
+if os.path.exists(model_path):
+    print(f"\nFound existing model at {model_path}")
+    print("Loading pre-trained model...")
+    try:
+        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+        model_config = checkpoint['model_config']
+
+        # Verify configuration matches current parameters
+        config_match = (
+            model_config.get('hidden_dim1') == hidden_dim1 and
+            model_config.get('hidden_dim2') == hidden_dim2 and
+            model_config.get('hidden_dim3') == hidden_dim3 and
+            model_config.get('hidden_dim4') == hidden_dim4 and
+            model_config.get('dropout_rate') == dropout_rate and
+            model_config.get('final_activation') == final_activation and
+            model_config.get('pooling_method') == POOLING_METHOD and
+            model_config.get('input_dim') == D and
+            model_config.get('L') == L
+        )
+
+        if config_match:
+            final_model = create_model(model_config, device)
+            final_model.load_state_dict(checkpoint['model_state_dict'])
+            final_model.eval()
+
+            # Load performance metrics if available
+            if 'performance' in checkpoint:
+                perf = checkpoint['performance']
+                print("Pre-trained model performance:")
+                for k, v in perf.items():
+                    print(f"  {k}: {v:.4f}")
+
+            print("Successfully loaded pre-trained model!")
+            train_model = False
+        else:
+            print("Model configuration doesn't match current parameters. Training new model.")
+            train_model = True
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        print("Training new model.")
+        train_model = True
+else:
+    print("\nNo existing model found. Training new model.")
+    train_model = True
+
+# Train model if needed
+if train_model:
+    print("\nTraining model on all data for integrated gradients analysis...")
+    final_model, train_metrics = train(
+        all_reps, y,
+        L=L,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        hidden_dim1=hidden_dim1,
+        hidden_dim2=hidden_dim2,
+        hidden_dim3=hidden_dim3,
+        hidden_dim4=hidden_dim4,
+        dropout_rate=dropout_rate,
+        epochs=epochs,
+        final_activation=final_activation,
+        device=device,
+        POOLING_METHOD=POOLING_METHOD,
+        LOSS_TYPE=LOSS_TYPE,
+        y_log_std=y_log_std,
+        y_log_mean=y_log_mean
+    )
+
+    print("Training completed.")
+    print("Training metrics:")
+    for k, v in train_metrics.items():
+        print(f"  {k}: {v:.4f}")
+else:
+    print("Using pre-trained model for analysis.")
+    # Create dummy train_metrics for consistency
+    train_metrics = {'note': 'using_pretrained_model'}
 
 # 4. Evaluate model performance
 print("\nEvaluating model performance...")
 final_model.eval()
-pred_values = []
-true_values = []
-eval_dataset = CustomDataset(all_reps, y)
-eval_loader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=False, collate_fn=batch_pad_and_normalize)
 
+# Use direct tensor conversion (same as verification method) to avoid DataLoader normalization issues
 with torch.no_grad():
-    for xb, lengths, yb in eval_loader:
-        xb = xb.to(device)
-        yb = yb.to(device)
-        if POOLING_METHOD == 'esm_attention':
-            input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-            for i, length in enumerate(lengths):
-                input_mask[i, :length] = 1
-            out = final_model(xb, input_mask).squeeze(-1).cpu().numpy()
-        else:
-            out = final_model(xb).squeeze(-1).cpu().numpy()
-        pred_values.append(out)
-        true_values.append(yb.squeeze(-1).cpu().numpy())
+    all_reps_tensor = torch.tensor(all_reps, dtype=torch.float32, device=device)
+    if POOLING_METHOD == 'esm_attention':
+        # Create proper input mask for all sequences
+        input_mask = torch.ones(all_reps_tensor.size(0), all_reps_tensor.size(1), device=device)
+        y_pred = final_model(all_reps_tensor, input_mask).squeeze(-1).cpu().numpy()
+    else:
+        y_pred = final_model(all_reps_tensor).squeeze(-1).cpu().numpy()
 
-y_pred = np.concatenate(pred_values)
-y_true = np.concatenate(true_values)
+y_true = y  # Use normalized targets for comparison
 
 # Compute metrics
 r2 = r2_score(y_true, y_pred)
@@ -151,6 +194,35 @@ print("Model Performance:")
 print(f"  R² = {r2:.4f}")
 print(f"  Pearson r = {pearson_r:.4f}")
 print(f"  Spearman ρ = {spearman_rho:.4f}")
+
+# Add diagnostic information about prediction distribution
+y_pred_denorm = y_pred * y_log_std + y_log_mean
+print("\nPrediction Diagnostics:")
+print(f"  Raw target range: [{np.min(y_raw):.4f}, {np.max(y_raw):.4f}]")
+print(f"  Raw target mean: {np.mean(y_raw):.4f}, std: {np.std(y_raw):.4f}")
+print(f"  Predicted range: [{np.min(y_pred_denorm):.4f}, {np.max(y_pred_denorm):.4f}]")
+print(f"  Predicted mean: {np.mean(y_pred_denorm):.4f}, std: {np.std(y_pred_denorm):.4f}")
+print(f"  Prediction std ratio (predicted/actual): {np.std(y_pred_denorm)/np.std(y_raw):.3f}")
+
+# Show how well the model predicts extreme values
+sorted_indices = np.argsort(y_raw)
+extreme_low_idx = sorted_indices[:5]  # 5 lowest
+extreme_high_idx = sorted_indices[-5:]  # 5 highest
+
+print("\nExtreme Value Performance:")
+print("5 Lowest actual values vs predictions:")
+for i, idx in enumerate(extreme_low_idx):
+    actual_val = y_raw[idx]
+    pred_val = y_pred_denorm[idx]
+    error_val = abs(actual_val - pred_val)
+    print(f"  #{i+1}: actual={actual_val:.4f}, predicted={pred_val:.4f}, error={error_val:.4f}")
+
+print("5 Highest actual values vs predictions:")
+for i, idx in enumerate(extreme_high_idx):
+    actual_val = y_raw[idx]
+    pred_val = y_pred_denorm[idx]
+    error_val = abs(actual_val - pred_val)
+    print(f"  #{i+1}: actual={actual_val:.4f}, predicted={pred_val:.4f}, error={error_val:.4f}")
 
 # 5. Perform integrated gradients analysis
 print("\n" + "="*60)
@@ -202,10 +274,45 @@ for name, seq, _ in sequences_to_analyze:
 ig_results = {}
 for name, sequence, baseline in sequences_to_analyze:
     print(f"\nAnalyzing {name}...")
+    # Get actual activity for comparison
+    if sequence in sequences:
+        seq_idx = sequences.index(sequence)
+        actual_activity_raw = y_raw[seq_idx]
+        actual_activity_normalized = y[seq_idx]
+    else:
+        actual_activity_raw = "N/A"
+        actual_activity_normalized = "N/A"
+
+    # VERIFICATION: Use the same prediction method as training
+    pred_raw_training_method = None
+    if sequence in sequences:
+        print("  Verifying prediction using training method...")
+        # Get the pre-computed embedding (same as used in training)
+        seq_idx = sequences.index(sequence)
+        seq_embedding = all_reps[seq_idx:seq_idx+1]  # Keep as numpy, add batch dimension
+
+        # Use the same evaluation pipeline as training
+        final_model.eval()
+        with torch.no_grad():
+            seq_tensor = torch.tensor(seq_embedding, dtype=torch.float32, device=device)
+            if POOLING_METHOD == 'esm_attention':
+                input_mask = torch.ones(1, seq_embedding.shape[1], device=device)
+                pred_normalized = final_model(seq_tensor, input_mask).squeeze(-1).cpu().numpy()[0]
+            else:
+                pred_normalized = final_model(seq_tensor).squeeze(-1).cpu().numpy()[0]
+            pred_raw_training_method = pred_normalized * y_log_std + y_log_mean
+        print(f"  Training method prediction: {pred_raw_training_method:.4f}")
+        print(f"  Training method (normalized): {pred_normalized:.4f}")
+    else:
+        print("  Sequence not found in training data - skipping training method verification")
+
+    print(f"  Sequence length: {len(sequence)}")
+    print(f"  Baseline length: {len(baseline)}")
+
     result = analyze_sequence_with_integrated_gradients(
         sequence=sequence,
         baseline_sequence=baseline,
-        combined_model=combined_model,
+        model=combined_model,
         alphabet=alphabet,
         device=device,
         y_log_mean=y_log_mean,
@@ -215,51 +322,32 @@ for name, sequence, baseline in sequences_to_analyze:
     )
     ig_results[name] = result
 
-    print(f"  Predicted activity: {result['predicted_activity']:.4f}")
+    if isinstance(actual_activity_raw, (int, float)):
+        print(f"  Actual activity: {actual_activity_raw:.4f}")
+    else:
+        print(f"  Actual activity: {actual_activity_raw}")
+    print(f"  IG method prediction: {result['predicted_activity']:.4f}")
     print(f"  Baseline activity: {result['baseline_activity']:.4f}")
     print(f"  Effect vs baseline: {result['effect_vs_baseline']:.4f}")
+
+    # Compare prediction methods
+    if sequence in sequences and isinstance(actual_activity_raw, (int, float)) and pred_raw_training_method is not None:
+        training_error = pred_raw_training_method - actual_activity_raw
+        ig_error = result['predicted_activity'] - actual_activity_raw
+        print(f"  Training method error: {training_error:.4f}")
+        print(f"  IG method error: {ig_error:.4f}")
+        print(f"  Prediction difference: {abs(pred_raw_training_method - result['predicted_activity']):.4f}")
+        print(f"  Relative error (training): {abs(training_error) / abs(actual_activity_raw) * 100:.1f}%")
+        print(f"  Relative error (IG): {abs(ig_error) / abs(actual_activity_raw) * 100:.1f}%")
+
+        # Check if the problem is with embedding differences
+        if abs(pred_raw_training_method - result['predicted_activity']) > 1.0:
+            print("  WARNING: Large difference between training and IG predictions!")
+            print("  This suggests embedding/preprocessing differences.")
     print(f"  Top 5 gradient positions: {np.argsort(np.abs(result['position_gradients']))[-5:][::-1] + 1}")
 
 # 6. Create visualizations
 print("\nCreating visualizations...")
-
-def plot_integrated_gradients(results_dict: dict, save_path: str = None):
-    """Plot integrated gradients for multiple sequences."""
-    n_sequences = len(results_dict)
-    fig, axes = plt.subplots(n_sequences, 1, figsize=(20, 4 * n_sequences))
-
-    if n_sequences == 1:
-        axes = [axes]
-
-    for idx, (name, result) in enumerate(results_dict.items()):
-        ax = axes[idx]
-        positions = result['positions']
-        gradients = result['position_gradients']
-        amino_acids = result['amino_acids']
-
-        # Create bar plot
-        colors = ['red' if g < 0 else 'blue' for g in gradients]
-        ax.bar(positions, gradients, color=colors, alpha=0.7)
-
-        # Add amino acid labels
-        for pos, aa, grad in zip(positions, amino_acids, gradients):
-            if abs(grad) > np.percentile(np.abs(gradients), 90):  # Label top 10% gradients
-                ax.text(pos, grad + np.sign(grad) * 0.01 * max(np.abs(gradients)),
-                       aa, ha='center', va='bottom' if grad > 0 else 'top',
-                       fontweight='bold', fontsize=8)
-
-        ax.set_xlabel('Position')
-        ax.set_ylabel('Integrated Gradient')
-        ax.set_title(f'{name}\nPredicted: {result["predicted_activity"]:.3f}, '
-                    f'Effect vs Baseline: {result["effect_vs_baseline"]:.3f}')
-        ax.grid(True, alpha=0.3)
-        ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
-
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Integrated gradients plot saved to {save_path}")
-    plt.close()
 
 # Create integrated gradients plots
 ig_plot_path = os.path.join(results_dir, 'PafA_integrated_gradients_analysis.png')
@@ -325,54 +413,15 @@ with open(summary_path, 'w') as f:
 
 # 8. Create heatmap of gradients across sequences
 print("Creating gradient heatmap...")
-pivot_data = results_df.pivot(index='sequence_name', columns='position', values='integrated_gradient')
-
-plt.figure(figsize=(20, 8))
-sns.heatmap(
-    pivot_data,
-    cmap='RdBu_r',
-    center=0,
-    cbar_kws={'label': 'Integrated Gradient'},
-    xticklabels=True,
-    yticklabels=True
-)
-plt.title('PafA Integrated Gradients Heatmap Across Sequences')
-plt.xlabel('Position')
-plt.ylabel('Sequence')
-plt.tight_layout()
 heatmap_path = os.path.join(results_dir, 'PafA_integrated_gradients_heatmap.png')
-plt.savefig(heatmap_path, dpi=300, bbox_inches='tight')
-plt.close()
+plot_gradients_heatmap(results_df, 'PafA Integrated Gradients Heatmap Across Sequences', heatmap_path)
 
 # 9. Create comparison with wild-type
 print("Creating comparison plots...")
 
 # Plot showing difference between variants and WT
-wt_result = ig_results['WT']
-wt_gradients = wt_result['position_gradients']
-
-plt.figure(figsize=(15, 10))
-for i, (name, result) in enumerate(ig_results.items()):
-    if name == 'WT':
-        continue
-    
-    plt.subplot(len(ig_results)-1, 1, i)
-    positions = result['positions']
-    gradient_diff = result['position_gradients'] - wt_gradients
-    
-    colors = ['red' if g < 0 else 'blue' for g in gradient_diff]
-    plt.bar(positions, gradient_diff, color=colors, alpha=0.7)
-    
-    plt.xlabel('Position')
-    plt.ylabel('Gradient Difference from WT')
-    plt.title(f'{name} - WT (Activity: {result["predicted_activity"]:.1f} vs {wt_result["predicted_activity"]:.1f})')
-    plt.grid(True, alpha=0.3)
-    plt.axhline(y=0, color='black', linestyle='-', alpha=0.5)
-
-plt.tight_layout()
 comparison_path = os.path.join(results_dir, 'PafA_variants_vs_WT_gradients.png')
-plt.savefig(comparison_path, dpi=300, bbox_inches='tight')
-plt.close()
+plot_variants_vs_wt_gradients(ig_results, comparison_path)
 
 print("\n" + "="*60)
 print("PAFA INTEGRATED GRADIENTS ANALYSIS COMPLETE!")
@@ -423,6 +472,10 @@ torch.save({
         'target_mean': y_log_mean,
         'target_std': y_log_std,
         'wt_sequence': wt_seq
+    },
+    'training_info': {
+        'was_retrained': train_model,
+        'train_metrics': train_metrics if train_model else 'using_pretrained'
     }
 }, model_path)
-print("  - PafA_ig_model.pth: Trained model with analysis parameters")
+print("  - PafA_ig_model.pth: Model saved with updated analysis parameters")

@@ -6,7 +6,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # Train a linear model on beta-lactamase variant data using ESM embeddings,
 # Train on betalactamase_train.csv and test on betalactamase_test.csv
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
@@ -16,7 +15,9 @@ from torch.utils.data import DataLoader
 
 from src.igloo.data_processing import CustomDataset, batch_pad_and_normalize
 from src.igloo.embedding import get_embeddings
+from src.igloo.plot import plot_predicted_vs_actual, plot_target_distribution
 from src.igloo.train_and_eval import train
+from src.igloo.utils import create_model
 
 # Determine script directory and set paths relative to it
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -89,39 +90,13 @@ print(f"Training target range: [{y_train_raw.min():.4f}, {y_train_raw.max():.4f}
 print(f"Test target range: [{y_test_raw.min():.4f}, {y_test_raw.max():.4f}]")
 
 # Plot distribution of normalized target values
-fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-
-# Training data - normalized
-axes[0, 0].hist(y_train, bins=30, alpha=0.7, density=True, label='Training')
-axes[0, 0].set_xlabel('Normalized Target Value')
-axes[0, 0].set_ylabel('Density')
-axes[0, 0].set_title('Training Data - Normalized')
-axes[0, 0].grid(True)
-
-# Training data - raw
-axes[0, 1].hist(y_train_raw, bins=30, alpha=0.7, density=True, label='Training')
-axes[0, 1].set_xlabel('Raw Target Value')
-axes[0, 1].set_ylabel('Density')
-axes[0, 1].set_title('Training Data - Raw')
-axes[0, 1].grid(True)
-
-# Test data - normalized
-axes[1, 0].hist(y_test, bins=30, alpha=0.7, density=True, label='Test', color='orange')
-axes[1, 0].set_xlabel('Normalized Target Value')
-axes[1, 0].set_ylabel('Density')
-axes[1, 0].set_title('Test Data - Normalized')
-axes[1, 0].grid(True)
-
-# Test data - raw
-axes[1, 1].hist(y_test_raw, bins=30, alpha=0.7, density=True, label='Test', color='orange')
-axes[1, 1].set_xlabel('Raw Target Value')
-axes[1, 1].set_ylabel('Density')
-axes[1, 1].set_title('Test Data - Raw')
-axes[1, 1].grid(True)
-
-plt.tight_layout()
-plt.savefig(os.path.join(results_dir, 'target_distributions.png'), bbox_inches='tight', dpi=200)
-plt.close()
+target_dist_data = {
+    'train_normalized': y_train,
+    'train_raw': y_train_raw,
+    'test_normalized': y_test,
+    'test_raw': y_test_raw
+}
+plot_target_distribution(target_dist_data, os.path.join(results_dir, 'target_distributions.png'))
 
 # 2. Get ESM embeddings
 print("Computing ESM embeddings for training data...")
@@ -139,32 +114,86 @@ print(f"Test embeddings shape: {test_reps.shape}")
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-# 3. Train model on training data
-print("Training model on training data...")
-model, train_metrics = train(
-    train_reps, y_train,
-    L=L,
-    batch_size=batch_size,
-    learning_rate=learning_rate,
-    weight_decay=weight_decay,
-    hidden_dim1=hidden_dim1,
-    hidden_dim2=hidden_dim2,
-    hidden_dim3=hidden_dim3,
-    hidden_dim4=hidden_dim4,
-    dropout_rate=dropout_rate,
-    epochs=epochs,
-    final_activation=final_activation,
-    device=device,
-    POOLING_METHOD=POOLING_METHOD,
-    LOSS_TYPE=LOSS_TYPE,
-    y_log_std=y_train_log_std,
-    y_log_mean=y_train_log_mean
-)
+# 3. Check for existing model and load if available
+model_path = os.path.join(results_dir, 'betalactamase_train_test_model.pth')
+model = None
 
-print("Training completed.")
-print("Training metrics:")
-for k, v in train_metrics.items():
-    print(f"  {k}: {v:.4f}")
+if os.path.exists(model_path):
+    print(f"\nFound existing model at {model_path}")
+    print("Loading pre-trained model...")
+    try:
+        checkpoint = torch.load(model_path, map_location=device)
+        model_config = checkpoint['model_config']
+
+        # Verify configuration matches current parameters
+        config_match = (
+            model_config.get('hidden_dim1') == hidden_dim1 and
+            model_config.get('hidden_dim2') == hidden_dim2 and
+            model_config.get('hidden_dim3') == hidden_dim3 and
+            model_config.get('hidden_dim4') == hidden_dim4 and
+            model_config.get('dropout_rate') == dropout_rate and
+            model_config.get('final_activation') == final_activation and
+            model_config.get('pooling_method') == POOLING_METHOD and
+            model_config.get('input_dim') == D and
+            model_config.get('L') == L
+        )
+
+        if config_match:
+            model = create_model(model_config, device)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            model.eval()
+
+            # Load performance metrics if available
+            if 'performance' in checkpoint:
+                perf = checkpoint['performance']
+                print("Pre-trained model performance:")
+                for k, v in perf.items():
+                    print(f"  {k}: {v:.4f}")
+
+            print("Successfully loaded pre-trained model!")
+            train_model = False
+        else:
+            print("Model configuration doesn't match current parameters. Training new model.")
+            train_model = True
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        print("Training new model.")
+        train_model = True
+else:
+    print("\nNo existing model found. Training new model.")
+    train_model = True
+
+# Train model if needed
+if train_model:
+    print("\nTraining model on training data...")
+    model, train_metrics = train(
+        train_reps, y_train,
+        L=L,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        hidden_dim1=hidden_dim1,
+        hidden_dim2=hidden_dim2,
+        hidden_dim3=hidden_dim3,
+        hidden_dim4=hidden_dim4,
+        dropout_rate=dropout_rate,
+        epochs=epochs,
+        final_activation=final_activation,
+        device=device,
+        POOLING_METHOD=POOLING_METHOD,
+        LOSS_TYPE=LOSS_TYPE,
+        y_log_std=y_train_log_std,
+        y_log_mean=y_train_log_mean
+    )
+
+    print("Training completed.")
+    print("Training metrics:")
+    for k, v in train_metrics.items():
+        print(f"  {k}: {v:.4f}")
+else:
+    print("Using pre-trained model for evaluation.")
+    # Create dummy train_metrics for consistency
+    train_metrics = {'note': 'using_pretrained_model'}
 
 # 4. Evaluate on training data
 print("\nEvaluating on training data...")
@@ -238,41 +267,21 @@ print(f"Test Pearson r: {test_pearson_r:.4f}")
 print(f"Test Spearman ρ: {test_spearman_rho:.4f}")
 
 # 6. Create visualizations
-fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+# Training plot
+plot_predicted_vs_actual(
+    train_true_unnorm, train_pred_unnorm,
+    'Training Data: Predicted vs Actual',
+    os.path.join(results_dir, 'train_pred_vs_actual.png'),
+    metrics={'R²': train_r2, 'Pearson r': train_pearson_r, 'Spearman ρ': train_spearman_rho}
+)
 
-# Training data scatter plot
-axes[0].scatter(train_true_unnorm, train_pred_unnorm, alpha=0.6, s=20)
-axes[0].plot([train_true_unnorm.min(), train_true_unnorm.max()],
-             [train_true_unnorm.min(), train_true_unnorm.max()], 'k--', lw=2, label='Ideal')
-axes[0].set_xlabel('Actual')
-axes[0].set_ylabel('Predicted')
-axes[0].set_title('Training Data: Predicted vs Actual')
-
-# Annotate training metrics
-train_metrics_text = f"R² = {train_r2:.3f}\nPearson r = {train_pearson_r:.3f}\nSpearman ρ = {train_spearman_rho:.3f}"
-axes[0].text(0.05, 0.95, train_metrics_text, transform=axes[0].transAxes,
-            fontsize=11, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
-axes[0].legend()
-axes[0].grid(True, alpha=0.3)
-
-# Test data scatter plot
-axes[1].scatter(test_true_unnorm, test_pred_unnorm, alpha=0.6, s=20, color='orange')
-axes[1].plot([test_true_unnorm.min(), test_true_unnorm.max()],
-             [test_true_unnorm.min(), test_true_unnorm.max()], 'k--', lw=2, label='Ideal')
-axes[1].set_xlabel('Actual')
-axes[1].set_ylabel('Predicted')
-axes[1].set_title('Test Data: Predicted vs Actual')
-
-# Annotate test metrics
-test_metrics_text = f"R² = {test_r2:.3f}\nPearson r = {test_pearson_r:.3f}\nSpearman ρ = {test_spearman_rho:.3f}"
-axes[1].text(0.05, 0.95, test_metrics_text, transform=axes[1].transAxes,
-            fontsize=11, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
-axes[1].legend()
-axes[1].grid(True, alpha=0.3)
-
-plt.tight_layout()
-plt.savefig(os.path.join(results_dir, 'pred_vs_actual_comparison.png'), dpi=200, bbox_inches='tight')
-plt.close()
+# Test plot
+plot_predicted_vs_actual(
+    test_true_unnorm, test_pred_unnorm,
+    'Test Data: Predicted vs Actual',
+    os.path.join(results_dir, 'test_pred_vs_actual.png'),
+    metrics={'R²': test_r2, 'Pearson r': test_pearson_r, 'Spearman ρ': test_spearman_rho}
+)
 
 # 7. Save predictions and results
 results_summary = {
@@ -333,9 +342,9 @@ print("  - test_predictions.csv: Test set predictions")
 print("  - pred_vs_actual_comparison.png: Scatter plots")
 print("  - target_distributions.png: Target distribution plots")
 
-# Save the model
-model_path = os.path.join(results_dir, 'betalactamase_model.pth')
-torch.save({
+# Save the model with comprehensive metadata
+model_path = os.path.join(results_dir, 'betalactamase_train_test_model.pth')
+model_save_dict = {
     'model_state_dict': model.state_dict(),
     'model_config': {
         'input_dim': D,
@@ -346,11 +355,33 @@ torch.save({
         'hidden_dim4': hidden_dim4,
         'dropout_rate': dropout_rate,
         'final_activation': final_activation,
-        'pooling_method': POOLING_METHOD
+        'pooling_method': POOLING_METHOD,
+        'loss_type': LOSS_TYPE
     },
-    'normalization': {
-        'y_log_mean': y_train_log_mean,
-        'y_log_std': y_train_log_std
+    'performance': {
+        'test_r2': test_r2,
+        'test_pearson_r': test_pearson_r,
+        'test_spearman_rho': test_spearman_rho,
+        'train_r2': train_r2,
+        'train_pearson_r': train_pearson_r,
+        'train_spearman_rho': train_spearman_rho
+    },
+    'training_info': {
+        'epochs': epochs,
+        'batch_size': batch_size,
+        'learning_rate': learning_rate,
+        'weight_decay': weight_decay,
+        'train_metrics': train_metrics,
+        'was_retrained': train_model
+    },
+    'data_info': {
+        'train_size': len(train_sequences),
+        'test_size': len(test_sequences),
+        'target_mean': y_train_log_mean,
+        'target_std': y_train_log_std,
+        'esm_layer': ESM_LAYER
     }
-}, model_path)
-print("  - betalactamase_model.pth: Trained model")
+}
+
+torch.save(model_save_dict, model_path)
+print("  - betalactamase_train_test_model.pth: Trained model with metadata")
