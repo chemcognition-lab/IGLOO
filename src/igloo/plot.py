@@ -271,3 +271,200 @@ def setup_matplotlib_style() -> None:
     plt.rcParams['xtick.labelsize'] = 10
     plt.rcParams['ytick.labelsize'] = 10
     plt.rcParams['legend.fontsize'] = 10
+
+
+def plot_training_history(
+    history: dict,
+    title: str = "Training History",
+    save_path: Optional[str] = None,
+    figsize: tuple = (12, 5)
+) -> None:
+    """
+    Plot training and validation loss curves.
+    
+    Args:
+        history: Training history dictionary
+        title: Plot title
+        save_path: Optional path to save the plot
+        figsize: Figure size
+    """
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+    
+    # Loss plot
+    axes[0].plot(history['epoch'], history['train_loss'], label='Training Loss', marker='o')
+    if 'val_loss' in history and len(history['val_loss']) > 0:
+        axes[0].plot(history['epoch'], history['val_loss'], label='Validation Loss', marker='s')
+    axes[0].set_xlabel('Epoch')
+    axes[0].set_ylabel('Loss')
+    axes[0].set_title('Training and Validation Loss')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+    
+    # Log scale loss plot
+    axes[1].semilogy(history['epoch'], history['train_loss'], label='Training Loss', marker='o')
+    if 'val_loss' in history and len(history['val_loss']) > 0:
+        axes[1].semilogy(history['epoch'], history['val_loss'], label='Validation Loss', marker='s')
+    axes[1].set_xlabel('Epoch')
+    axes[1].set_ylabel('Loss (log scale)')
+    axes[1].set_title('Training and Validation Loss (Log Scale)')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+    
+    plt.suptitle(title)
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Training history plot saved to {save_path}")
+    
+    plt.show()
+
+
+def plot_predicted_vs_actual_batch(
+    predicted_values: list,
+    actual_values: list,
+    sequence_names: Optional[list] = None,
+    title: str = "Predicted vs Actual Activities",
+    save_path: Optional[str] = None,
+    figsize: tuple = (10, 8)
+) -> None:
+    """
+    Plot predicted vs actual values for multiple sequences.
+
+    Args:
+        predicted_values: List of predicted activities
+        actual_values: List of actual/experimental activities
+        sequence_names: Optional list of sequence names for labeling
+        title: Plot title
+        save_path: Optional path to save the plot
+        figsize: Figure size
+    """
+    from scipy import stats
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+    if len(predicted_values) != len(actual_values):
+        raise ValueError("predicted_values and actual_values must have the same length")
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Plot points
+    ax.scatter(actual_values, predicted_values, alpha=0.7, s=60)
+
+    # Add sequence names if provided
+    if sequence_names and len(sequence_names) == len(predicted_values):
+        for i, name in enumerate(sequence_names):
+            ax.annotate(name, (actual_values[i], predicted_values[i]),
+                       xytext=(5, 5), textcoords='offset points', fontsize=8, alpha=0.7)
+    # Add perfect prediction line
+    all_values = predicted_values + actual_values
+    min_val, max_val = min(all_values), max(all_values)
+    margin = (max_val - min_val) * 0.1
+    line_min, line_max = min_val - margin, max_val + margin
+
+    ax.plot([line_min, line_max], [line_min, line_max], 'k--', alpha=0.5,
+            label='Perfect Prediction', linewidth=2)
+
+    # Add regression line
+    slope, intercept, r_value, p_value, std_err = stats.linregress(actual_values, predicted_values)
+    line_y = slope * np.array([line_min, line_max]) + intercept
+    ax.plot([line_min, line_max], line_y, 'red', alpha=0.7,
+            label=f'Regression (R²={r_value**2:.3f})', linewidth=2)
+
+    # Calculate and display metrics
+    r2 = r2_score(actual_values, predicted_values)
+    mse = mean_squared_error(actual_values, predicted_values)
+    mae = mean_absolute_error(actual_values, predicted_values)
+    rmse = np.sqrt(mse)
+
+    ax.set_xlabel('Actual Activity')
+    ax.set_ylabel('Predicted Activity')
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Add text with metrics
+    metrics_text = f'R² = {r2:.3f}\nRMSE = {rmse:.3f}\nMAE = {mae:.3f}\nn = {len(predicted_values)}'
+    ax.text(0.05, 0.95, metrics_text, transform=ax.transAxes,
+            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
+
+    # Set equal aspect ratio
+    ax.set_aspect('equal', adjustable='box')
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Batch predicted vs actual plot saved to {save_path}")
+
+    plt.show()
+
+
+def plot_predicted_vs_actual_single(
+    predicted_value: float,
+    actual_value: float,
+    baseline_predicted: float,
+    baseline_actual: float,
+    sequence_name: str = "Sequence",
+    baseline_name: str = "Baseline",
+    title: str = "Predicted vs Actual Activity",
+    save_path: Optional[str] = None
+) -> None:
+    """
+    Plot predicted vs actual values for single sequences with baseline comparison.
+
+    Args:
+        predicted_value: Predicted activity for the sequence
+        actual_value: Actual/experimental activity for the sequence
+        baseline_predicted: Predicted activity for baseline
+        baseline_actual: Actual activity for baseline
+        sequence_name: Name for the sequence point
+        baseline_name: Name for the baseline point
+        title: Plot title
+        save_path: Optional path to save the plot
+    """
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    # Plot points
+    ax.scatter(actual_value, predicted_value, color='red', s=100, alpha=0.7,
+               label=f'{sequence_name}', zorder=5)
+    ax.scatter(baseline_actual, baseline_predicted, color='blue', s=100, alpha=0.7,
+               label=f'{baseline_name}', zorder=5)
+
+    # Add perfect prediction line
+    all_values = [predicted_value, actual_value, baseline_predicted, baseline_actual]
+    min_val, max_val = min(all_values), max(all_values)
+    margin = (max_val - min_val) * 0.1
+    line_min, line_max = min_val - margin, max_val + margin
+
+    ax.plot([line_min, line_max], [line_min, line_max], 'k--', alpha=0.5,
+            label='Perfect Prediction')
+
+    # Add connecting line between points
+    ax.plot([baseline_actual, actual_value], [baseline_predicted, predicted_value],
+            'gray', alpha=0.5, linestyle='-', linewidth=1)
+
+    # Calculate and display metrics
+    sequence_error = abs(predicted_value - actual_value)
+    baseline_error = abs(baseline_predicted - baseline_actual)
+
+    ax.set_xlabel('Actual Activity')
+    ax.set_ylabel('Predicted Activity')
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Add text with error information
+    text_info = f'Sequence Error: {sequence_error:.3f}\nBaseline Error: {baseline_error:.3f}'
+    ax.text(0.05, 0.95, text_info, transform=ax.transAxes,
+            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+    # Set equal aspect ratio
+    ax.set_aspect('equal', adjustable='box')
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Predicted vs actual plot saved to {save_path}")
+
+    plt.show()

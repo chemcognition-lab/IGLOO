@@ -1,15 +1,544 @@
+import hashlib
 import os
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from scipy.stats import spearmanr
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from torch.utils.data import DataLoader
 from tqdm import trange
 
 from src.igloo.data_processing import CustomDataset, batch_pad_and_normalize
+from src.igloo.embedding import get_embeddings
 from src.igloo.loss import combined_loss, huber_loss, mae_loss, mse_loss, quantile_loss
 from src.igloo.models import AttentionConvPoolingModel, ESMAttention1d, LinearRegressionModel, MeanPoolingModel
+
+
+def _create_epoch_plot(model, train_loader, val_loader, train_targets, val_targets,
+                      epoch, pooling_method, results_dir, dataset_name, device):
+    """Create and save predicted vs actual plot for current epoch."""
+    model.eval()
+
+    # Generate hash for unique filename
+    hash_input = f"{dataset_name}_epoch_{epoch}_{pooling_method}"
+    hash_obj = hashlib.md5(hash_input.encode())
+    file_hash = hash_obj.hexdigest()[:8]
+
+    with torch.no_grad():
+        # Get training predictions
+        train_preds = []
+        train_actuals = []
+        for xb, lengths, yb in train_loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
+
+            if pooling_method == 'esm_attention':
+                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                for i, length in enumerate(lengths):
+                    input_mask[i, :length] = 1
+                predictions = model(xb, input_mask)
+            else:
+                predictions = model(xb)
+
+            train_preds.extend(predictions.squeeze(-1).cpu().numpy())
+            train_actuals.extend(yb.squeeze(-1).cpu().numpy())
+
+        # Get validation predictions if available
+        val_preds = []
+        val_actuals = []
+        if val_loader is not None:
+            for xb, lengths, yb in val_loader:
+                xb = xb.to(device)
+                yb = yb.to(device)
+
+                if pooling_method == 'esm_attention':
+                    input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                    for i, length in enumerate(lengths):
+                        input_mask[i, :length] = 1
+                    predictions = model(xb, input_mask)
+                else:
+                    predictions = model(xb)
+
+                val_preds.extend(predictions.squeeze(-1).cpu().numpy())
+                val_actuals.extend(yb.squeeze(-1).cpu().numpy())
+
+    # Create plot
+    plt.figure(figsize=(10, 6))
+
+    if val_loader is not None:
+        plt.subplot(1, 2, 1)
+        plt.scatter(train_actuals, train_preds, alpha=0.6, s=20, label='Training')
+        plt.plot([min(train_actuals), max(train_actuals)],
+                 [min(train_actuals), max(train_actuals)], 'r--', lw=2)
+        plt.xlabel('Actual (Normalized)')
+        plt.ylabel('Predicted (Normalized)')
+        plt.title(f'Training - Epoch {epoch+1}')
+        plt.grid(True, alpha=0.3)
+
+        # Calculate metrics
+        train_r2 = r2_score(train_actuals, train_preds)
+        plt.text(0.05, 0.95, f'R² = {train_r2:.3f}', transform=plt.gca().transAxes,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+        plt.subplot(1, 2, 2)
+        plt.scatter(val_actuals, val_preds, alpha=0.6, s=20, label='Validation', color='orange')
+        plt.plot([min(val_actuals), max(val_actuals)],
+                 [min(val_actuals), max(val_actuals)], 'r--', lw=2)
+        plt.xlabel('Actual (Normalized)')
+        plt.ylabel('Predicted (Normalized)')
+        plt.title(f'Validation - Epoch {epoch+1}')
+        plt.grid(True, alpha=0.3)
+
+        val_r2 = r2_score(val_actuals, val_preds)
+        plt.text(0.05, 0.95, f'R² = {val_r2:.3f}', transform=plt.gca().transAxes,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+    else:
+        plt.scatter(train_actuals, train_preds, alpha=0.6, s=20)
+        plt.plot([min(train_actuals), max(train_actuals)],
+                 [min(train_actuals), max(train_actuals)], 'r--', lw=2)
+        plt.xlabel('Actual (Normalized)')
+        plt.ylabel('Predicted (Normalized)')
+        plt.title(f'Training - Epoch {epoch+1}')
+        plt.grid(True, alpha=0.3)
+
+        train_r2 = r2_score(train_actuals, train_preds)
+        plt.text(0.05, 0.95, f'R² = {train_r2:.3f}', transform=plt.gca().transAxes,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+    plt.tight_layout()
+
+    # Save plot with hashed filename
+    filename = f"epoch_{epoch+1:03d}_{file_hash}_pred_vs_actual.png"
+    filepath = os.path.join(results_dir, filename)
+    plt.savefig(filepath, dpi=150, bbox_inches='tight')
+    plt.close()
+
+    # Print brief progress info
+    if val_loader is not None:
+        print(f"    Saved plot: {filename} (Train R²={train_r2:.3f}, Val R²={val_r2:.3f})")
+    else:
+        print(f"    Saved plot: {filename} (Train R²={train_r2:.3f})")
+
+
+def train_model_with_embeddings(
+    model: torch.nn.Module,
+    train_sequences: list,
+    train_targets: np.ndarray,
+    val_sequences: list = None,
+    val_targets: np.ndarray = None,
+    esm_layer: int = 33,
+    pooling_method: str = 'linear',
+    batch_size: int = 32,
+    learning_rate: float = 1e-4,
+    num_epochs: int = 100,
+    device: torch.device = None,
+    patience: int = 10,
+    min_delta: float = 1e-4,
+    dataset_name: str = 'training',
+    save_path: Optional[str] = None,
+    loss_type: str = 'mse',
+    results_dir: Optional[str] = None
+) -> dict:
+    """
+    Train a model using the same embedding + DataLoader approach as integrated gradients.
+
+    This ensures perfect consistency between training and evaluation/integrated gradients.
+
+    Args:
+        model: PyTorch model to train (e.g., LinearModel, AttentionModel)
+        train_sequences: List of protein sequences for training
+        train_targets: Training target values
+        val_sequences: Optional validation sequences
+        val_targets: Optional validation targets
+        esm_layer: ESM layer to extract embeddings from
+        pooling_method: Pooling method ('linear', 'esm_attention', etc.)
+        batch_size: Batch size for training
+        learning_rate: Learning rate for optimizer
+        num_epochs: Maximum number of training epochs
+        device: PyTorch device
+        patience: Early stopping patience
+        min_delta: Minimum improvement for early stopping
+        dataset_name: Name for embedding caching
+        save_path: Optional path to save the trained model
+
+    Returns:
+        Dictionary with training history and metrics
+    """
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    model = model.to(device)
+
+    print(f"Getting ESM embeddings for {len(train_sequences)} training sequences...")
+    train_embeddings = get_embeddings(
+        train_sequences,
+        layer=esm_layer,
+        batch_size=batch_size,
+        dataset_name=f"{dataset_name}_train"
+    )
+
+    val_embeddings = None
+    if val_sequences is not None:
+        print(f"Getting ESM embeddings for {len(val_sequences)} validation sequences...")
+        val_embeddings = get_embeddings(
+            val_sequences,
+            layer=esm_layer,
+            batch_size=batch_size,
+            dataset_name=f"{dataset_name}_val"
+        )
+
+    # Compute global normalization parameters for consistent normalization
+    # DISABLED FOR TESTING: Global normalization may be causing constant predictions
+    # all_embeddings_for_norm = [train_embeddings]
+    # if val_embeddings is not None:
+    #     all_embeddings_for_norm.append(val_embeddings)
+    # norm_params = compute_global_normalization_params(all_embeddings_for_norm)
+    # print(f"Computed global normalization: mean={norm_params['mean']:.4f}, scale={norm_params['scale']:.4f}")
+    print("DISABLED: Global normalization (testing hypothesis that it causes constant predictions)")
+
+    # Create datasets and dataloaders
+    train_dataset = CustomDataset(train_embeddings, train_targets)
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=batch_pad_and_normalize  # Will use global normalization
+    )
+
+    val_loader = None
+    if val_embeddings is not None:
+        val_dataset = CustomDataset(val_embeddings, val_targets)
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            collate_fn=batch_pad_and_normalize  # Will use global normalization
+        )
+
+    # Setup optimizer and loss function
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    if loss_type == 'huber':
+        criterion = torch.nn.HuberLoss()
+    elif loss_type == 'mae':
+        criterion = torch.nn.L1Loss()
+    else:  # default to MSE
+        criterion = torch.nn.MSELoss()
+
+    # Training history
+    history = {
+        'train_loss': [],
+        'val_loss': [],
+        'epoch': []
+    }
+
+    best_val_loss = float('inf')
+    patience_counter = 0
+
+    print(f"Starting training for {num_epochs} epochs with {loss_type} loss...")
+
+    # Debug: Print model architecture and initialization
+    print("\nMODEL DEBUG:")
+    print(f"  Model: {model}")
+    print(f"  Pooling method: {pooling_method}")
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"  Total parameters: {total_params:,}")
+    print(f"  Trainable parameters: {trainable_params:,}")
+
+    # Print initial model weights
+    print("  Initial model weights:")
+    for name, param in model.named_parameters():
+        if 'weight' in name:
+            print(f"    {name}: shape={param.shape}, mean={param.data.mean():.6f}, std={param.data.std():.6f}")
+        elif 'bias' in name:
+            print(f"    {name}: shape={param.shape}, mean={param.data.mean():.6f}")
+
+    # Debug: Check data loader samples
+    print("\nDATA LOADER DEBUG:")
+    sample_batch = next(iter(train_loader))
+    xb_sample, lengths_sample, yb_sample = sample_batch
+    print(f"  Batch shapes: input={xb_sample.shape}, lengths={lengths_sample.shape}, targets={yb_sample.shape}")
+    print(f"  Input stats: mean={xb_sample.mean():.6f}, std={xb_sample.std():.6f}")
+    print(f"  Target stats: mean={yb_sample.mean():.6f}, std={yb_sample.std():.6f}")
+    print(
+        f"  Sequence lengths: min={lengths_sample.min()}, "
+        f"max={lengths_sample.max()}, "
+        f"mean={lengths_sample.float().mean():.1f}"
+    )
+
+    # Track initial model state for debugging
+    initial_weight = None
+    for name, param in model.named_parameters():
+        if 'fc1.weight' in name or 'linear' in name.lower() or 'attention' in name.lower():
+            initial_weight = param.data.clone()
+            print(f"  Tracking weight changes for: {name}")
+            break
+
+    for epoch in range(num_epochs):
+        # Training phase
+        model.train()
+        train_losses = []
+
+        # Debug: Track predictions and gradients for first epoch
+        epoch_predictions = []
+        epoch_targets = []
+        batch_count = 0
+
+        for _batch_idx, (xb, lengths, yb) in enumerate(train_loader):
+            xb = xb.to(device)
+            yb = yb.to(device)
+
+            # Debug: Print input statistics for first few batches of first epoch
+            if epoch == 0 and _batch_idx < 3:
+                print(f"\n  Batch {_batch_idx} Input Debug:")
+                print(f"    Input shape: {xb.shape}")
+                print(f"    Input mean: {xb.mean():.6f}, std: {xb.std():.6f}")
+                print(f"    Input min: {xb.min():.6f}, max: {xb.max():.6f}")
+                print(f"    Target shape: {yb.shape}")
+                print(f"    Target mean: {yb.mean():.6f}, std: {yb.std():.6f}")
+                print(f"    Target range: [{yb.min():.6f}, {yb.max():.6f}]")
+
+            optimizer.zero_grad()
+
+            # Forward pass (same as in integrated gradients)
+            if pooling_method == 'esm_attention':
+                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                for i, length in enumerate(lengths):
+                    input_mask[i, :length] = 1
+                predictions = model(xb, input_mask)
+            else:
+                predictions = model(xb)
+
+            # Debug: Print prediction statistics for first few batches
+            if epoch == 0 and _batch_idx < 3:
+                print(f"    Predictions shape: {predictions.shape}")
+                print(f"    Predictions mean: {predictions.mean():.6f}, std: {predictions.std():.6f}")
+                print(f"    Predictions range: [{predictions.min():.6f}, {predictions.max():.6f}]")
+                print(f"    Unique predictions: {torch.unique(predictions.round(decimals=4)).shape[0]}")
+
+            loss = criterion(predictions.squeeze(-1), yb.squeeze(-1))
+
+            # Debug: Print loss and gradient info for first few batches
+            if epoch == 0 and _batch_idx < 3:
+                print(f"    Loss: {loss.item():.6f}")
+
+            loss.backward()
+
+            # Debug: Check gradient magnitudes
+            if epoch == 0 and _batch_idx < 3:
+                total_grad_norm = 0
+                param_count = 0
+                for name, param in model.named_parameters():
+                    if param.grad is not None:
+                        grad_norm = param.grad.data.norm(2).item()
+                        total_grad_norm += grad_norm
+                        param_count += 1
+                        if _batch_idx == 0:  # Only print for first batch to avoid spam
+                            print(f"    Gradient {name}: norm = {grad_norm:.6f}")
+                if param_count > 0:
+                    avg_grad_norm = total_grad_norm / param_count
+                    print(f"    Average gradient norm: {avg_grad_norm:.6f}")
+
+            optimizer.step()
+
+            train_losses.append(loss.item())
+
+            # Collect predictions for analysis
+            if epoch < 3:  # Only for first few epochs to save memory
+                epoch_predictions.extend(predictions.squeeze(-1).detach().cpu().numpy())
+                epoch_targets.extend(yb.squeeze(-1).detach().cpu().numpy())
+
+            batch_count += 1
+
+        avg_train_loss = np.mean(train_losses)
+        history['train_loss'].append(avg_train_loss)
+        history['epoch'].append(epoch + 1)
+
+        # Debug: Print epoch summary for first few epochs
+        if epoch < 5:
+            if epoch_predictions:
+                pred_array = np.array(epoch_predictions)
+                target_array = np.array(epoch_targets)
+                print(f"\n  EPOCH {epoch+1} SUMMARY:")
+                print(f"    Processed {batch_count} batches, {len(epoch_predictions)} samples")
+                print(f"    Train Loss: {avg_train_loss:.6f}")
+                print("    Prediction Stats:")
+                print(f"      Mean: {pred_array.mean():.6f}, Std: {pred_array.std():.6f}")
+                print(f"      Range: [{pred_array.min():.6f}, {pred_array.max():.6f}]")
+                print(f"      Unique values: {len(np.unique(np.round(pred_array, 4)))}")
+                print("    Target Stats:")
+                print(f"      Mean: {target_array.mean():.6f}, Std: {target_array.std():.6f}")
+                print(f"      Range: [{target_array.min():.6f}, {target_array.max():.6f}]")
+
+                # Check if model is just predicting constant
+                if pred_array.std() < 1e-6:
+                    print(f"    ⚠️ WARNING: Model predicting constant value {pred_array.mean():.6f}!")
+
+                # Check model weights
+                for name, param in model.named_parameters():
+                    if 'weight' in name and len(param.shape) >= 2:
+                        weight_std = param.data.std().item()
+                        weight_mean = param.data.mean().item()
+                        print(f"    Weight {name}: mean={weight_mean:.6f}, std={weight_std:.6f}")
+                        if weight_std < 1e-6:
+                            print(f"      ⚠️ WARNING: {name} has very small variance!")
+                        break  # Just show first weight layer
+
+        # Validation phase
+        val_loss = None
+        if val_loader is not None:
+            model.eval()
+            val_losses = []
+
+            with torch.no_grad():
+                for xb, lengths, yb in val_loader:
+                    xb = xb.to(device)
+                    yb = yb.to(device)
+
+                    if pooling_method == 'esm_attention':
+                        input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                        for i, length in enumerate(lengths):
+                            input_mask[i, :length] = 1
+                        predictions = model(xb, input_mask)
+                    else:
+                        predictions = model(xb)
+
+                    loss = criterion(predictions.squeeze(-1), yb.squeeze(-1))
+                    val_losses.append(loss.item())
+
+            val_loss = np.mean(val_losses)
+            history['val_loss'].append(val_loss)
+
+            # Early stopping
+            if val_loss < best_val_loss - min_delta:
+                best_val_loss = val_loss
+                patience_counter = 0
+
+                # Save best model if path provided
+                if save_path:
+                    torch.save({
+                        'model_state_dict': model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'epoch': epoch,
+                        'train_loss': avg_train_loss,
+                        'val_loss': val_loss,
+                        'pooling_method': pooling_method,
+                        'esm_layer': esm_layer
+                    }, save_path)
+            else:
+                patience_counter += 1
+
+        # Print progress
+        if val_loss is not None:
+            print(f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f}, Val Loss: {val_loss:.6f}")
+        else:
+            print(f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f}")
+
+        # Create and save predicted vs actual plot for this epoch
+        if results_dir is not None and (epoch + 1) % 5 == 0:  # Save every 5 epochs to avoid too many plots
+            _create_epoch_plot(
+                model, train_loader, val_loader, train_targets, val_targets,
+                epoch, pooling_method, results_dir, dataset_name, device
+            )
+
+        # Early stopping check
+        if val_loader is not None and patience_counter >= patience:
+            print(f"Early stopping at epoch {epoch+1} (patience={patience})")
+            break
+
+    # Load best model if saved
+    if save_path and os.path.exists(save_path):
+        checkpoint = torch.load(save_path, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        print(f"Loaded best model from epoch {checkpoint['epoch']+1}")
+
+    # Final evaluation
+    model.eval()
+    final_metrics = {}
+
+    with torch.no_grad():
+        # Training metrics
+        train_predictions = []
+        train_actuals = []
+
+        for xb, lengths, yb in train_loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
+
+            if pooling_method == 'esm_attention':
+                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                for i, length in enumerate(lengths):
+                    input_mask[i, :length] = 1
+                predictions = model(xb, input_mask)
+            else:
+                predictions = model(xb)
+
+            train_predictions.extend(predictions.squeeze(-1).cpu().numpy())
+            train_actuals.extend(yb.cpu().numpy())
+
+        final_metrics['train_r2'] = r2_score(train_actuals, train_predictions)
+        final_metrics['train_mae'] = mean_absolute_error(train_actuals, train_predictions)
+        final_metrics['train_rmse'] = np.sqrt(mean_squared_error(train_actuals, train_predictions))
+
+        # Validation metrics
+        if val_loader is not None:
+            val_predictions = []
+            val_actuals = []
+
+            for xb, lengths, yb in val_loader:
+                xb = xb.to(device)
+                yb = yb.to(device)
+
+                if pooling_method == 'esm_attention':
+                    input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                    for i, length in enumerate(lengths):
+                        input_mask[i, :length] = 1
+                    predictions = model(xb, input_mask)
+                else:
+                    predictions = model(xb)
+
+                val_predictions.extend(predictions.squeeze(-1).cpu().numpy())
+                val_actuals.extend(yb.cpu().numpy())
+
+            final_metrics['val_r2'] = r2_score(val_actuals, val_predictions)
+            final_metrics['val_mae'] = mean_absolute_error(val_actuals, val_predictions)
+            final_metrics['val_rmse'] = np.sqrt(mean_squared_error(val_actuals, val_predictions))
+
+    print("\nTraining completed!")
+
+    # Check if model weights changed during training
+    if initial_weight is not None:
+        final_weight = None
+        for name, param in model.named_parameters():
+            if 'fc1.weight' in name:
+                final_weight = param.data
+                break
+        if final_weight is not None:
+            weight_change = torch.norm(final_weight - initial_weight).item()
+            print(f"Model weight change (fc1 norm): {weight_change:.6f}")
+            if weight_change < 1e-6:
+                print("WARNING: Model weights barely changed - model may not be learning!")
+    print("Final Training Metrics:")
+    print(f"  R² = {final_metrics['train_r2']:.4f}")
+    print(f"  MAE = {final_metrics['train_mae']:.4f}")
+    print(f"  RMSE = {final_metrics['train_rmse']:.4f}")
+
+    if 'val_r2' in final_metrics:
+        print("Final Validation Metrics:")
+        print(f"  R² = {final_metrics['val_r2']:.4f}")
+        print(f"  MAE = {final_metrics['val_mae']:.4f}")
+        print(f"  RMSE = {final_metrics['val_rmse']:.4f}")
+
+    return {
+        'model': model,
+        'history': history,
+        'metrics': final_metrics,
+        'pooling_method': pooling_method,
+        'esm_layer': esm_layer
+    }
 
 
 def train_and_evaluate(
@@ -94,7 +623,7 @@ def train_and_evaluate(
     epochs_no_improve = 0
     best_model_state = None
     epoch_iter = trange(epochs, desc=f"Fold {fold_idx+1} Training", leave=True)
-    for epoch in epoch_iter:
+    for _epoch in epoch_iter:
         model.train()
         batch_train_losses = []
         for xb, lengths, yb in train_loader:
@@ -229,7 +758,10 @@ def train_and_evaluate(
     # Report clipping statistics
     n_clipped = np.sum((pred_unclipped < data_min - buffer) | (pred_unclipped > data_max + buffer))
     if n_clipped > 0:
-        print(f"  Clipped {n_clipped}/{len(pred)} predictions to range [{data_min - buffer:.2f}, {data_max + buffer:.2f}]")
+        print(
+            f"  Clipped {n_clipped}/{len(pred)} predictions to range "
+            f"[{data_min - buffer:.2f}, {data_max + buffer:.2f}]"
+        )
     mse = np.mean((pred - y_true) ** 2)
     mae = np.mean(np.abs(pred - y_true))
     ss_res = np.sum((y_true - pred) ** 2)
@@ -405,7 +937,10 @@ def train(
     pred = np.clip(pred, data_min - buffer, data_max + buffer)
     n_clipped = np.sum((pred_unclipped < data_min - buffer) | (pred_unclipped > data_max + buffer))
     if n_clipped > 0:
-        print(f"  Clipped {n_clipped}/{len(pred)} predictions to range [{data_min - buffer:.2f}, {data_max + buffer:.2f}]")
+        print(
+            f"  Clipped {n_clipped}/{len(pred)} predictions to range "
+            f"[{data_min - buffer:.2f}, {data_max + buffer:.2f}]"
+        )
     mse = np.mean((pred - y_true) ** 2)
     mae = np.mean(np.abs(pred - y_true))
     ss_res = np.sum((y_true - pred) ** 2)
