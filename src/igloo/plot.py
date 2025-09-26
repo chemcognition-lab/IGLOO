@@ -69,18 +69,32 @@ def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Opti
     """
     pivot_data = results_df.pivot(index='sequence_name', columns='position', values='integrated_gradient')
 
-    plt.figure(figsize=(20, 8))
+    # Calculate dynamic width based on number of positions
+    num_positions = len(pivot_data.columns)
+    # Use at least 0.1 inches per position, with a minimum of 30 inches
+    width = max(30, num_positions * 0.1)
+
+    plt.figure(figsize=(width, 8))
+
+    # Show every 10th position label to reduce crowding
+    x_tick_frequency = max(1, num_positions // 50)  # Show ~50 labels max
+    x_tick_labels = [str(pos) if i % x_tick_frequency == 0 else ''
+                     for i, pos in enumerate(pivot_data.columns)]
+
     sns.heatmap(
         pivot_data,
         cmap='RdBu_r',
         center=0,
         cbar_kws={'label': 'Integrated Gradient'},
-        xticklabels=True,
+        xticklabels=x_tick_labels,
         yticklabels=True
     )
     plt.title(title)
     plt.xlabel('Position')
     plt.ylabel('Sequence')
+
+    # Rotate x-axis labels for better readability
+    plt.xticks(rotation=90, fontsize=8)
     plt.tight_layout()
 
     if save_path:
@@ -281,7 +295,7 @@ def plot_training_history(
 ) -> None:
     """
     Plot training and validation loss curves.
-    
+
     Args:
         history: Training history dictionary
         title: Plot title
@@ -289,7 +303,7 @@ def plot_training_history(
         figsize: Figure size
     """
     fig, axes = plt.subplots(1, 2, figsize=figsize)
-    
+
     # Loss plot
     axes[0].plot(history['epoch'], history['train_loss'], label='Training Loss', marker='o')
     if 'val_loss' in history and len(history['val_loss']) > 0:
@@ -299,7 +313,7 @@ def plot_training_history(
     axes[0].set_title('Training and Validation Loss')
     axes[0].legend()
     axes[0].grid(True, alpha=0.3)
-    
+
     # Log scale loss plot
     axes[1].semilogy(history['epoch'], history['train_loss'], label='Training Loss', marker='o')
     if 'val_loss' in history and len(history['val_loss']) > 0:
@@ -309,14 +323,14 @@ def plot_training_history(
     axes[1].set_title('Training and Validation Loss (Log Scale)')
     axes[1].legend()
     axes[1].grid(True, alpha=0.3)
-    
+
     plt.suptitle(title)
     plt.tight_layout()
-    
+
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"Training history plot saved to {save_path}")
-    
+
     plt.show()
 
 

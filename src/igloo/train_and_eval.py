@@ -196,7 +196,7 @@ def train_model_with_embeddings(
     #     all_embeddings_for_norm.append(val_embeddings)
     # norm_params = compute_global_normalization_params(all_embeddings_for_norm)
     # print(f"Computed global normalization: mean={norm_params['mean']:.4f}, scale={norm_params['scale']:.4f}")
-    print("DISABLED: Global normalization (testing hypothesis that it causes constant predictions)")
+
 
     # Create datasets and dataloaders
     train_dataset = CustomDataset(train_embeddings, train_targets)
@@ -239,67 +239,19 @@ def train_model_with_embeddings(
 
     print(f"Starting training for {num_epochs} epochs with {loss_type} loss...")
 
-    # Debug: Print model architecture and initialization
-    print("\nMODEL DEBUG:")
-    print(f"  Model: {model}")
-    print(f"  Pooling method: {pooling_method}")
+    # Model information
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"  Total parameters: {total_params:,}")
-    print(f"  Trainable parameters: {trainable_params:,}")
-
-    # Print initial model weights
-    print("  Initial model weights:")
-    for name, param in model.named_parameters():
-        if 'weight' in name:
-            print(f"    {name}: shape={param.shape}, mean={param.data.mean():.6f}, std={param.data.std():.6f}")
-        elif 'bias' in name:
-            print(f"    {name}: shape={param.shape}, mean={param.data.mean():.6f}")
-
-    # Debug: Check data loader samples
-    print("\nDATA LOADER DEBUG:")
-    sample_batch = next(iter(train_loader))
-    xb_sample, lengths_sample, yb_sample = sample_batch
-    print(f"  Batch shapes: input={xb_sample.shape}, lengths={lengths_sample.shape}, targets={yb_sample.shape}")
-    print(f"  Input stats: mean={xb_sample.mean():.6f}, std={xb_sample.std():.6f}")
-    print(f"  Target stats: mean={yb_sample.mean():.6f}, std={yb_sample.std():.6f}")
-    print(
-        f"  Sequence lengths: min={lengths_sample.min()}, "
-        f"max={lengths_sample.max()}, "
-        f"mean={lengths_sample.float().mean():.1f}"
-    )
-
-    # Track initial model state for debugging
-    initial_weight = None
-    for name, param in model.named_parameters():
-        if 'fc1.weight' in name or 'linear' in name.lower() or 'attention' in name.lower():
-            initial_weight = param.data.clone()
-            print(f"  Tracking weight changes for: {name}")
-            break
+    print(f"Model parameters: {trainable_params:,} trainable / {total_params:,} total")
 
     for epoch in range(num_epochs):
         # Training phase
         model.train()
         train_losses = []
 
-        # Debug: Track predictions and gradients for first epoch
-        epoch_predictions = []
-        epoch_targets = []
-        batch_count = 0
-
         for _batch_idx, (xb, lengths, yb) in enumerate(train_loader):
             xb = xb.to(device)
             yb = yb.to(device)
-
-            # Debug: Print input statistics for first few batches of first epoch
-            if epoch == 0 and _batch_idx < 3:
-                print(f"\n  Batch {_batch_idx} Input Debug:")
-                print(f"    Input shape: {xb.shape}")
-                print(f"    Input mean: {xb.mean():.6f}, std: {xb.std():.6f}")
-                print(f"    Input min: {xb.min():.6f}, max: {xb.max():.6f}")
-                print(f"    Target shape: {yb.shape}")
-                print(f"    Target mean: {yb.mean():.6f}, std: {yb.std():.6f}")
-                print(f"    Target range: [{yb.min():.6f}, {yb.max():.6f}]")
 
             optimizer.zero_grad()
 
@@ -312,80 +264,17 @@ def train_model_with_embeddings(
             else:
                 predictions = model(xb)
 
-            # Debug: Print prediction statistics for first few batches
-            if epoch == 0 and _batch_idx < 3:
-                print(f"    Predictions shape: {predictions.shape}")
-                print(f"    Predictions mean: {predictions.mean():.6f}, std: {predictions.std():.6f}")
-                print(f"    Predictions range: [{predictions.min():.6f}, {predictions.max():.6f}]")
-                print(f"    Unique predictions: {torch.unique(predictions.round(decimals=4)).shape[0]}")
-
             loss = criterion(predictions.squeeze(-1), yb.squeeze(-1))
-
-            # Debug: Print loss and gradient info for first few batches
-            if epoch == 0 and _batch_idx < 3:
-                print(f"    Loss: {loss.item():.6f}")
-
             loss.backward()
-
-            # Debug: Check gradient magnitudes
-            if epoch == 0 and _batch_idx < 3:
-                total_grad_norm = 0
-                param_count = 0
-                for name, param in model.named_parameters():
-                    if param.grad is not None:
-                        grad_norm = param.grad.data.norm(2).item()
-                        total_grad_norm += grad_norm
-                        param_count += 1
-                        if _batch_idx == 0:  # Only print for first batch to avoid spam
-                            print(f"    Gradient {name}: norm = {grad_norm:.6f}")
-                if param_count > 0:
-                    avg_grad_norm = total_grad_norm / param_count
-                    print(f"    Average gradient norm: {avg_grad_norm:.6f}")
-
             optimizer.step()
 
             train_losses.append(loss.item())
-
-            # Collect predictions for analysis
-            if epoch < 3:  # Only for first few epochs to save memory
-                epoch_predictions.extend(predictions.squeeze(-1).detach().cpu().numpy())
-                epoch_targets.extend(yb.squeeze(-1).detach().cpu().numpy())
-
-            batch_count += 1
 
         avg_train_loss = np.mean(train_losses)
         history['train_loss'].append(avg_train_loss)
         history['epoch'].append(epoch + 1)
 
-        # Debug: Print epoch summary for first few epochs
-        if epoch < 5:
-            if epoch_predictions:
-                pred_array = np.array(epoch_predictions)
-                target_array = np.array(epoch_targets)
-                print(f"\n  EPOCH {epoch+1} SUMMARY:")
-                print(f"    Processed {batch_count} batches, {len(epoch_predictions)} samples")
-                print(f"    Train Loss: {avg_train_loss:.6f}")
-                print("    Prediction Stats:")
-                print(f"      Mean: {pred_array.mean():.6f}, Std: {pred_array.std():.6f}")
-                print(f"      Range: [{pred_array.min():.6f}, {pred_array.max():.6f}]")
-                print(f"      Unique values: {len(np.unique(np.round(pred_array, 4)))}")
-                print("    Target Stats:")
-                print(f"      Mean: {target_array.mean():.6f}, Std: {target_array.std():.6f}")
-                print(f"      Range: [{target_array.min():.6f}, {target_array.max():.6f}]")
 
-                # Check if model is just predicting constant
-                if pred_array.std() < 1e-6:
-                    print(f"    ⚠️ WARNING: Model predicting constant value {pred_array.mean():.6f}!")
-
-                # Check model weights
-                for name, param in model.named_parameters():
-                    if 'weight' in name and len(param.shape) >= 2:
-                        weight_std = param.data.std().item()
-                        weight_mean = param.data.mean().item()
-                        print(f"    Weight {name}: mean={weight_mean:.6f}, std={weight_std:.6f}")
-                        if weight_std < 1e-6:
-                            print(f"      ⚠️ WARNING: {name} has very small variance!")
-                        break  # Just show first weight layer
 
         # Validation phase
         val_loss = None
@@ -509,18 +398,7 @@ def train_model_with_embeddings(
 
     print("\nTraining completed!")
 
-    # Check if model weights changed during training
-    if initial_weight is not None:
-        final_weight = None
-        for name, param in model.named_parameters():
-            if 'fc1.weight' in name:
-                final_weight = param.data
-                break
-        if final_weight is not None:
-            weight_change = torch.norm(final_weight - initial_weight).item()
-            print(f"Model weight change (fc1 norm): {weight_change:.6f}")
-            if weight_change < 1e-6:
-                print("WARNING: Model weights barely changed - model may not be learning!")
+
     print("Final Training Metrics:")
     print(f"  R² = {final_metrics['train_r2']:.4f}")
     print(f"  MAE = {final_metrics['train_mae']:.4f}")
@@ -923,24 +801,14 @@ def train(
     pred = pred_log
     y_true = y_true_log
 
-    # Print a sample of predictions and targets for debugging
-    print("Sample predictions vs targets (unnormalized):")
-    for i in range(min(10, len(pred))):
-        print(f"  Pred: {pred[i]:.3f}  Target: {y_true[i]:.3f}")
+
 
     # Clip predictions to reasonable range based on training data
     y_train_original = y_train * y_log_std + y_log_mean
     data_min = np.min(y_train_original)
     data_max = np.max(y_train_original)
     buffer = 0.05 * (data_max - data_min)
-    pred_unclipped = pred.copy()
     pred = np.clip(pred, data_min - buffer, data_max + buffer)
-    n_clipped = np.sum((pred_unclipped < data_min - buffer) | (pred_unclipped > data_max + buffer))
-    if n_clipped > 0:
-        print(
-            f"  Clipped {n_clipped}/{len(pred)} predictions to range "
-            f"[{data_min - buffer:.2f}, {data_max + buffer:.2f}]"
-        )
     mse = np.mean((pred - y_true) ** 2)
     mae = np.mean(np.abs(pred - y_true))
     ss_res = np.sum((y_true - pred) ** 2)

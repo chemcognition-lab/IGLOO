@@ -849,8 +849,6 @@ def analyze_sequence_with_integrated_gradients(
     # Use unique dataset names to avoid caching conflicts between different sequences
     seq_hash = hashlib.md5(sequence.encode()).hexdigest()[:8]
     baseline_hash = hashlib.md5(baseline_sequence.encode()).hexdigest()[:8]
-    print(f"DEBUG: Sequence hash: {seq_hash}, Baseline hash: {baseline_hash}")
-    print(f"DEBUG: Using dataset names: sequence_ig_seq_{seq_hash}, sequence_ig_baseline_{baseline_hash}")
 
     seq_embedding = get_embeddings(
         [sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_seq_{seq_hash}'
@@ -858,12 +856,6 @@ def analyze_sequence_with_integrated_gradients(
     baseline_embedding = get_embeddings(
         [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_baseline_{baseline_hash}'
     )
-
-    print(f"DEBUG: Sequence embedding shape: {seq_embedding.shape}")
-    print(f"DEBUG: Baseline embedding shape: {baseline_embedding.shape}")
-    print(f"DEBUG: First 5 values of sequence embedding: {seq_embedding[0, 0, :5]}")
-    print(f"DEBUG: First 5 values of baseline embedding: {baseline_embedding[0, 0, :5]}")
-    print(f"DEBUG: Embeddings are identical: {np.allclose(seq_embedding, baseline_embedding)}")
 
     # Get predictions using DataLoader approach (exactly like training/evaluation)
     print("Computing predictions using DataLoader method...")
@@ -876,7 +868,7 @@ def analyze_sequence_with_integrated_gradients(
 
     # For consistency with training, we need to compute normalization parameters from a representative batch
     # This ensures the model sees inputs in the same distribution as during training
-    print("Computing normalization parameters from sample embeddings for consistency...")
+
 
     # Get a sample of embeddings to compute normalization parameters
     # Use the same embedding source to ensure consistency
@@ -894,7 +886,7 @@ def analyze_sequence_with_integrated_gradients(
     norm_std = np.std(flat_sample, axis=0, keepdims=True)
     norm_std = np.where(norm_std == 0, 1.0, norm_std)  # Avoid division by zero
 
-    print(f"Computed normalization: mean={norm_mean.mean():.4f}, std={norm_std.mean():.4f}")
+
 
     def consistent_normalize_collate_fn(batch):
         """Custom collate function that applies consistent normalization for IG analysis."""
@@ -924,26 +916,17 @@ def analyze_sequence_with_integrated_gradients(
     dummy_target = np.zeros(1)
     seq_dataset = CustomDataset(seq_embedding, dummy_target)
     seq_loader = DataLoader(seq_dataset, batch_size=1, shuffle=False, collate_fn=consistent_normalize_collate_fn)
-    print(f"DEBUG: Original seq_embedding shape: {seq_embedding.shape}")
-    print(f"DEBUG: Original seq_embedding first 5 values: {seq_embedding[0, 0, :5]}")
-
     with torch.no_grad():
         for xb, lengths, yb in seq_loader:
-            print(f"DEBUG: After DataLoader (no normalization) - xb shape: {xb.shape}")
-            print(f"DEBUG: After DataLoader (no normalization) - xb first 5 values: {xb[0, 0, :5]}")
-            print(f"DEBUG: Lengths: {lengths}")
             xb = xb.to(device)
             yb = yb.to(device)
             if pooling_method == 'esm_attention':
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1
-                print(f"DEBUG: Using esm_attention, input_mask shape: {input_mask.shape}")
                 seq_pred_norm = predictor_model(xb, input_mask).squeeze(-1).cpu().numpy()[0]
             else:
-                print(f"DEBUG: Using {pooling_method} pooling")
                 seq_pred_norm = predictor_model(xb).squeeze(-1).cpu().numpy()[0]
-            print(f"DEBUG: Sequence prediction (normalized): {seq_pred_norm}")
             break
 
     # Baseline prediction using DataLoader WITHOUT normalization
@@ -1082,4 +1065,227 @@ def analyze_sequence_with_integrated_gradients(
         'amino_acids': list(sequence),
         'actual_activity': actual_activity,
         'baseline_actual_activity': baseline_actual_activity
+    }
+
+
+def analyze_sequence_with_token_level_integrated_gradients(
+    sequence: str,
+    baseline_sequence: str,
+    esm_model: torch.nn.Module,
+    predictor_model: torch.nn.Module,
+    alphabet,
+    device: torch.device,
+    esm_layer: int = 33,
+    pooling_method: str = 'linear',
+    y_log_mean: float = 0.0,
+    y_log_std: float = 1.0,
+    steps: int = 50,
+    batch_size: int = 10,
+    actual_activity: Optional[float] = None,
+    baseline_actual_activity: Optional[float] = None,
+    plot_predictions: bool = False,
+    sequence_name: str = "Sequence",
+    baseline_name: str = "Baseline",
+    save_plot_path: Optional[str] = None,
+    clip_min: Optional[float] = None,
+    clip_max: Optional[float] = None
+) -> dict:
+    """
+    Analyze a sequence using direct token-level integrated gradients.
+
+    This function computes gradients directly with respect to ESM token embeddings,
+    providing true token-level attributions without needing embedding interpolation
+    or L2 norm projections.
+
+    Args:
+        sequence: Input protein sequence
+        baseline_sequence: Baseline sequence (usually wild-type)
+        esm_model: Pre-trained ESM model
+        predictor_model: Trained prediction model
+        alphabet: ESM alphabet
+        device: PyTorch device
+        esm_layer: ESM layer to extract features from
+        pooling_method: Pooling method ('linear', 'esm_attention', etc.)
+        y_log_mean: Mean for denormalization (default 0.0 for no denormalization)
+        y_log_std: Std for denormalization (default 1.0 for no denormalization)
+        steps: Number of integration steps
+        batch_size: Batch size for gradient computation
+        actual_activity: Optional actual/experimental activity for the sequence
+        baseline_actual_activity: Optional actual activity for the baseline
+        plot_predictions: Whether to create predicted vs actual plot
+        sequence_name: Name for the sequence in plots
+        baseline_name: Name for the baseline in plots
+        save_plot_path: Optional path to save the prediction plot
+        clip_min: Optional minimum value to clip predictions
+        clip_max: Optional maximum value to clip predictions
+
+    Returns:
+        dict with keys: sequence, baseline_sequence, predicted_activity,
+                       baseline_activity, effect_vs_baseline, position_gradients,
+                       positions, amino_acids
+    """
+
+    # Convert sequences to tokens
+    seq_tokens = sequence_to_tokens(sequence, alphabet).to(device)
+    baseline_tokens = sequence_to_tokens(baseline_sequence, alphabet).to(device)
+
+    print(f"Sequence tokens shape: {seq_tokens.shape}")
+    print(f"Baseline tokens shape: {baseline_tokens.shape}")
+
+    # Set models to eval mode
+    esm_model.eval()
+    predictor_model.eval()
+
+    # Get token embedding matrix from ESM model
+    token_embed_matrix = esm_model.embed_tokens.weight  # (vocab_size, embed_dim)
+
+    # Function to get prediction from token embeddings
+    def predict_from_token_embeddings(token_embeds):
+        """Forward pass from token embeddings to prediction"""
+        # Forward pass through ESM transformer layers
+        x = token_embeds
+
+        # Apply position embeddings if ESM uses them
+        if hasattr(esm_model, 'embed_positions'):
+            positions = torch.arange(x.size(1), device=device).unsqueeze(0).expand(x.size(0), -1)
+            x = x + esm_model.embed_positions(positions)
+
+        # Apply layer norm if present
+        if hasattr(esm_model, 'emb_layer_norm_before'):
+            x = esm_model.emb_layer_norm_before(x)
+
+        # Pass through transformer layers up to specified layer
+        for layer_idx, layer in enumerate(esm_model.layers):
+            x, _ = layer(x, None)
+            if layer_idx == esm_layer - 1:  # ESM layers are 0-indexed
+                break
+
+        # Apply final layer norm if present
+        if hasattr(esm_model, 'emb_layer_norm_after'):
+            x = esm_model.emb_layer_norm_after(x)
+
+        # Remove special tokens to match training format
+        seq_embeddings = x[:, 1:-1, :]  # (batch, seq_len, embed_dim)
+
+        # Apply same normalization as training (per-sample standardization)
+        batch_size_cur, seq_len, embed_dim = seq_embeddings.shape
+        flat_embeddings = seq_embeddings.reshape(batch_size_cur, -1)
+        mean = flat_embeddings.mean(dim=1, keepdim=True)
+        std = flat_embeddings.std(dim=1, keepdim=True)
+        flat_normalized = (flat_embeddings - mean) / (std + 1e-8)
+        normalized_embeddings = flat_normalized.reshape(batch_size_cur, seq_len, embed_dim)
+
+        # Apply predictor model
+        if pooling_method == 'esm_attention':
+            input_mask = torch.ones(batch_size_cur, seq_len, device=device)
+            outputs = predictor_model(normalized_embeddings, input_mask)
+        else:
+            outputs = predictor_model(normalized_embeddings)
+
+        return outputs
+
+    # Get baseline predictions using the direct token approach
+    print("Computing predictions using direct token-level approach...")
+
+    with torch.no_grad():
+        # Sequence prediction
+        seq_token_embeds = token_embed_matrix[seq_tokens]
+        seq_pred_norm = predict_from_token_embeddings(seq_token_embeds).cpu().numpy()[0, 0]
+
+        # Baseline prediction
+        baseline_token_embeds = token_embed_matrix[baseline_tokens]
+        baseline_pred_norm = predict_from_token_embeddings(baseline_token_embeds).cpu().numpy()[0, 0]
+
+    # Convert to original scale
+    seq_pred = seq_pred_norm * y_log_std + y_log_mean
+    baseline_pred = baseline_pred_norm * y_log_std + y_log_mean
+
+    # Apply clipping if specified
+    if clip_min is not None or clip_max is not None:
+        print(f"Applying prediction clipping: min={clip_min}, max={clip_max}")
+        if clip_min is not None and clip_max is not None:
+            seq_pred = np.clip(seq_pred, clip_min, clip_max)
+            baseline_pred = np.clip(baseline_pred, clip_min, clip_max)
+        elif clip_min is not None:
+            seq_pred = np.maximum(seq_pred, clip_min)
+            baseline_pred = np.maximum(baseline_pred, clip_min)
+        elif clip_max is not None:
+            seq_pred = np.minimum(seq_pred, clip_max)
+            baseline_pred = np.minimum(baseline_pred, clip_max)
+
+    print(f"Sequence prediction: {seq_pred:.4f}")
+    print(f"Baseline prediction: {baseline_pred:.4f}")
+
+    # Compute integrated gradients using direct token-level approach
+    print(f"Computing token-level integrated gradients (steps={steps})...")
+
+    # Generate interpolation steps
+    alphas = torch.linspace(0, 1, steps + 1, device=device)
+    all_token_gradients = []
+
+    for i in range(0, len(alphas), batch_size):
+        batch_alphas = alphas[i:i + batch_size]
+        batch_token_gradients = []
+
+        for alpha in batch_alphas:
+            # Get token embeddings for sequence and baseline
+            seq_token_embeds = token_embed_matrix[seq_tokens]  # (1, seq_len+2, embed_dim)
+            baseline_token_embeds = token_embed_matrix[baseline_tokens]  # (1, seq_len+2, embed_dim)
+
+            # Interpolate at token embedding level
+            interpolated_embeds = baseline_token_embeds + alpha * (seq_token_embeds - baseline_token_embeds)
+            interpolated_embeds.requires_grad_(True)
+
+            # Forward pass to get prediction
+            outputs = predict_from_token_embeddings(interpolated_embeds)
+
+            # Compute gradients w.r.t. interpolated token embeddings
+            token_gradients = torch.autograd.grad(
+                outputs=outputs.sum(),
+                inputs=interpolated_embeds,
+                create_graph=False,
+                retain_graph=False
+            )[0]  # (1, seq_len+2, embed_dim) - includes CLS/EOS
+
+            # Remove special tokens (CLS and EOS) and compute position-wise gradient magnitudes
+            seq_token_grads = token_gradients[:, 1:-1, :]  # (1, seq_len, embed_dim)
+            position_grads = torch.norm(seq_token_grads, dim=2).cpu().numpy()[0]  # (seq_len,)
+
+            batch_token_gradients.append(position_grads)
+
+        all_token_gradients.extend(batch_token_gradients)
+
+    # Average gradients across integration steps
+    position_gradients = np.mean(all_token_gradients, axis=0)  # (seq_len,)
+
+    print(f"Computed gradients for {len(position_gradients)} positions")
+    print(f"Gradient range: [{np.min(position_gradients):.6f}, {np.max(position_gradients):.6f}]")
+
+    # Create predicted vs actual plot if requested
+    if plot_predictions and actual_activity is not None and baseline_actual_activity is not None:
+        print("Creating predicted vs actual activity plot...")
+        from .plot import plot_predicted_vs_actual_single
+        plot_predicted_vs_actual_single(
+            predicted_value=seq_pred,
+            actual_value=actual_activity,
+            baseline_predicted=baseline_pred,
+            baseline_actual=baseline_actual_activity,
+            sequence_name=sequence_name,
+            baseline_name=baseline_name,
+            title="Token-Level IG: Predicted vs Actual Activity",
+            save_path=save_plot_path
+        )
+
+    return {
+        'sequence': sequence,
+        'baseline_sequence': baseline_sequence,
+        'predicted_activity': seq_pred,
+        'baseline_activity': baseline_pred,
+        'effect_vs_baseline': seq_pred - baseline_pred,
+        'position_gradients': position_gradients,
+        'positions': list(range(1, len(sequence) + 1)),
+        'amino_acids': list(sequence),
+        'actual_activity': actual_activity,
+        'baseline_actual_activity': baseline_actual_activity,
+        'method': 'token_level_integrated_gradients'
     }

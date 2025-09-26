@@ -207,25 +207,33 @@ def plot_predicted_vs_actual(y_true, y_pred, save_path, title="Predicted vs Actu
 
 def print_completion_summary(results_dir):
     """Print final completion summary and file information."""
+    # Extract protein name from results_dir path
+    import os
+    dir_name = os.path.basename(results_dir)
+    # Get the part before the first underscore
+    protein_name = dir_name.split('_')[0]
+    # Capitalize first letter for display
+    protein_display = protein_name.capitalize()
+
     print("\n" + "="*60)
-    print("PAFA INTEGRATED GRADIENTS ANALYSIS COMPLETE!")
+    print(f"{protein_display.upper()} INTEGRATED GRADIENTS ANALYSIS COMPLETE!")
     print("="*60)
     print(f"Results saved to: {results_dir}")
     print("\nGenerated files:")
-    print("  - PafA_integrated_gradients_analysis.png: Position-wise gradients for each sequence")
-    print("  - PafA_integrated_gradients_heatmap.png: Heatmap comparing gradients across sequences")
-    print("  - PafA_variants_vs_WT_gradients.png: Gradient differences compared to wild-type")
-    print("  - PafA_predicted_vs_actual.png: Model performance scatter plot")
-    print("  - PafA_integrated_gradients_results.csv: Detailed results for all positions")
-    print("  - PafA_position_importance_summary.csv: Position importance ranking")
-    print("  - PafA_integrated_gradients_summary.txt: Human-readable summary")
+    print(f"  - {protein_name}_integrated_gradients_analysis.png: Position-wise gradients for each sequence")
+    print(f"  - {protein_name}_integrated_gradients_heatmap.png: Heatmap comparing gradients across sequences")
+    print(f"  - {protein_name}_variants_vs_WT_gradients.png: Gradient differences compared to wild-type")
+    print(f"  - {protein_name}_predicted_vs_actual.png: Model performance scatter plot")
+    print(f"  - {protein_name}_integrated_gradients_results.csv: Detailed results for all positions")
+    print(f"  - {protein_name}_position_importance_summary.csv: Position importance ranking")
+    print(f"  - {protein_name}_integrated_gradients_summary.txt: Human-readable summary")
     print("\nKey insights:")
-    print("1. Check 'PafA_position_importance_summary.csv' for most important positions")
-    print("2. Use 'PafA_integrated_gradients_heatmap.png' to compare gradient patterns")
-    print("3. Review 'PafA_integrated_gradients_analysis.png' for position-specific effects")
-    print("4. Compare 'PafA_variants_vs_WT_gradients.png' to see variant-specific changes")
-    print("5. View 'PafA_predicted_vs_actual.png' for overall model performance")
-    print("6. Integrated gradients show which positions contribute most to kcat_cMUP predictions")
+    print(f"1. Check '{protein_name}_position_importance_summary.csv' for most important positions")
+    print(f"2. Use '{protein_name}_integrated_gradients_heatmap.png' to compare gradient patterns")
+    print(f"3. Review '{protein_name}_integrated_gradients_analysis.png' for position-specific effects")
+    print(f"4. Compare '{protein_name}_variants_vs_WT_gradients.png' to see variant-specific changes")
+    print(f"5. View '{protein_name}_predicted_vs_actual.png' for overall model performance")
+    print("6. Integrated gradients show which positions contribute most to predictions")
 
 
 def create_model(config, device):

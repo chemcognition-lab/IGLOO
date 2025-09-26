@@ -7,49 +7,49 @@ Analysis Configuration:
   Pooling Method: esm_attention
 
 Model Performance:
-  R² = 0.0524
-  Pearson r = 0.5868
-  Spearman ρ = 0.6630
+  R² = 0.3128
+  Pearson r = 0.8573
+  Spearman ρ = 0.8838
 
 Sequences Analyzed:
   WT:
-    Predicted Activity: 76.9969
+    Predicted Activity: 89.0841
     Effect vs Baseline: 0.0000
     Top 5 Important Positions: [np.int64(1), np.int64(546), np.int64(40), np.int64(39), np.int64(38)]
 
   Lowest_Activity:
-    Predicted Activity: 18.9586
-    Effect vs Baseline: -107.9420
-    Top 5 Important Positions: [np.int64(500), np.int64(473), np.int64(382), np.int64(147), np.int64(178)]
+    Predicted Activity: 3.6406
+    Effect vs Baseline: -84.4012
+    Top 5 Important Positions: [np.int64(97), np.int64(90), np.int64(92), np.int64(69), np.int64(545)]
 
   Highest_Activity:
-    Predicted Activity: 100.2891
-    Effect vs Baseline: 35.9059
-    Top 5 Important Positions: [np.int64(341), np.int64(344), np.int64(305), np.int64(144), np.int64(41)]
+    Predicted Activity: 224.2993
+    Effect vs Baseline: 172.6130
+    Top 5 Important Positions: [np.int64(514), np.int64(525), np.int64(104), np.int64(39), np.int64(250)]
 
   Median_Activity:
-    Predicted Activity: 0.0160
-    Effect vs Baseline: -101.0424
-    Top 5 Important Positions: [np.int64(222), np.int64(235), np.int64(502), np.int64(460), np.int64(471)]
+    Predicted Activity: 36.7770
+    Effect vs Baseline: -30.4160
+    Top 5 Important Positions: [np.int64(376), np.int64(296), np.int64(169), np.int64(221), np.int64(217)]
 
   High_10th:
-    Predicted Activity: 58.0082
-    Effect vs Baseline: -71.3378
-    Top 5 Important Positions: [np.int64(52), np.int64(103), np.int64(532), np.int64(45), np.int64(521)]
+    Predicted Activity: 172.6377
+    Effect vs Baseline: 6.0332
+    Top 5 Important Positions: [np.int64(374), np.int64(51), np.int64(171), np.int64(53), np.int64(308)]
 
   Low_10th:
-    Predicted Activity: 15.6373
-    Effect vs Baseline: -128.7068
-    Top 5 Important Positions: [np.int64(57), np.int64(56), np.int64(115), np.int64(480), np.int64(236)]
+    Predicted Activity: 25.7700
+    Effect vs Baseline: -138.7738
+    Top 5 Important Positions: [np.int64(402), np.int64(295), np.int64(494), np.int64(180), np.int64(372)]
 
 TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
- 1. Position 57 (F): importance = 0.0119
- 2. Position 222 (L): importance = 0.0091
- 3. Position 235 (V): importance = 0.0049
- 4. Position 500 (F): importance = 0.0041
- 5. Position 473 (D): importance = 0.0041
- 6. Position 56 (G): importance = 0.0039
- 7. Position 52 (Y): importance = 0.0038
- 8. Position 502 (G): importance = 0.0036
- 9. Position 382 (A): importance = 0.0034
-10. Position 460 (N): importance = 0.0032
+ 1. Position 514 (Y): importance = 0.0113
+ 2. Position 525 (S): importance = 0.0112
+ 3. Position 376 (M): importance = 0.0111
+ 4. Position 97 (I): importance = 0.0110
+ 5. Position 104 (D): importance = 0.0104
+ 6. Position 90 (S): importance = 0.0102
+ 7. Position 402 (V): importance = 0.0098
+ 8. Position 374 (E): importance = 0.0098
+ 9. Position 180 (F): importance = 0.0098
+10. Position 494 (S): importance = 0.0098

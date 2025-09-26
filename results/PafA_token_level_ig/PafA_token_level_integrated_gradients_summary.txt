@@ -1,0 +1,61 @@
+PAFA TOKEN-LEVEL INTEGRATED GRADIENTS ANALYSIS SUMMARY
+============================================================
+
+Analysis Configuration:
+  Integration Method: Token-Level Integrated Gradients
+  ESM Layer: 33
+  Pooling Method: esm_attention
+  Integration Steps: 50
+  Integration Batch Size: 10
+
+Model Performance:
+  R² = 0.0932
+  Pearson r = 0.7670
+  Spearman ρ = 0.8067
+
+Token-Level IG Analysis:
+  This method computes gradients directly with respect to ESM token embeddings,
+  providing true token-level attributions without embedding interpolation.
+
+Sequences Analyzed:
+  WT:
+    Predicted Activity: 250.3381
+    Effect vs Baseline: 0.0000
+    Top 5 Important Positions: [np.int64(81), np.int64(94), np.int64(97), np.int64(72), np.int64(293)]
+
+  Lowest_Activity:
+    Predicted Activity: 250.9188
+    Effect vs Baseline: 0.5807
+    Top 5 Important Positions: [np.int64(500), np.int64(94), np.int64(81), np.int64(72), np.int64(293)]
+
+  Highest_Activity:
+    Predicted Activity: 250.6369
+    Effect vs Baseline: 0.2989
+    Top 5 Important Positions: [np.int64(322), np.int64(94), np.int64(81), np.int64(72), np.int64(293)]
+
+  Median_Activity:
+    Predicted Activity: 250.2436
+    Effect vs Baseline: -0.0945
+    Top 5 Important Positions: [np.int64(222), np.int64(94), np.int64(81), np.int64(72), np.int64(293)]
+
+  High_10th:
+    Predicted Activity: 250.6370
+    Effect vs Baseline: 0.2989
+    Top 5 Important Positions: [np.int64(52), np.int64(94), np.int64(81), np.int64(72), np.int64(293)]
+
+  Low_10th:
+    Predicted Activity: 250.9188
+    Effect vs Baseline: 0.5807
+    Top 5 Important Positions: [np.int64(57), np.int64(94), np.int64(81), np.int64(72), np.int64(293)]
+
+TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
+ 1. Position 222 (L): importance = 0.3860
+ 2. Position 57 (F): importance = 0.3407
+ 3. Position 500 (F): importance = 0.3407
+ 4. Position 322 (Y): importance = 0.1429
+ 5. Position 52 (Y): importance = 0.1429
+ 6. Position 451 (I): importance = 0.1250
+ 7. Position 470 (I): importance = 0.1250
+ 8. Position 469 (I): importance = 0.1250
+ 9. Position 393 (I): importance = 0.1250
+10. Position 540 (I): importance = 0.1250

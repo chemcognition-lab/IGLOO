@@ -1,0 +1,57 @@
+BETA-LACTAMASE INTEGRATED GRADIENTS ANALYSIS SUMMARY
+==================================================
+
+Analysis Configuration:
+  Training Set Size: 4678 sequences
+  Test Set Size: 520 sequences
+  Integration Method: embedding
+  ESM Layer: 33
+  Pooling Method: esm_attention
+
+Model Performance on Test Set (Unseen Data):
+  R² = 0.7769
+  Pearson r = 0.8828
+  Spearman ρ = 0.8411
+
+Test Set Sequences Analyzed:
+  WT:
+    Predicted Activity: 0.5825
+    Effect vs Baseline: -0.0921
+    Top 5 Important Positions: [np.int64(257), np.int64(42), np.int64(101), np.int64(181), np.int64(31)]
+
+  Test_Lowest_Activity:
+    Predicted Activity: -0.0080
+    Effect vs Baseline: -0.8820
+    Top 5 Important Positions: [np.int64(93), np.int64(243), np.int64(76), np.int64(110), np.int64(182)]
+
+  Test_Highest_Activity:
+    Predicted Activity: 0.9653
+    Effect vs Baseline: 0.0852
+    Top 5 Important Positions: [np.int64(115), np.int64(73), np.int64(104), np.int64(260), np.int64(110)]
+
+  Test_Median_Activity:
+    Predicted Activity: 0.8494
+    Effect vs Baseline: -0.1248
+    Top 5 Important Positions: [np.int64(99), np.int64(261), np.int64(1), np.int64(73), np.int64(72)]
+
+  Test_High_10th:
+    Predicted Activity: 1.0381
+    Effect vs Baseline: -0.1041
+    Top 5 Important Positions: [np.int64(188), np.int64(73), np.int64(217), np.int64(278), np.int64(75)]
+
+  Test_Low_10th:
+    Predicted Activity: -0.0080
+    Effect vs Baseline: -0.7937
+    Top 5 Important Positions: [np.int64(33), np.int64(27), np.int64(164), np.int64(267), np.int64(199)]
+
+TOP 10 MOST IMPORTANT POSITIONS (across test sequences):
+ 1. Position 33 (D): importance = 0.0048
+ 2. Position 115 (M): importance = 0.0047
+ 3. Position 257 (V): importance = 0.0046
+ 4. Position 73 (L): importance = 0.0046
+ 5. Position 99 (D): importance = 0.0045
+ 6. Position 261 (T): importance = 0.0044
+ 7. Position 93 (I): importance = 0.0044
+ 8. Position 104 (S): importance = 0.0042
+ 9. Position 42 (V): importance = 0.0042
+10. Position 181 (P): importance = 0.0042

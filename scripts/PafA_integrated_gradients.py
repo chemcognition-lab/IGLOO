@@ -106,66 +106,61 @@ N, L, D = len(sequences), sample_embeddings.shape[1], sample_embeddings.shape[2]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-# 3. Check for existing model and load if available
-model_path = os.path.join(results_dir, 'PafA_ig_model.pth')
+# 3. Check for existing trained model and load if available
+training_model_path = os.path.join(results_dir, 'PafA_training_model.pth')
 final_model = None
+train_model = True
 
-if os.path.exists(model_path):
-    print(f"\nFound existing model at {model_path}")
+if os.path.exists(training_model_path):
+    print(f"\nFound existing trained model at {training_model_path}")
     print("Loading pre-trained model...")
     try:
-        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
-        model_config = checkpoint['model_config']
+        checkpoint = torch.load(training_model_path, map_location=device, weights_only=False)
 
-        # Verify configuration matches current parameters
-        config_match = (
-            model_config.get('hidden_dim1') == hidden_dim1 and
-            model_config.get('hidden_dim2') == hidden_dim2 and
-            model_config.get('hidden_dim3') == hidden_dim3 and
-            model_config.get('hidden_dim4') == hidden_dim4 and
-            model_config.get('dropout_rate') == dropout_rate and
-            model_config.get('final_activation') == final_activation and
-            model_config.get('pooling_method') == POOLING_METHOD and
-            model_config.get('input_dim') == D and
-            model_config.get('L') == L
-        )
+        # Check if this was saved by train_model_with_embeddings (has specific keys)
+        if 'model_state_dict' in checkpoint and 'pooling_method' in checkpoint and 'esm_layer' in checkpoint:
+            # Verify configuration matches current parameters
+            config_match = (
+                checkpoint.get('pooling_method') == POOLING_METHOD and
+                checkpoint.get('esm_layer') == ESM_LAYER
+            )
 
-        if config_match:
-            final_model = create_model(model_config, device)
-            final_model.load_state_dict(checkpoint['model_state_dict'])
-            final_model.eval()
+            if config_match:
+                # Create model with current configuration
+                model_config = {
+                    'input_dim': D,
+                    'L': L,
+                    'hidden_dim1': hidden_dim1,
+                    'hidden_dim2': hidden_dim2,
+                    'hidden_dim3': hidden_dim3,
+                    'hidden_dim4': hidden_dim4,
+                    'dropout_rate': dropout_rate,
+                    'final_activation': final_activation,
+                    'pooling_method': POOLING_METHOD
+                }
+                final_model = create_model(model_config, device)
+                final_model.load_state_dict(checkpoint['model_state_dict'])
+                final_model.eval()
 
-            # Load performance metrics if available
-            if 'performance' in checkpoint:
-                perf = checkpoint['performance']
-                print("Pre-trained model performance:")
-                for k, v in perf.items():
-                    print(f"  {k}: {v:.4f}")
+                print(f"Successfully loaded pre-trained model from epoch {checkpoint.get('epoch', 'unknown')+1}")
+                if 'train_loss' in checkpoint and 'val_loss' in checkpoint:
+                    print(f"  Final training loss: {checkpoint['train_loss']:.6f}")
+                    if checkpoint['val_loss'] is not None:
+                        print(f"  Final validation loss: {checkpoint['val_loss']:.6f}")
 
-            print("Successfully loaded pre-trained model!")
-            print("WARNING: This model was trained with the old normalization approach.")
-            print("The current global normalization may not be compatible.")
-            print("Forcing model retrain for compatibility with new normalization.")
-            train_model = True  # Force retrain
+                train_model = False  # Skip training
+            else:
+                print("Model configuration doesn't match current parameters. Training new model.")
         else:
-            print("Model configuration doesn't match current parameters. Training new model.")
-            train_model = True
+            print("Model format not recognized. Training new model.")
     except Exception as e:
         print(f"Error loading model: {e}")
         print("Training new model.")
-        train_model = True
 else:
-    print("\nNo existing model found. Training new model.")
-    train_model = True
+    print("\nNo existing trained model found. Training new model.")
 
-# Set up global normalization parameters for consistent normalization across all operations
-# DISABLED FOR TESTING: Global normalization may be causing constant predictions
-print("DISABLED: Global normalization setup (testing hypothesis)")
-# print("Setting up global normalization parameters...")
-# # Get all embeddings for normalization (same as training would use)
-# all_embeddings = get_embeddings(sequences, layer=ESM_LAYER, batch_size=16, dataset_name='PafA_normalization')
-# norm_params = compute_global_normalization_params(all_embeddings)
-# print(f"Global normalization: mean={norm_params['mean']:.4f}, scale={norm_params['scale']:.4f}")
+# Note: Global normalization is disabled in favor of per-batch normalization
+# This approach provides better training stability and prediction consistency
 
 # Train model if needed
 if train_model:
@@ -187,6 +182,7 @@ if train_model:
     model = create_model(model_config, device)
 
     # Use the new training function that ensures consistency with integrated gradients
+    training_model_path = os.path.join(results_dir, 'PafA_training_model.pth')
     training_results = train_model_with_embeddings(
         model=model,
         train_sequences=sequences,
@@ -201,7 +197,8 @@ if train_model:
         device=device,
         dataset_name='PafA_integrated_gradients',
         loss_type=LOSS_TYPE.lower(),
-        results_dir=results_dir
+        results_dir=results_dir,
+        save_path=training_model_path  # Save the best model during training
     )
 
     final_model = training_results['model']
@@ -246,34 +243,6 @@ with torch.no_grad():
 
 y_pred = np.concatenate(pred_norm)
 y_true = np.concatenate(y_true_norm)
-
-# DEBUG: Check prediction diversity
-print("DEBUG - Evaluation predictions (normalized):")
-print(f"  Min prediction: {y_pred.min():.4f}")
-print(f"  Max prediction: {y_pred.max():.4f}")
-print(f"  Mean prediction: {y_pred.mean():.4f}")
-print(f"  Std prediction: {y_pred.std():.4f}")
-print(f"  Unique predictions: {len(np.unique(np.round(y_pred, 4)))}")
-
-print("DEBUG - True targets (normalized):")
-print(f"  Min target: {y_true.min():.4f}")
-print(f"  Max target: {y_true.max():.4f}")
-print(f"  Mean target: {y_true.mean():.4f}")
-print(f"  Std target: {y_true.std():.4f}")
-
-print("\nDEBUG - Input embeddings after normalization:")
-# Get a sample of the normalized embeddings to check distribution
-sample_loader = DataLoader(
-    CustomDataset(all_embeddings[:10], y[:10]),
-    batch_size=5, shuffle=False, collate_fn=batch_pad_and_normalize
-)
-for xb, _lengths, _yb in sample_loader:
-    print(f"  Sample embedding shape: {xb.shape}")
-    print(f"  Sample embedding mean: {xb.mean():.4f}")
-    print(f"  Sample embedding std: {xb.std():.4f}")
-    print(f"  Sample embedding min: {xb.min():.4f}")
-    print(f"  Sample embedding max: {xb.max():.4f}")
-    break
 
 # Print comprehensive model performance metrics
 r2, pearson_r, spearman_rho, y_pred_denorm = print_model_performance(y_true, y_pred, y_raw, y_log_mean, y_log_std)
@@ -351,22 +320,10 @@ for name, sequence, baseline in sequences_to_analyze:
         actual_activity_raw = "N/A"
         actual_activity_normalized = "N/A"
 
-    # Note: Prediction consistency is now handled internally by the integrated gradients function
-
-    print(f"  Sequence length: {len(sequence)}")
-    print(f"  Baseline length: {len(baseline)}")
-
     # Get actual activity for plotting (if available)
     actual_activity_plot = actual_activity_raw if isinstance(actual_activity_raw, (int, float)) else None
     baseline_idx = sequences.index(baseline) if baseline in sequences else None
     baseline_actual_activity = y_raw[baseline_idx] if baseline_idx is not None else None
-
-    # DEBUG: Print first 50 characters of sequence to verify they're different
-    print(f"  Sequence start: {sequence[:50]}...")
-    print(f"  Baseline start: {baseline[:50]}...")
-    print(f"  Sequences are identical: {sequence == baseline}")
-
-# (Debugging code removed for cleaner output)
 
     result = analyze_sequence_with_integrated_gradients(
         sequence=sequence,
@@ -506,8 +463,8 @@ plot_variants_vs_wt_gradients(ig_results, comparison_path)
 
 print_completion_summary(results_dir)
 
-# Save model and analysis parameters
-model_path = os.path.join(results_dir, 'PafA_ig_model.pth')
+# Save model and analysis parameters (analysis results file)
+analysis_model_path = os.path.join(results_dir, 'PafA_ig_analysis.pth')
 torch.save({
     'model_state_dict': final_model.state_dict(),
     'model_config': {
@@ -542,5 +499,7 @@ torch.save({
         'was_retrained': train_model,
         'train_metrics': train_metrics if train_model else 'using_pretrained'
     }
-}, model_path)
-print("  - PafA_ig_model.pth: Model saved with updated analysis parameters")
+}, analysis_model_path)
+print("  - PafA_ig_analysis.pth: Analysis results and model saved")
+if train_model:
+    print("  - PafA_training_model.pth: Best trained model saved automatically during training")
