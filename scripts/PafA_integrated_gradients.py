@@ -167,7 +167,6 @@ if train_model:
     print("\nTraining model on all data for integrated gradients analysis...")
 
     # Create the model first
-    from src.igloo.utils import create_model
     model_config = {
         'input_dim': D,
         'L': L,

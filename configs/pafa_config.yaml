@@ -1,0 +1,42 @@
+# Configuration for PafA integrated gradients analysis
+# This config runs token-level IG with signed attribution
+
+data:
+  name: "PafA"
+  path: "data/PafA_data_processed.csv"
+  target_column: "kcat_cMUP"
+  normalization: "z-score"
+  wildtype:
+    method: "position"  # Use last sequence as WT
+    position: "last"
+
+model:
+  esm_layer: 33
+  pooling_method: "esm_attention"
+  hidden_dim1: 1024
+  hidden_dim2: 512
+  hidden_dim3: 255
+  hidden_dim4: 128
+  dropout_rate: 0.2
+  learning_rate: 0.001
+  batch_size: 256
+  epochs: 100
+  loss_type: "huber"
+  final_activation: null
+
+integrated_gradients:
+  method: "token"  # Use token-level IG
+  attribution_method: "signed"  # Use signed attribution to get directional effects
+  steps: 50
+  batch_size: 10
+
+analysis:
+  sequence_selection:
+    include_extremes: true
+    include_median: true
+    include_top_n: 5
+    include_bottom_n: 5
+    custom_sequences: []
+
+results_dir: "results/PafA_token_signed_global_norm"
+force_retrain: true

@@ -1,0 +1,42 @@
+# Configuration for Beta-lactamase integrated gradients analysis
+# This config uses no normalization and a specified WT sequence
+
+data:
+  name: "betalactamase"
+  path: "data/betalactamase_train.csv"  # Will automatically combine with test data
+  target_column: "quantitative_function"
+  normalization: "none"  # No normalization for beta-lactamase
+  wildtype:
+    method: "sequence"  # Provide the WT sequence directly
+    sequence: "MSIQHFRVALIPFFAAFCLPVFAHPETLVKVKDAEDQLGARVGYIELDLNSGKILESFRPEERFPMMSTFKVLLCGAVLSRVDAGQEQLGRRIHYSQNDLVEYSPVTEKHLTDGMTVRELCSAAITMSDNTAANLLLTTIGGPKELTAFLHNMGDHVTRLDRWEPELNEAIPNDERDTTMPAAMATTLRKLLTGELLTLASRQQLIDWMEADKVAGPLLRSALPAGWFIADKSGAGERGSRGIIAALGPDGKPSRIVVIYTTGSQATMDERNRQIAEIGASLIKHW"
+
+model:
+  esm_layer: 33
+  pooling_method: "esm_attention"
+  hidden_dim1: 1024
+  hidden_dim2: 512
+  hidden_dim3: 255
+  hidden_dim4: 128
+  dropout_rate: 0.5  # Higher dropout for beta-lactamase
+  learning_rate: 0.0005  # Lower learning rate
+  batch_size: 256
+  epochs: 50
+  loss_type: "huber"
+  final_activation: null
+
+integrated_gradients:
+  method: "embedding" # token-level vs embedding-level
+  attribution_method: "magnitude" # Signed vs magnitude
+  steps: 50
+  batch_size: 10
+
+analysis:
+  sequence_selection:
+    include_extremes: true
+    include_median: true
+    include_top_n: 0
+    include_bottom_n: 0
+    custom_sequences: []
+
+results_dir: f"results/betalactamase_{integrated_gradients.method}_{integrated_gradients.attribution_method}"
+force_retrain: false

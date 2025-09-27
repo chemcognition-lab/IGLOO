@@ -1,6 +1,6 @@
 import hashlib
 import os
-from typing import Optional
+from typing import Any, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,10 +10,16 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from torch.utils.data import DataLoader
 from tqdm import trange
 
-from src.igloo.data_processing import CustomDataset, batch_pad_and_normalize
+from src.igloo.data_processing import (
+    CustomDataset,
+    batch_pad_and_normalize,
+    compute_global_normalization_params,
+    set_global_normalization_params,
+)
 from src.igloo.embedding import get_embeddings
 from src.igloo.loss import combined_loss, huber_loss, mae_loss, mse_loss, quantile_loss
 from src.igloo.models import AttentionConvPoolingModel, ESMAttention1d, LinearRegressionModel, MeanPoolingModel
+from src.igloo.utils import create_model
 
 
 def _create_epoch_plot(model, train_loader, val_loader, train_targets, val_targets,
@@ -139,7 +145,8 @@ def train_model_with_embeddings(
     dataset_name: str = 'training',
     save_path: Optional[str] = None,
     loss_type: str = 'mse',
-    results_dir: Optional[str] = None
+    results_dir: Optional[str] = None,
+    model_config: Optional[dict[str, Any]] = None
 ) -> dict:
     """
     Train a model using the same embedding + DataLoader approach as integrated gradients.
@@ -189,14 +196,21 @@ def train_model_with_embeddings(
             dataset_name=f"{dataset_name}_val"
         )
 
-    # Compute global normalization parameters for consistent normalization
-    # DISABLED FOR TESTING: Global normalization may be causing constant predictions
-    # all_embeddings_for_norm = [train_embeddings]
-    # if val_embeddings is not None:
-    #     all_embeddings_for_norm.append(val_embeddings)
-    # norm_params = compute_global_normalization_params(all_embeddings_for_norm)
-    # print(f"Computed global normalization: mean={norm_params['mean']:.4f}, scale={norm_params['scale']:.4f}")
+    # Compute global normalization parameters for IG analysis (but don't use them for training)
+    all_embeddings_for_norm = [train_embeddings]
+    if val_embeddings is not None:
+        all_embeddings_for_norm.append(val_embeddings)
+    norm_params = compute_global_normalization_params(all_embeddings_for_norm)
+    print(f"Computed global normalization for IG: mean={norm_params['mean']:.4f}, scale={norm_params['scale']:.4f}")
 
+    # Set global normalization parameters before training
+
+    set_global_normalization_params(norm_params['mean'], norm_params['scale'])
+    print(f"Set global normalization for training: mean={norm_params['mean']:.4f}, scale={norm_params['scale']:.4f}")
+
+    # Create a custom collate function that uses global normalization for training
+    def batch_pad_and_normalize_training(batch):
+        return batch_pad_and_normalize(batch, use_global_normalization=True)
 
     # Create datasets and dataloaders
     train_dataset = CustomDataset(train_embeddings, train_targets)
@@ -204,7 +218,7 @@ def train_model_with_embeddings(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        collate_fn=batch_pad_and_normalize  # Will use global normalization
+        collate_fn=batch_pad_and_normalize_training  # Use global normalization for training
     )
 
     val_loader = None
@@ -214,11 +228,23 @@ def train_model_with_embeddings(
             val_dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=batch_pad_and_normalize  # Will use global normalization
+            collate_fn=batch_pad_and_normalize_training  # Use global normalization for validation
         )
 
-    # Setup optimizer and loss function
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    # Setup optimizer and loss function with better hyperparameters
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4,
+                                  betas=(0.9, 0.999), eps=1e-8)
+
+    # Add cosine annealing scheduler with warmup
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=num_epochs, eta_min=learning_rate * 0.01
+    )
+
+    # Create a warmup scheduler for the first few epochs
+    warmup_epochs = min(10, num_epochs // 10)
+    warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+        optimizer, start_factor=0.1, total_iters=warmup_epochs
+    ) if warmup_epochs > 0 else None
 
     if loss_type == 'huber':
         criterion = torch.nn.HuberLoss()
@@ -266,6 +292,10 @@ def train_model_with_embeddings(
 
             loss = criterion(predictions.squeeze(-1), yb.squeeze(-1))
             loss.backward()
+
+            # Gradient clipping to prevent exploding gradients
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
             optimizer.step()
 
             train_losses.append(loss.item())
@@ -301,6 +331,8 @@ def train_model_with_embeddings(
             val_loss = np.mean(val_losses)
             history['val_loss'].append(val_loss)
 
+            # Update learning rate (cosine annealing doesn't need loss)
+
             # Early stopping
             if val_loss < best_val_loss - min_delta:
                 best_val_loss = val_loss
@@ -315,16 +347,52 @@ def train_model_with_embeddings(
                         'train_loss': avg_train_loss,
                         'val_loss': val_loss,
                         'pooling_method': pooling_method,
-                        'esm_layer': esm_layer
+                        'esm_layer': esm_layer,
+                        'model_config': model_config or {},
+                        'normalization_params': norm_params
                     }, save_path)
             else:
                 patience_counter += 1
 
-        # Print progress
-        if val_loss is not None:
-            print(f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f}, Val Loss: {val_loss:.6f}")
+        # Update learning rate scheduler
+        if warmup_scheduler is not None and epoch < warmup_epochs:
+            warmup_scheduler.step()
         else:
-            print(f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f}")
+            scheduler.step()
+
+        # Print progress with current learning rate
+        current_lr = optimizer.param_groups[0]['lr']
+        if val_loss is not None:
+            print(f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f}, "
+                  f"Val Loss: {val_loss:.6f}, LR: {current_lr:.2e}")
+        else:
+            print(f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f}, LR: {current_lr:.2e}")
+
+        # Add debugging info every 10 epochs
+        if (epoch + 1) % 10 == 0:
+            model.eval()
+            with torch.no_grad():
+                # Sample a few predictions to check if model is learning
+                sample_batch = next(iter(train_loader))
+                xb, lengths, yb = sample_batch
+                xb, yb = xb.to(device), yb.to(device)
+
+                if pooling_method == 'esm_attention':
+                    input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                    for i, length in enumerate(lengths):
+                        input_mask[i, :length] = 1
+                    sample_preds = model(xb, input_mask).squeeze(-1)
+                else:
+                    sample_preds = model(xb).squeeze(-1)
+
+                pred_mean = sample_preds.mean().item()
+                pred_std = sample_preds.std().item()
+                target_mean = yb.squeeze(-1).mean().item()
+                target_std = yb.squeeze(-1).std().item()
+
+                print(f"  Debug - Pred mean: {pred_mean:.4f}, std: {pred_std:.4f} | "
+                      f"Target mean: {target_mean:.4f}, std: {target_std:.4f}")
+            model.train()
 
         # Create and save predicted vs actual plot for this epoch
         if results_dir is not None and (epoch + 1) % 5 == 0:  # Save every 5 epochs to avoid too many plots
@@ -340,7 +408,7 @@ def train_model_with_embeddings(
 
     # Load best model if saved
     if save_path and os.path.exists(save_path):
-        checkpoint = torch.load(save_path, map_location=device)
+        checkpoint = torch.load(save_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         print(f"Loaded best model from epoch {checkpoint['epoch']+1}")
 
@@ -398,6 +466,59 @@ def train_model_with_embeddings(
 
     print("\nTraining completed!")
 
+    # Create and save loss vs epoch plot
+    if results_dir is not None:
+        plt.figure(figsize=(10, 6))
+
+        epochs = history['epoch']
+        train_losses = history['train_loss']
+
+        plt.plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
+
+        if history['val_loss'] and any(v is not None for v in history['val_loss']):
+            val_losses = history['val_loss']
+            plt.plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
+
+        plt.xlabel('Epoch')
+        plt.ylabel(f'Loss ({loss_type.upper()})')
+        plt.title(f'{dataset_name} - Training Loss vs Epoch')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+
+        # Add final loss values as text
+        final_train_loss = train_losses[-1]
+        plt.text(0.02, 0.98, f'Final Train Loss: {final_train_loss:.6f}',
+                transform=plt.gca().transAxes, fontsize=10,
+                verticalalignment='top', horizontalalignment='left',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+        if history['val_loss'] and any(v is not None for v in history['val_loss']):
+            final_val_loss = history['val_loss'][-1]
+            plt.text(0.02, 0.88, f'Final Val Loss: {final_val_loss:.6f}',
+                    transform=plt.gca().transAxes, fontsize=10,
+                    verticalalignment='top', horizontalalignment='left',
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+        # Save the plot
+        loss_plot_path = os.path.join(results_dir, f'{dataset_name}_loss_vs_epoch.png')
+        plt.savefig(loss_plot_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"Loss vs epoch plot saved to: {loss_plot_path}")
+
+    # Final model save (if not already saved during early stopping)
+    if save_path and not os.path.exists(save_path):
+        torch.save({
+            'model_state_dict': model.state_dict(),
+            'epoch': num_epochs - 1,
+            'train_loss': history['train_loss'][-1],
+            'val_loss': history['val_loss'][-1] if history['val_loss'] else None,
+            'pooling_method': pooling_method,
+            'esm_layer': esm_layer,
+            'model_config': model_config or {},
+            'normalization_params': norm_params,
+            'final_metrics': final_metrics
+        }, save_path)
+        print(f"Final model saved to {save_path}")
 
     print("Final Training Metrics:")
     print(f"  R² = {final_metrics['train_r2']:.4f}")
@@ -818,3 +939,138 @@ def train(
     spearman_rho, spearman_p = spearmanr(y_true, pred)
 
     return model, dict(mse=mse, mae=mae, r2=r2, pearson_r=pearson_r, spearman_rho=spearman_rho)
+
+
+def train_or_load_model(config, sequences, y, results_dir, device):
+    """Train a new model or load existing one"""
+
+    model_config = config['model']
+    training_model_path = os.path.join(results_dir, f"{config['data']['name']}_training_model.pth")
+
+    # Get embedding dimensions
+    print("Getting embedding dimensions...")
+    sample_embeddings = get_embeddings(
+        [sequences[0]],
+        layer=model_config['esm_layer'],
+        batch_size=1,
+        dataset_name=f"{config['data']['name']}_sample"
+    )
+    L, D = sample_embeddings.shape[1], sample_embeddings.shape[2]
+
+    # Check for existing model
+    train_model = True
+    if os.path.exists(training_model_path) and not config.get('force_retrain', False):
+        print(f"\nFound existing trained model at {training_model_path}")
+        try:
+            checkpoint = torch.load(training_model_path, map_location=device, weights_only=False)
+
+            if 'model_state_dict' in checkpoint and 'pooling_method' in checkpoint:
+                # Load model configuration
+                saved_config = checkpoint.get('model_config', {})
+
+                # Compare configurations with debugging
+                current_config_values = {
+                    'input_dim': D,
+                    'L': L,
+                    'hidden_dim1': model_config['hidden_dim1'],
+                    'hidden_dim2': model_config['hidden_dim2'],
+                    'hidden_dim3': model_config['hidden_dim3'],
+                    'hidden_dim4': model_config['hidden_dim4'],
+                    'dropout_rate': model_config['dropout_rate'],
+                    'pooling_method': model_config['pooling_method']
+                }
+
+                print("Comparing model configurations:")
+                print(f"Current config: {current_config_values}")
+                print(f"Saved config: {saved_config}")
+
+                # Check if config matches
+                config_matches = True
+                for key in ['input_dim', 'L', 'hidden_dim1', 'hidden_dim2',
+                           'hidden_dim3', 'hidden_dim4', 'dropout_rate', 'pooling_method']:
+                    current_val = current_config_values.get(key)
+                    saved_val = saved_config.get(key)
+                    if current_val != saved_val:
+                        print(f"Config mismatch for {key}: current={current_val}, saved={saved_val}")
+                        config_matches = False
+
+                if config_matches:
+                    print("✓ Model configurations match. Loading pre-trained model...")
+                    model_cfg = {
+                        'input_dim': D,
+                        'L': L,
+                        'hidden_dim1': model_config['hidden_dim1'],
+                        'hidden_dim2': model_config['hidden_dim2'],
+                        'hidden_dim3': model_config['hidden_dim3'],
+                        'hidden_dim4': model_config['hidden_dim4'],
+                        'dropout_rate': model_config['dropout_rate'],
+                        'final_activation': model_config.get('final_activation'),
+                        'pooling_method': model_config['pooling_method']
+                    }
+
+                    final_model = create_model(model_cfg, device)
+                    final_model.load_state_dict(checkpoint['model_state_dict'])
+                    final_model.eval()
+                    train_model = False
+
+                    # Restore global normalization parameters
+                    if 'normalization_params' in checkpoint:
+                        from src.igloo.data_processing import set_global_normalization_params
+                        norm_params = checkpoint['normalization_params']
+                        set_global_normalization_params(norm_params['mean'], norm_params['scale'])
+                        print(f"Restored normalization params: mean={norm_params['mean']:.4f}, "
+                              f"scale={norm_params['scale']:.4f}")
+                    else:
+                        print("Warning: No normalization parameters found in saved model")
+
+                    print("Successfully loaded pre-trained model!")
+                else:
+                    print("✗ Model configuration doesn't match. Training new model.")
+
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            print("Training new model.")
+
+    if train_model:
+        print("\nTraining model...")
+
+        # Create model
+        model_cfg = {
+            'input_dim': D,
+            'L': L,
+            'hidden_dim1': model_config['hidden_dim1'],
+            'hidden_dim2': model_config['hidden_dim2'],
+            'hidden_dim3': model_config['hidden_dim3'],
+            'hidden_dim4': model_config['hidden_dim4'],
+            'dropout_rate': model_config['dropout_rate'],
+            'final_activation': model_config.get('final_activation'),
+            'pooling_method': model_config['pooling_method']
+        }
+        model = create_model(model_cfg, device)
+
+        # Train model
+        training_results = train_model_with_embeddings(
+            model=model,
+            train_sequences=sequences,
+            train_targets=y,
+            val_sequences=None,
+            val_targets=None,
+            esm_layer=model_config['esm_layer'],
+            pooling_method=model_config['pooling_method'],
+            batch_size=model_config['batch_size'],
+            learning_rate=model_config['learning_rate'],
+            num_epochs=model_config['epochs'],
+            device=device,
+            dataset_name=f"{config['data']['name']}_integrated_gradients",
+            loss_type=model_config.get('loss_type', 'huber').lower(),
+            results_dir=results_dir,
+            save_path=training_model_path,
+            model_config=model_cfg
+        )
+
+        final_model = training_results['model']
+        train_metrics = training_results['metrics']
+    else:
+        train_metrics = {'note': 'using_pretrained_model'}
+
+    return final_model, train_model, train_metrics

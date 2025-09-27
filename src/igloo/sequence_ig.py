@@ -805,6 +805,7 @@ def analyze_sequence_with_integrated_gradients(
     steps: int = 50,
     batch_size: int = 10,
     method: str = 'embedding',  # 'embedding' or 'gumbel'
+    attribution_method: str = 'magnitude',  # 'magnitude' (L2 norm) or 'signed' (dot product)
     actual_activity: Optional[float] = None,
     baseline_actual_activity: Optional[float] = None,
     plot_predictions: bool = False,
@@ -828,6 +829,7 @@ def analyze_sequence_with_integrated_gradients(
         steps: Number of integration steps
         batch_size: Batch size for gradient computation
         method: Integration method ('embedding' or 'gumbel')
+        attribution_method: Attribution computation method ('magnitude' for L2 norm, 'signed' for dot product)
         actual_activity: Optional actual/experimental activity for the sequence
         baseline_actual_activity: Optional actual activity for the baseline
         plot_predictions: Whether to create predicted vs actual plot
@@ -1033,8 +1035,18 @@ def analyze_sequence_with_integrated_gradients(
     all_gradients = torch.cat(all_gradients, dim=0)  # (total_steps, seq_len, embed_dim)
     avg_gradients = torch.mean(all_gradients, dim=0)  # (seq_len, embed_dim)
 
-    # Compute position-level gradients as the L2 norm of embedding gradients at each position
-    position_gradients = torch.norm(avg_gradients, dim=1).cpu().numpy()  # (seq_len,)
+    # Compute position-level gradients based on attribution method
+    if attribution_method == 'signed':
+        # Compute signed attributions using dot product with embedding differences
+        seq_emb_torch = torch.from_numpy(seq_embedding).to(device).float().squeeze(0)  # (seq_len, embed_dim)
+        baseline_emb_torch = torch.from_numpy(baseline_embedding).to(device).float().squeeze(0)  # (seq_len, embed_dim)
+        embed_diff = seq_emb_torch - baseline_emb_torch  # (seq_len, embed_dim)
+
+        # Dot product between gradients and embedding differences gives signed attribution
+        position_gradients = torch.sum(avg_gradients * embed_diff, dim=1).cpu().numpy()  # (seq_len,)
+    else:  # attribution_method == 'magnitude'
+        # Compute magnitude attributions using L2 norm of gradients (default behavior)
+        position_gradients = torch.norm(avg_gradients, dim=1).cpu().numpy()  # (seq_len,)
 
     # Position gradients are already computed above as L2 norm of embedding gradients
     # No need to exclude special tokens since we're working with embeddings directly
@@ -1081,6 +1093,7 @@ def analyze_sequence_with_token_level_integrated_gradients(
     y_log_std: float = 1.0,
     steps: int = 50,
     batch_size: int = 10,
+    attribution_method: str = 'magnitude',  # 'magnitude' (L2 norm) or 'signed' (dot product)
     actual_activity: Optional[float] = None,
     baseline_actual_activity: Optional[float] = None,
     plot_predictions: bool = False,
@@ -1110,6 +1123,7 @@ def analyze_sequence_with_token_level_integrated_gradients(
         y_log_std: Std for denormalization (default 1.0 for no denormalization)
         steps: Number of integration steps
         batch_size: Batch size for gradient computation
+        attribution_method: Attribution computation method ('magnitude' for L2 norm, 'signed' for dot product)
         actual_activity: Optional actual/experimental activity for the sequence
         baseline_actual_activity: Optional actual activity for the baseline
         plot_predictions: Whether to create predicted vs actual plot
@@ -1247,9 +1261,20 @@ def analyze_sequence_with_token_level_integrated_gradients(
                 retain_graph=False
             )[0]  # (1, seq_len+2, embed_dim) - includes CLS/EOS
 
-            # Remove special tokens (CLS and EOS) and compute position-wise gradient magnitudes
+            # Remove special tokens (CLS and EOS) and compute position-wise attributions
             seq_token_grads = token_gradients[:, 1:-1, :]  # (1, seq_len, embed_dim)
-            position_grads = torch.norm(seq_token_grads, dim=2).cpu().numpy()[0]  # (seq_len,)
+
+            if attribution_method == 'signed':
+                # Compute signed attributions using dot product with token embedding differences
+                seq_token_embeds_clean = seq_token_embeds[:, 1:-1, :]  # Remove CLS/EOS
+                baseline_token_embeds_clean = baseline_token_embeds[:, 1:-1, :]  # Remove CLS/EOS
+                embed_diff = seq_token_embeds_clean - baseline_token_embeds_clean  # (1, seq_len, embed_dim)
+
+                # Dot product between gradients and embedding differences gives signed attribution
+                position_grads = torch.sum(seq_token_grads * embed_diff, dim=2).cpu().detach().numpy()[0]  # (seq_len,)
+            else:  # attribution_method == 'magnitude'
+                # Compute magnitude attributions using L2 norm of gradients (default behavior)
+                position_grads = torch.norm(seq_token_grads, dim=2).cpu().detach().numpy()[0]  # (seq_len,)
 
             batch_token_gradients.append(position_grads)
 

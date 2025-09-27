@@ -111,18 +111,36 @@ def plot_variants_vs_wt_gradients(ig_results: dict[str, Any], save_path: Optiona
         ig_results: Dictionary containing integrated gradients results
         save_path: Optional path to save the plot
     """
-    wt_result = ig_results['WT']
+    # Find wildtype result - try common keys
+    wt_key = None
+    for key in ['WT', 'Wildtype', 'wildtype', 'wt']:
+        if key in ig_results:
+            wt_key = key
+            break
+
+    if wt_key is None:
+        # If no wildtype found, use the first result as reference
+        wt_key = list(ig_results.keys())[0]
+
+    wt_result = ig_results[wt_key]
     wt_gradients = wt_result['position_gradients']
+
+    # Check if we have any variants to compare (more than just wildtype)
+    variant_count = len([name for name in ig_results.keys() if name != wt_key])
+
+    if variant_count == 0:
+        print("Only wildtype sequence found, skipping variant comparison plot.")
+        return
 
     plt.figure(figsize=(15, 10))
     plot_idx = 0
 
     for _i, (name, result) in enumerate(ig_results.items()):
-        if name == 'WT':
+        if name == wt_key:
             continue
 
         plot_idx += 1
-        plt.subplot(len(ig_results)-1, 1, plot_idx)
+        plt.subplot(variant_count, 1, plot_idx)
         positions = result['positions']
         gradient_diff = result['position_gradients'] - wt_gradients
 

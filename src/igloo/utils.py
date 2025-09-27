@@ -1,21 +1,17 @@
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import scipy.stats as stats
+import torch
 from sklearn.metrics import r2_score
+from torch.utils.data import DataLoader
 
 from src.igloo.models import AttentionConvPoolingModel, ESMAttention1d, LinearRegressionModel, MeanPoolingModel
 
-
-def print_data_info(df, col, sequences, y_raw):
-    """Print dataset information and statistics."""
-    print(f"Total dataset size: {len(sequences)} sequences")
-    print("Applying z-score normalization to target...")
-    y_log_mean = np.mean(y_raw)
-    y_log_std = np.std(y_raw)
-    y = (y_raw - y_log_mean) / y_log_std
-    print(f"Target mean: {y_log_mean:.4f}, std: {y_log_std:.4f}")
-    print(f"Normalized target range: {np.min(y):.4f} to {np.max(y):.4f}")
-    return y, y_log_mean, y_log_std
+from .embedding import get_embeddings
+from .plot import plot_gradients_heatmap, plot_integrated_gradients, plot_variants_vs_wt_gradients
 
 
 def print_model_performance(y_true, y_pred, y_raw, y_log_mean, y_log_std, clip_predictions=True):
@@ -205,35 +201,28 @@ def plot_predicted_vs_actual(y_true, y_pred, save_path, title="Predicted vs Actu
     print(f"Predicted vs Actual plot saved to: {save_path}")
 
 
-def print_completion_summary(results_dir):
-    """Print final completion summary and file information."""
-    # Extract protein name from results_dir path
-    import os
-    dir_name = os.path.basename(results_dir)
-    # Get the part before the first underscore
-    protein_name = dir_name.split('_')[0]
-    # Capitalize first letter for display
-    protein_display = protein_name.capitalize()
-
+def print_completion_summary(n_sequences, n_analyzed, eval_results, results_dir, dataset_name):
+    """Print a summary of the completed analysis."""
     print("\n" + "="*60)
-    print(f"{protein_display.upper()} INTEGRATED GRADIENTS ANALYSIS COMPLETE!")
+    print("ANALYSIS COMPLETE")
     print("="*60)
+    print(f"Dataset: {dataset_name}")
+    print(f"Total sequences: {n_sequences}")
+    print(f"Sequences analyzed: {n_analyzed}")
     print(f"Results saved to: {results_dir}")
-    print("\nGenerated files:")
-    print(f"  - {protein_name}_integrated_gradients_analysis.png: Position-wise gradients for each sequence")
-    print(f"  - {protein_name}_integrated_gradients_heatmap.png: Heatmap comparing gradients across sequences")
-    print(f"  - {protein_name}_variants_vs_WT_gradients.png: Gradient differences compared to wild-type")
-    print(f"  - {protein_name}_predicted_vs_actual.png: Model performance scatter plot")
-    print(f"  - {protein_name}_integrated_gradients_results.csv: Detailed results for all positions")
-    print(f"  - {protein_name}_position_importance_summary.csv: Position importance ranking")
-    print(f"  - {protein_name}_integrated_gradients_summary.txt: Human-readable summary")
-    print("\nKey insights:")
-    print(f"1. Check '{protein_name}_position_importance_summary.csv' for most important positions")
-    print(f"2. Use '{protein_name}_integrated_gradients_heatmap.png' to compare gradient patterns")
-    print(f"3. Review '{protein_name}_integrated_gradients_analysis.png' for position-specific effects")
-    print(f"4. Compare '{protein_name}_variants_vs_WT_gradients.png' to see variant-specific changes")
-    print(f"5. View '{protein_name}_predicted_vs_actual.png' for overall model performance")
-    print("6. Integrated gradients show which positions contribute most to predictions")
+
+    if eval_results:
+        print("\nModel Performance:")
+        print(f"  R² = {eval_results.get('r2', 'N/A'):.4f}")
+        print(f"  Pearson r = {eval_results.get('pearson_r', 'N/A'):.4f}")
+        print(f"  Spearman ρ = {eval_results.get('spearman_rho', 'N/A'):.4f}")
+
+    print("\nFiles generated:")
+    print("  - Model performance plots")
+    print("  - Attribution heatmaps")
+    print("  - Integrated gradients plots")
+    print("  - Summary CSV files")
+    print("="*60)
 
 
 def create_model(config, device):
@@ -277,3 +266,243 @@ def create_model(config, device):
         raise ValueError(f"Unknown pooling method: {pooling_method}")
 
     return model.to(device)
+
+
+def evaluate_model_performance(model, sequences, y, y_raw, y_log_mean, y_log_std, config, results_dir, device):
+    """Evaluate the trained model"""
+    from .data_processing import CustomDataset, batch_pad_and_normalize
+
+    print("\nEvaluating model performance...")
+    model.eval()
+
+    model_config = config['model']
+
+    # Get embeddings for evaluation
+    print("Getting embeddings for evaluation...")
+
+    all_embeddings = get_embeddings(
+        sequences,
+        layer=model_config['esm_layer'],
+        batch_size=16,
+        dataset_name=f"{config['data']['name']}_eval"
+    )
+
+    # Evaluate using DataLoader
+    eval_dataset = CustomDataset(all_embeddings, y)
+    eval_loader = DataLoader(
+        eval_dataset,
+        batch_size=model_config['batch_size'],
+        shuffle=False,
+        collate_fn=batch_pad_and_normalize
+    )
+
+    pred_norm = []
+    y_true_norm = []
+
+    with torch.no_grad():
+        for xb, lengths, yb in eval_loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
+
+            if model_config['pooling_method'] == 'esm_attention':
+                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                for i, length in enumerate(lengths):
+                    input_mask[i, :length] = 1
+                out = model(xb, input_mask).squeeze(-1)
+            else:
+                out = model(xb).squeeze(-1)
+
+            if out.ndim > 1:
+                out = out.squeeze(-1)
+
+            pred_norm.append(out.cpu().numpy())
+            y_true_norm.append(yb.cpu().numpy().flatten())
+
+    y_pred = np.concatenate(pred_norm)
+    y_true = np.concatenate(y_true_norm)
+
+    # Get performance metrics
+    r2, pearson_r, spearman_rho, y_pred_denorm = print_model_performance(
+        y_true, y_pred, y_raw, y_log_mean, y_log_std
+    )
+
+    print_extreme_value_analysis(y_raw, y_pred_denorm)
+
+    # Create predicted vs actual plot
+    print("Creating predicted vs actual plot...")
+    pred_vs_actual_path = os.path.join(
+        results_dir,
+        f"{config['data']['name']}_predicted_vs_actual.png"
+    )
+    plot_predicted_vs_actual(
+        y_raw, y_pred_denorm, pred_vs_actual_path,
+        title=f"{config['data']['name']} Model: Predicted vs Actual {config['data']['target_column']} Values",
+        r2=r2, pearson_r=pearson_r, spearman_rho=spearman_rho
+    )
+
+    return r2, pearson_r, spearman_rho, y_pred_denorm
+
+
+def create_visualizations_and_exports(ig_results, r2, pearson_r, spearman_rho, train_metrics,
+                                    config, results_dir, wt_seq, final_model):
+    """Create visualizations and export results"""
+
+    print("\nCreating visualizations...")
+
+    dataset_name = config['data']['name']
+    ig_config = config['integrated_gradients']
+
+    # Create integrated gradients plots
+    ig_plot_path = os.path.join(results_dir, f'{dataset_name}_integrated_gradients_analysis.png')
+    plot_integrated_gradients(ig_results, ig_plot_path)
+
+    print("\nExporting results...")
+
+    # Create detailed results dataframe
+    all_results = []
+    for name, result in ig_results.items():
+        for pos, aa, grad in zip(result['positions'], result['amino_acids'], result['position_gradients']):
+            all_results.append({
+                'sequence_name': name,
+                'position': pos,
+                'amino_acid': aa,
+                'integrated_gradient': grad,
+                'abs_gradient': abs(grad),
+                'predicted_activity': result['predicted_activity'],
+                'baseline_activity': result['baseline_activity'],
+                'effect_vs_baseline': result['effect_vs_baseline'],
+                'actual_activity': result.get('actual_activity', 'N/A'),
+                'baseline_actual_activity': result.get('baseline_actual_activity', 'N/A')
+            })
+
+    results_df = pd.DataFrame(all_results)
+    results_csv_path = os.path.join(results_dir, f'{dataset_name}_integrated_gradients_results.csv')
+    results_df.to_csv(results_csv_path, index=False)
+
+    # Create position importance summary
+    position_importance = results_df.groupby('position').agg({
+        'integrated_gradient': ['mean', 'std'],
+        'abs_gradient': ['mean', 'max']
+    }).round(4)
+    position_importance.columns = ['mean_gradient', 'std_gradient', 'mean_abs_gradient', 'max_abs_gradient']
+    position_importance['importance_score'] = (position_importance['mean_abs_gradient'] +
+                                              position_importance['std_gradient'])
+    position_importance = position_importance.sort_values('importance_score', ascending=False)
+
+    importance_csv_path = os.path.join(results_dir, f'{dataset_name}_position_importance_summary.csv')
+    position_importance.to_csv(importance_csv_path)
+
+    # Create predicted vs actual summary
+    pred_vs_actual_summary_path = os.path.join(results_dir, f'{dataset_name}_predicted_vs_actual_summary.csv')
+    prediction_summary_data = []
+    for name, result in ig_results.items():
+        if result.get('actual_activity') is not None and isinstance(result['actual_activity'], (int, float)):
+            prediction_summary_data.append({
+                'sequence_name': name,
+                'predicted_activity': result['predicted_activity'],
+                'actual_activity': result['actual_activity'],
+                'prediction_error': result['predicted_activity'] - result['actual_activity'],
+                'baseline_predicted': result['baseline_activity'],
+                'baseline_actual': result.get('baseline_actual_activity', 'N/A'),
+                'effect_vs_baseline': result['effect_vs_baseline']
+            })
+
+    if prediction_summary_data:
+        pred_summary_df = pd.DataFrame(prediction_summary_data)
+        pred_summary_df.to_csv(pred_vs_actual_summary_path, index=False)
+        print(f"Predicted vs actual summary saved to: {pred_vs_actual_summary_path}")
+
+    # Create summary report
+    summary_path = os.path.join(results_dir, f'{dataset_name}_integrated_gradients_summary.txt')
+    with open(summary_path, 'w') as f:
+        f.write(f"{dataset_name.upper()} INTEGRATED GRADIENTS ANALYSIS SUMMARY\n")
+        f.write("=" * 50 + "\n\n")
+
+        f.write("Analysis Configuration:\n")
+        f.write(f"  Integration Method: {ig_config['method']}\n")
+        f.write(f"  Attribution Method: {ig_config.get('attribution_method', 'magnitude')}\n")
+        f.write(f"  ESM Layer: {config['model']['esm_layer']}\n")
+        f.write(f"  Pooling Method: {config['model']['pooling_method']}\n")
+        f.write(f"  Integration Steps: {ig_config.get('steps', 50)}\n\n")
+
+        f.write("Model Performance:\n")
+        f.write(f"  R² = {r2:.4f}\n")
+        f.write(f"  Pearson r = {pearson_r:.4f}\n")
+        f.write(f"  Spearman ρ = {spearman_rho:.4f}\n\n")
+
+        f.write("Sequences Analyzed:\n")
+        for name, result in ig_results.items():
+            f.write(f"  {name}:\n")
+            f.write(f"    Predicted Activity: {result['predicted_activity']:.4f}\n")
+            f.write(f"    Effect vs Baseline: {result['effect_vs_baseline']:.4f}\n")
+            if result.get('actual_activity') is not None:
+                f.write(f"    Actual Activity: {result['actual_activity']:.4f}\n")
+            f.write("\n")
+
+        f.write("TOP 10 MOST IMPORTANT POSITIONS (across all sequences):\n")
+        for i, (pos, row) in enumerate(position_importance.head(10).iterrows()):
+            aa = wt_seq[pos-1] if pos <= len(wt_seq) else 'N/A'
+            f.write(f"{i+1:2d}. Position {pos} ({aa}): importance = {row['importance_score']:.4f}\n")
+
+    # Create heatmap
+    print("Creating gradient heatmap...")
+    heatmap_path = os.path.join(results_dir, f'{dataset_name}_integrated_gradients_heatmap.png')
+    plot_gradients_heatmap(results_df, f'{dataset_name} Integrated Gradients Heatmap Across Sequences',
+                          heatmap_path)
+
+    # Create comparison plots
+    print("Creating comparison plots...")
+    comparison_path = os.path.join(results_dir, f'{dataset_name}_variants_vs_WT_gradients.png')
+    plot_variants_vs_wt_gradients(ig_results, comparison_path)
+
+    # Save model and analysis parameters
+    analysis_model_path = os.path.join(results_dir, f'{dataset_name}_ig_analysis.pth')
+    torch.save({
+        'model_state_dict': final_model.state_dict(),
+        'model_config': {
+            'input_dim': config['model'].get('input_dim'),
+            'L': config['model'].get('L'),
+            'hidden_dim1': config['model']['hidden_dim1'],
+            'hidden_dim2': config['model']['hidden_dim2'],
+            'hidden_dim3': config['model']['hidden_dim3'],
+            'hidden_dim4': config['model']['hidden_dim4'],
+            'dropout_rate': config['model']['dropout_rate'],
+            'final_activation': config['model'].get('final_activation'),
+            'pooling_method': config['model']['pooling_method']
+        },
+        'analysis_config': {
+            'esm_layer': config['model']['esm_layer'],
+            'ig_method': ig_config['method'],
+            'attribution_method': ig_config.get('attribution_method', 'magnitude'),
+            'ig_steps': ig_config.get('steps', 50),
+            'ig_batch_size': ig_config.get('batch_size', 10),
+            'target_column': config['data']['target_column'],
+            'normalization': config['data'].get('normalization', 'z-score')
+        },
+        'performance': {
+            'r2': r2,
+            'pearson_r': pearson_r,
+            'spearman_rho': spearman_rho
+        },
+        'data_info': {
+            'target_mean': config.get('y_log_mean', 0.0),
+            'target_std': config.get('y_log_std', 1.0),
+            'wt_sequence': wt_seq
+        },
+        'config': config
+    }, analysis_model_path)
+
+    # Create eval_results dict from the passed values
+    eval_results_dict = {
+        'r2': r2,
+        'pearson_r': pearson_r,
+        'spearman_rho': spearman_rho
+    }
+
+    print_completion_summary(
+        len(ig_results),  # n_sequences
+        len(ig_results),  # n_analyzed (same as n_sequences for this case)
+        eval_results_dict,  # eval_results
+        results_dir,  # results_dir
+        config['data']['name']  # dataset_name
+    )

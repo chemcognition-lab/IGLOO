@@ -1,0 +1,32 @@
+PAFA INTEGRATED GRADIENTS ANALYSIS SUMMARY
+==================================================
+
+Analysis Configuration:
+  Integration Method: token
+  Attribution Method: signed
+  ESM Layer: 33
+  Pooling Method: esm_attention
+  Integration Steps: 50
+
+Model Performance:
+  R² = 0.2365
+  Pearson r = 0.4918
+  Spearman ρ = 0.5267
+
+Sequences Analyzed:
+  Wildtype:
+    Predicted Activity: 16.8872
+    Effect vs Baseline: 0.0000
+    Actual Activity: 120.0000
+
+TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
+ 1. Position 1 (M): importance = nan
+ 2. Position 2 (L): importance = nan
+ 3. Position 3 (T): importance = nan
+ 4. Position 4 (P): importance = nan
+ 5. Position 5 (K): importance = nan
+ 6. Position 6 (K): importance = nan
+ 7. Position 7 (W): importance = nan
+ 8. Position 8 (L): importance = nan
+ 9. Position 9 (L): importance = nan
+10. Position 10 (G): importance = nan

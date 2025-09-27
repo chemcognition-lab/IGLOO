@@ -1,10 +1,31 @@
 import numpy as np
+import pandas as pd
 import torch
 from sklearn.preprocessing import StandardScaler
+
+from .config_utils import get_wildtype_sequence
 
 # Global normalization parameters - will be set by compute_global_normalization_params
 _global_scaler_mean = None
 _global_scaler_scale = None
+
+
+def print_data_info(df, col, sequences, y_raw):
+    """Print dataset information and statistics."""
+    print(f"Total dataset size: {len(sequences)} sequences")
+    print("Applying z-score normalization to target...")
+    y_log_mean = np.mean(y_raw)
+    y_log_std = np.std(y_raw)
+    y = (y_raw - y_log_mean) / y_log_std
+    print(f"Target mean: {y_log_mean:.4f}, std: {y_log_std:.4f}")
+    print(f"Normalized target range: {np.min(y):.4f} to {np.max(y):.4f}")
+    return y, y_log_mean, y_log_std
+
+def set_global_normalization_params(mean, scale):
+    """Set global normalization parameters."""
+    global _global_scaler_mean, _global_scaler_scale
+    _global_scaler_mean = mean
+    _global_scaler_scale = scale
 
 def compute_global_normalization_params(all_embeddings):
     """
@@ -95,3 +116,60 @@ class CustomDataset(torch.utils.data.Dataset):
         return len(self.embeddings)
     def __getitem__(self, idx):
         return self.embeddings[idx], self.targets[idx]
+
+def load_and_prepare_data(config, data_path):
+    """Load and prepare the dataset"""
+    print(f"Loading data from {data_path}")
+    df = pd.read_csv(data_path)
+
+    # Get target column
+    target_col = config['data']['target_column']
+
+    # Remove rows with NaN or Inf in target
+    df = df[df[target_col].notna()]
+    df = df[np.isfinite(df[target_col])]
+
+    sequences = df['SEQ'].astype(str).tolist()
+    y_raw = df[target_col].values.astype(np.float32)
+
+    print(f"Dataset size: {len(sequences)} sequences")
+    print(f"Target range: {np.min(y_raw):.4f} to {np.max(y_raw):.4f}")
+
+    # Handle normalization
+    normalization = config['data'].get('normalization', 'z-score')
+    if normalization == 'z-score':
+        y, y_log_mean, y_log_std = print_data_info(
+            df, target_col, sequences, y_raw
+        )
+    elif normalization == 'none' or normalization is None:
+        print("Using raw target values without normalization...")
+        y = y_raw
+        y_log_mean = 0.0
+        y_log_std = 1.0
+    else:
+        raise ValueError(f"Unknown normalization method: {normalization}")
+
+    return df, sequences, y_raw, y, y_log_mean, y_log_std
+
+
+def prepare_wildtype_sequence(df, config):
+    """Get the wild-type sequence based on config"""
+    wt_config = config['data']['wildtype']
+    wt_seq, wt_idx = get_wildtype_sequence(df, wt_config)
+
+    # Print information about the WT sequence
+    if wt_config['method'] == 'variant_column':
+        variant_col = wt_config['variant_column']
+        wt_value = wt_config['wildtype_value']
+        wt_activity = df.loc[wt_idx, config['data']['target_column']]
+        print(f"Found WT sequence via {variant_col}='{wt_value}'")
+        print(f"WT {config['data']['target_column']}: {wt_activity:.4f}")
+    elif wt_config['method'] == 'position':
+        print(f"Using WT sequence from position: {wt_config['position']}")
+    elif wt_config['method'] == 'sequence':
+        print("Using provided WT sequence")
+
+    print(f"WT sequence: {wt_seq[:50]}...")
+    print(f"WT sequence length: {len(wt_seq)}")
+
+    return wt_seq, wt_idx
