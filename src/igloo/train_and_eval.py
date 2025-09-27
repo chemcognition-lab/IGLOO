@@ -353,6 +353,20 @@ def train_model_with_embeddings(
                     }, save_path)
             else:
                 patience_counter += 1
+        else:
+            # No validation set - save model periodically and don't use early stopping
+            if save_path and (epoch + 1) % 50 == 0:  # Save every 50 epochs
+                torch.save({
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'epoch': epoch,
+                    'train_loss': avg_train_loss,
+                    'val_loss': None,
+                    'pooling_method': pooling_method,
+                    'esm_layer': esm_layer,
+                    'model_config': model_config or {},
+                    'normalization_params': norm_params
+                }, save_path)
 
         # Update learning rate scheduler
         if warmup_scheduler is not None and epoch < warmup_epochs:
@@ -406,11 +420,13 @@ def train_model_with_embeddings(
             print(f"Early stopping at epoch {epoch+1} (patience={patience})")
             break
 
-    # Load best model if saved
-    if save_path and os.path.exists(save_path):
-        checkpoint = torch.load(save_path, map_location=device, weights_only=False)
+    # Load best model if saved (only when using validation set)
+    if save_path and os.path.exists(save_path) and val_loader is not None:
+        checkpoint = torch.load(save_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         print(f"Loaded best model from epoch {checkpoint['epoch']+1}")
+    elif val_loader is None:
+        print("No validation set used - keeping final model from last epoch")
 
     # Final evaluation
     model.eval()
@@ -505,20 +521,36 @@ def train_model_with_embeddings(
         plt.close()
         print(f"Loss vs epoch plot saved to: {loss_plot_path}")
 
-    # Final model save (if not already saved during early stopping)
-    if save_path and not os.path.exists(save_path):
-        torch.save({
-            'model_state_dict': model.state_dict(),
-            'epoch': num_epochs - 1,
-            'train_loss': history['train_loss'][-1],
-            'val_loss': history['val_loss'][-1] if history['val_loss'] else None,
-            'pooling_method': pooling_method,
-            'esm_layer': esm_layer,
-            'model_config': model_config or {},
-            'normalization_params': norm_params,
-            'final_metrics': final_metrics
-        }, save_path)
-        print(f"Final model saved to {save_path}")
+    # Final model save
+    if save_path:
+        if val_loader is None:
+            # No validation set - always save final model (may overwrite periodic saves)
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'epoch': num_epochs - 1,
+                'train_loss': history['train_loss'][-1],
+                'val_loss': None,
+                'pooling_method': pooling_method,
+                'esm_layer': esm_layer,
+                'model_config': model_config or {},
+                'normalization_params': norm_params,
+                'final_metrics': final_metrics
+            }, save_path)
+            print(f"Final model (epoch {num_epochs}) saved to {save_path}")
+        elif not os.path.exists(save_path):
+            # Validation set used but no model saved yet (shouldn't happen)
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'epoch': num_epochs - 1,
+                'train_loss': history['train_loss'][-1],
+                'val_loss': history['val_loss'][-1] if history['val_loss'] else None,
+                'pooling_method': pooling_method,
+                'esm_layer': esm_layer,
+                'model_config': model_config or {},
+                'normalization_params': norm_params,
+                'final_metrics': final_metrics
+            }, save_path)
+            print(f"Final model saved to {save_path}")
 
     print("Final Training Metrics:")
     print(f"  R² = {final_metrics['train_r2']:.4f}")

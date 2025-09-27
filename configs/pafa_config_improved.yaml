@@ -21,7 +21,7 @@ model:
   dropout_rate: 0.1  # Reduced from 0.2
   learning_rate: 0.0001  # Reduced from 0.001
   batch_size: 64    # Reduced from 256
-  epochs: 500       # Increased from 100
+  epochs: 1000       # Increased from 100
   loss_type: "mse"  # Changed from huber to mse
   final_activation: null
 

@@ -148,8 +148,9 @@ class ESMBasedPredictor(torch.nn.Module):
         seq_embeddings = embeddings[:, 1:-1, :]  # (batch, L, D)
         print(f"ESMBasedPredictor: After removing special tokens: {seq_embeddings.shape}")
 
-        # Apply the same normalization as used during training (batch_pad_and_normalize)
-        # Flatten, normalize, then reshape
+        # Apply the same global normalization as used during training
+        from .data_processing import _global_scaler_mean, _global_scaler_scale
+
         batch_size, seq_len, embed_dim = seq_embeddings.shape
         print(
             f"ESMBasedPredictor: Before normalization - batch_size: {batch_size}, "
@@ -158,13 +159,18 @@ class ESMBasedPredictor(torch.nn.Module):
         flat_embeddings = seq_embeddings.reshape(batch_size, -1)  # (batch_size, seq_len * embed_dim)
         print(f"ESMBasedPredictor: Flattened embeddings shape: {flat_embeddings.shape}")
 
-        # Apply standardization (same as StandardScaler in batch_pad_and_normalize)
-        # Compute mean and std across the flattened dimension for each sample
-        mean = flat_embeddings.mean(dim=1, keepdim=True)
-        std = flat_embeddings.std(dim=1, keepdim=True)
-        print(f"ESMBasedPredictor: Normalization stats - mean: {mean.shape}, std: {std.shape}")
-        print(f"ESMBasedPredictor: Mean values: {mean.squeeze()[:3]}... Std values: {std.squeeze()[:3]}...")
-        flat_normalized = (flat_embeddings - mean) / (std + 1e-8)  # Add small epsilon for numerical stability
+        # Apply global normalization (same as batch_pad_and_normalize with use_global_normalization=True)
+        if _global_scaler_mean is not None and _global_scaler_scale is not None:
+            print("ESMBasedPredictor: Using global normalization parameters")
+            print(f"ESMBasedPredictor: Global mean: {_global_scaler_mean:.6f}, scale: {_global_scaler_scale:.6f}")
+            flat_normalized = (flat_embeddings - _global_scaler_mean) / _global_scaler_scale
+        else:
+            print("ESMBasedPredictor: WARNING - No global normalization parameters found, "
+                  "using per-sample normalization")
+            # Fallback to per-sample normalization if global parameters not available
+            mean = flat_embeddings.mean(dim=1, keepdim=True)
+            std = flat_embeddings.std(dim=1, keepdim=True)
+            flat_normalized = (flat_embeddings - mean) / (std + 1e-8)
 
         # Reshape back to sequence format
         normalized_embeddings = flat_normalized.reshape(batch_size, seq_len, embed_dim)
@@ -263,14 +269,21 @@ class ESMBasedPredictorGumbel(torch.nn.Module):
         # ESM adds <cls> at start and <eos> at end
         seq_embeddings = x[:, 1:-1, :]  # (batch, L, D)
 
-        # Apply the same normalization as used during training
+        # Apply the same global normalization as used during training
+        from .data_processing import _global_scaler_mean, _global_scaler_scale
+
         batch_size, seq_len, embed_dim = seq_embeddings.shape
         flat_embeddings = seq_embeddings.reshape(batch_size, -1)
 
-        # Apply standardization
-        mean = flat_embeddings.mean(dim=1, keepdim=True)
-        std = flat_embeddings.std(dim=1, keepdim=True)
-        flat_normalized = (flat_embeddings - mean) / (std + 1e-8)
+        # Apply global normalization (same as batch_pad_and_normalize with use_global_normalization=True)
+        if _global_scaler_mean is not None and _global_scaler_scale is not None:
+            flat_normalized = (flat_embeddings - _global_scaler_mean) / _global_scaler_scale
+        else:
+            # Fallback to per-sample normalization if global parameters not available
+            mean = flat_embeddings.mean(dim=1, keepdim=True)
+            std = flat_embeddings.std(dim=1, keepdim=True)
+            flat_normalized = (flat_embeddings - mean) / (std + 1e-8)
+
         normalized_embeddings = flat_normalized.reshape(batch_size, seq_len, embed_dim)
 
         # Apply prediction model
@@ -454,14 +467,21 @@ def integrated_gradients_tokens(
         # Remove start/end tokens to match training format
         seq_embeddings = x[:, 1:-1, :]
 
-        # Apply the same normalization as in the updated forward method
+        # Apply the same global normalization as used during training
+        from .data_processing import _global_scaler_mean, _global_scaler_scale
+
         batch_size_actual, seq_len, embed_dim = seq_embeddings.shape
         flat_embeddings = seq_embeddings.reshape(batch_size_actual, -1)
 
-        # Apply standardization (same as StandardScaler in batch_pad_and_normalize)
-        mean = flat_embeddings.mean(dim=1, keepdim=True)
-        std = flat_embeddings.std(dim=1, keepdim=True)
-        flat_normalized = (flat_embeddings - mean) / (std + 1e-8)
+        # Apply global normalization (same as batch_pad_and_normalize with use_global_normalization=True)
+        if _global_scaler_mean is not None and _global_scaler_scale is not None:
+            flat_normalized = (flat_embeddings - _global_scaler_mean) / _global_scaler_scale
+        else:
+            # Fallback to per-sample normalization if global parameters not available
+            mean = flat_embeddings.mean(dim=1, keepdim=True)
+            std = flat_embeddings.std(dim=1, keepdim=True)
+            flat_normalized = (flat_embeddings - mean) / (std + 1e-8)
+
         normalized_embeddings = flat_normalized.reshape(batch_size_actual, seq_len, embed_dim)
 
         # Apply prediction model
@@ -868,56 +888,13 @@ def analyze_sequence_with_integrated_gradients(
 
     predictor_model.eval()
 
-    # For consistency with training, we need to compute normalization parameters from a representative batch
+    # Use the same global normalization parameters that were used during training
     # This ensures the model sees inputs in the same distribution as during training
 
-
-    # Get a sample of embeddings to compute normalization parameters
-    # Use the same embedding source to ensure consistency
-    sample_embeddings = np.concatenate([seq_embedding, baseline_embedding], axis=0)
-
-    # Create a larger sample if needed (at least 10 sequences for stable normalization)
-    if sample_embeddings.shape[0] < 10:
-        # If we don't have enough, repeat the embeddings to get stable normalization
-        repeat_factor = max(1, 10 // sample_embeddings.shape[0])
-        sample_embeddings = np.tile(sample_embeddings, (repeat_factor, 1, 1))
-
-    # Compute normalization parameters from the sample
-    flat_sample = sample_embeddings.reshape(sample_embeddings.shape[0], -1)
-    norm_mean = np.mean(flat_sample, axis=0, keepdims=True)
-    norm_std = np.std(flat_sample, axis=0, keepdims=True)
-    norm_std = np.where(norm_std == 0, 1.0, norm_std)  # Avoid division by zero
-
-
-
-    def consistent_normalize_collate_fn(batch):
-        """Custom collate function that applies consistent normalization for IG analysis."""
-        embeddings, targets = zip(*batch)
-        batch_size = len(embeddings)
-        embedding_dim = embeddings[0].shape[1]
-        max_len = max(seq.shape[0] for seq in embeddings)
-        padded = np.full((batch_size, max_len, embedding_dim), 0.0)
-        lengths = []
-        for i, seq in enumerate(embeddings):
-            seq_len = seq.shape[0]
-            padded[i, :seq_len, :] = seq
-            lengths.append(seq_len)
-
-        # Apply consistent normalization using computed parameters
-        flat = padded.reshape(batch_size, -1)
-        flat_norm = (flat - norm_mean) / norm_std
-        normed = flat_norm.reshape(batch_size, max_len, embedding_dim)
-
-        return (
-            torch.tensor(normed, dtype=torch.float32),
-            torch.tensor(lengths, dtype=torch.int64),
-            torch.tensor(targets, dtype=torch.float32).unsqueeze(1)
-        )
-
-    # Sequence prediction using DataLoader WITHOUT normalization
+    # Sequence prediction using DataLoader with global normalization
     dummy_target = np.zeros(1)
     seq_dataset = CustomDataset(seq_embedding, dummy_target)
-    seq_loader = DataLoader(seq_dataset, batch_size=1, shuffle=False, collate_fn=consistent_normalize_collate_fn)
+    seq_loader = DataLoader(seq_dataset, batch_size=1, shuffle=False, collate_fn=batch_pad_and_normalize)
     with torch.no_grad():
         for xb, lengths, yb in seq_loader:
             xb = xb.to(device)
@@ -931,13 +908,13 @@ def analyze_sequence_with_integrated_gradients(
                 seq_pred_norm = predictor_model(xb).squeeze(-1).cpu().numpy()[0]
             break
 
-    # Baseline prediction using DataLoader WITHOUT normalization
+    # Baseline prediction using DataLoader with global normalization
     baseline_dataset = CustomDataset(baseline_embedding, dummy_target)
     baseline_loader = DataLoader(
         baseline_dataset,
         batch_size=1,
         shuffle=False,
-        collate_fn=consistent_normalize_collate_fn
+        collate_fn=batch_pad_and_normalize
     )
 
     with torch.no_grad():

@@ -9,13 +9,13 @@ Analysis Configuration:
   Integration Steps: 50
 
 Model Performance:
-  R² = 0.2365
-  Pearson r = 0.4918
-  Spearman ρ = 0.5267
+  R² = 0.4417
+  Pearson r = 0.6670
+  Spearman ρ = 0.6962
 
 Sequences Analyzed:
   Wildtype:
-    Predicted Activity: 16.8872
+    Predicted Activity: 46.5595
     Effect vs Baseline: 0.0000
     Actual Activity: 120.0000
 
