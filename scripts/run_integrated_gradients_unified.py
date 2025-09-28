@@ -26,6 +26,7 @@ import torch
 # Import analysis modules
 from src.igloo.config_utils import (
     load_config,
+    select_sequences_for_analysis,
     validate_config,
 )
 from src.igloo.data_processing import load_and_prepare_data, prepare_wildtype_sequence
@@ -142,7 +143,7 @@ class IntegratedGradientsRunner:
             self.y_log_mean, self.y_log_std, self.config, results_dir, self.device
         )
 
-    def run_integrated_gradients_analysis(self):
+    def run_integrated_gradients_analysis(self, eval_results=None):
         """Run the integrated gradients analysis."""
         # Construct results directory path
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -150,13 +151,40 @@ class IntegratedGradientsRunner:
         default_results_dir = f"results/{self.config['data']['name']}_ig"
         results_dir = os.path.join(project_root, self.config.get('results_dir', default_results_dir))
 
-        # Get sequences to analyze - format as expected: (name, sequence, baseline_sequence)
-        # For token-level analysis, pass the actual wildtype sequence as baseline
-        sequences_to_analyze = [("Wildtype", self.wt_seq, self.wt_seq)]
+        # Get sequences to analyze based on configuration
+        selection_config = self.config.get('sequence_selection', {
+            'include_extremes': True,  # Include lowest and highest activity sequences
+            'include_median': True,    # Include median activity sequence
+            'include_top_n': 0,        # Number of additional top sequences (beyond highest)
+            'include_bottom_n': 0,     # Number of additional bottom sequences (beyond lowest)
+            'custom_sequences': [],    # Custom sequences to include
+            'max_error_percent': 10.0  # Maximum prediction error for top_n/bottom_n filtering
+        })
+
+        # Extract predictions from eval_results if available for error filtering
+        y_pred = None
+        if eval_results is not None:
+            # eval_results is a tuple: (r2, pearson_r, spearman_rho, y_pred_denorm)
+            y_pred = eval_results[3]  # Get the denormalized predictions
+
+        sequences_to_analyze = select_sequences_for_analysis(
+            self.df, self.y_raw, self.wt_seq, selection_config,
+            model=self.final_model, sequences=self.sequences, y_pred=y_pred
+        )
+
+        print(f"\nSelected {len(sequences_to_analyze)} sequences for integrated gradients analysis:")
+        for name, seq, _baseline in sequences_to_analyze:
+            # Find the activity value for this sequence
+            try:
+                seq_idx = self.sequences.index(seq)
+                activity = self.y_raw[seq_idx]
+                print(f"  {name}: activity = {activity:.4f}")
+            except ValueError:
+                print(f"  {name}: custom sequence (not in training data)")
 
         return run_integrated_gradients_analysis(
             sequences_to_analyze, self.config, self.y_raw, self.sequences,
-            self.final_model, results_dir, self.device
+            self.final_model, results_dir, self.device, self.y_log_mean, self.y_log_std
         )
 
     def create_visualizations_and_exports(self, results, eval_results):
@@ -204,7 +232,7 @@ class IntegratedGradientsRunner:
             eval_results = self.evaluate_model_performance()
 
             # Step 6: Run integrated gradients analysis
-            ig_results = self.run_integrated_gradients_analysis()
+            ig_results = self.run_integrated_gradients_analysis(eval_results)
 
             # Step 7: Create visualizations and exports
             if ig_results:

@@ -1,0 +1,67 @@
+PAFA INTEGRATED GRADIENTS ANALYSIS SUMMARY
+==================================================
+
+Analysis Configuration:
+  Integration Method: embedding
+  Attribution Method: signed
+  ESM Layer: 33
+  Pooling Method: esm_attention
+  Integration Steps: 50
+
+Model Performance:
+  R² = 0.1423
+  Pearson r = 0.4421
+  Spearman ρ = 0.5054
+
+Sequences Analyzed:
+  WT:
+    Predicted Activity: 81.8096
+    Effect vs Baseline: 0.0000
+    Actual Activity: 120.0000
+
+  Lowest_Activity:
+    Predicted Activity: 46.2928
+    Effect vs Baseline: -35.5167
+    Actual Activity: 0.0160
+
+  Highest_Activity:
+    Predicted Activity: 77.5201
+    Effect vs Baseline: -4.2895
+    Actual Activity: 320.0000
+
+  Median_Activity:
+    Predicted Activity: 62.3574
+    Effect vs Baseline: -19.4522
+    Actual Activity: 77.0000
+
+  Top_2_err2.6%:
+    Predicted Activity: 107.1271
+    Effect vs Baseline: 25.3175
+    Actual Activity: 110.0000
+
+  Top_3_err5.9%:
+    Predicted Activity: 94.0580
+    Effect vs Baseline: 12.2484
+    Actual Activity: 100.0000
+
+  Bottom_2_err4.8%:
+    Predicted Activity: 54.4840
+    Effect vs Baseline: -27.3256
+    Actual Activity: 52.0000
+
+  Bottom_3_err2.2%:
+    Predicted Activity: 57.2257
+    Effect vs Baseline: -24.5839
+    Actual Activity: 56.0000
+
+TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
+ 1. Position 79 (T): importance = 0.0371
+ 2. Position 522 (T): importance = 0.0269
+ 3. Position 500 (F): importance = 0.0114
+ 4. Position 309 (H): importance = 0.0086
+ 5. Position 207 (K): importance = 0.0086
+ 6. Position 305 (D): importance = 0.0047
+ 7. Position 352 (D): importance = 0.0038
+ 8. Position 353 (H): importance = 0.0036
+ 9. Position 338 (K): importance = 0.0036
+10. Position 163 (D): importance = 0.0033

@@ -177,7 +177,8 @@ def get_wildtype_sequence(df, wt_config: dict[str, Any]) -> tuple[str, int]:
 
 
 def select_sequences_for_analysis(df, y_raw: list, wt_seq: str,
-                                 selection_config: dict[str, Any]) -> list[tuple[str, str, str]]:
+                                 selection_config: dict[str, Any],
+                                 model=None, sequences=None, y_pred=None) -> list[tuple[str, str, str]]:
     """
     Select sequences for integrated gradients analysis based on configuration.
 
@@ -186,46 +187,117 @@ def select_sequences_for_analysis(df, y_raw: list, wt_seq: str,
         y_raw: Raw target values
         wt_seq: Wild-type sequence
         selection_config: Sequence selection configuration
+        model: Optional trained model for prediction error filtering
+        sequences: Optional list of sequences (for prediction error filtering)
+        y_pred: Optional pre-computed predictions (for prediction error filtering)
 
     Returns:
         List of tuples (name, sequence, baseline_sequence)
     """
     import numpy as np
 
-    sequences = df['SEQ'].astype(str).tolist()
+    df_sequences = df['SEQ'].astype(str).tolist()
     sequences_to_analyze = []
 
     # Always include wild-type
     sequences_to_analyze.append(('WT', wt_seq, wt_seq))
 
+    # Get prediction errors if model is provided for filtering
+    prediction_errors = None
+    if model is not None and sequences is not None and y_pred is not None:
+        # Calculate percentage errors: |actual - predicted| / |actual| * 100
+        prediction_errors = np.abs(np.array(y_raw) - np.array(y_pred)) / np.abs(np.array(y_raw)) * 100
+        print(f"Computed prediction errors. Mean error: {np.mean(prediction_errors):.2f}%")
+
     # Add sequences based on activity levels
     sorted_indices = np.argsort(y_raw)
 
     if selection_config.get('include_extremes', True):
-        # Lowest and highest activity
+        # Lowest and highest activity (no error filtering for extremes)
         sequences_to_analyze.extend([
-            ('Lowest_Activity', sequences[sorted_indices[0]], wt_seq),
-            ('Highest_Activity', sequences[sorted_indices[-1]], wt_seq)
+            ('Lowest_Activity', df_sequences[sorted_indices[0]], wt_seq),
+            ('Highest_Activity', df_sequences[sorted_indices[-1]], wt_seq)
         ])
 
     if selection_config.get('include_median', True):
-        # Median activity
+        # Median activity (no error filtering for median)
         mid_idx = sorted_indices[len(sorted_indices)//2]
-        sequences_to_analyze.append(('Median_Activity', sequences[mid_idx], wt_seq))
+        sequences_to_analyze.append(('Median_Activity', df_sequences[mid_idx], wt_seq))
+
+    # For top_n and bottom_n, apply error filtering if available
+    error_threshold = selection_config.get('max_error_percent', 10.0)  # Default 10% error threshold
 
     if selection_config.get('include_top_n', 0) > 0:
-        # Top N sequences
+        # Top N sequences with optional error filtering
         top_n = selection_config['include_top_n']
-        for i in range(min(top_n, len(sorted_indices))):
-            idx = sorted_indices[-(i+2)]  # Skip the highest (already included)
-            sequences_to_analyze.append((f'Top_{i+2}', sequences[idx], wt_seq))
+
+        if prediction_errors is not None:
+            # Filter by error first, then sort by activity
+            good_prediction_mask = prediction_errors <= error_threshold
+            good_indices = np.where(good_prediction_mask)[0]
+
+            if len(good_indices) > 0:
+                # Sort good predictions by activity (descending)
+                good_activities = np.array(y_raw)[good_indices]
+                good_sorted_indices = good_indices[np.argsort(good_activities)[::-1]]
+
+                # Skip the highest if it's already included in extremes
+                start_idx = 1 if selection_config.get('include_extremes', True) else 0
+                selected_count = 0
+
+                for i in range(start_idx, len(good_sorted_indices)):
+                    if selected_count >= top_n:
+                        break
+                    idx = good_sorted_indices[i]
+                    error_pct = prediction_errors[idx]
+                    sequences_to_analyze.append((f'Top_{selected_count+2}_err{error_pct:.1f}%',
+                                               df_sequences[idx], wt_seq))
+                    selected_count += 1
+
+                print(f"Selected {selected_count}/{top_n} top sequences with <{error_threshold}% error")
+            else:
+                print(f"Warning: No sequences found with <{error_threshold}% error for top_n selection")
+        else:
+            # No error filtering - use original logic
+            for i in range(min(top_n, len(sorted_indices))):
+                idx = sorted_indices[-(i+2)]  # Skip the highest (already included)
+                sequences_to_analyze.append((f'Top_{i+2}', df_sequences[idx], wt_seq))
 
     if selection_config.get('include_bottom_n', 0) > 0:
-        # Bottom N sequences
+        # Bottom N sequences with optional error filtering
         bottom_n = selection_config['include_bottom_n']
-        for i in range(min(bottom_n, len(sorted_indices))):
-            idx = sorted_indices[i+1]  # Skip the lowest (already included)
-            sequences_to_analyze.append((f'Bottom_{i+2}', sequences[idx], wt_seq))
+
+        if prediction_errors is not None:
+            # Filter by error first, then sort by activity
+            good_prediction_mask = prediction_errors <= error_threshold
+            good_indices = np.where(good_prediction_mask)[0]
+
+            if len(good_indices) > 0:
+                # Sort good predictions by activity (ascending)
+                good_activities = np.array(y_raw)[good_indices]
+                good_sorted_indices = good_indices[np.argsort(good_activities)]
+
+                # Skip the lowest if it's already included in extremes
+                start_idx = 1 if selection_config.get('include_extremes', True) else 0
+                selected_count = 0
+
+                for i in range(start_idx, len(good_sorted_indices)):
+                    if selected_count >= bottom_n:
+                        break
+                    idx = good_sorted_indices[i]
+                    error_pct = prediction_errors[idx]
+                    sequences_to_analyze.append((f'Bottom_{selected_count+2}_err{error_pct:.1f}%',
+                                               df_sequences[idx], wt_seq))
+                    selected_count += 1
+
+                print(f"Selected {selected_count}/{bottom_n} bottom sequences with <{error_threshold}% error")
+            else:
+                print(f"Warning: No sequences found with <{error_threshold}% error for bottom_n selection")
+        else:
+            # No error filtering - use original logic
+            for i in range(min(bottom_n, len(sorted_indices))):
+                idx = sorted_indices[i+1]  # Skip the lowest (already included)
+                sequences_to_analyze.append((f'Bottom_{i+2}', df_sequences[idx], wt_seq))
 
     # Add any custom sequences specified in config
     custom_sequences = selection_config.get('custom_sequences', [])

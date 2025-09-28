@@ -1,0 +1,63 @@
+# Example configuration showing how to specify sequences for integrated gradients analysis
+
+data:
+  name: "example_dataset"
+  path: "data/example_data.csv"
+  target_column: "activity"
+  sequence_column: "SEQ"
+  normalization: "z-score"
+  wildtype:
+    method: "identifier"  # or "sequence" or "activity"
+    value: "WT"          # identifier value, sequence string, or "max"/"min"
+
+model:
+  pooling_method: "linear"
+  esm_layer: 33
+  hidden_dim1: 512
+  hidden_dim2: 256
+  hidden_dim3: 128
+  hidden_dim4: 64
+  dropout_rate: 0.3
+  batch_size: 32
+  learning_rate: 0.0001
+  epochs: 200
+  loss_type: "huber"
+
+# Sequence selection configuration for integrated gradients analysis
+sequence_selection:
+  # Basic options (True/False)
+  include_extremes: true     # Include lowest and highest activity sequences
+  include_median: true       # Include median activity sequence
+
+  # Advanced options (numbers)
+  include_top_n: 5           # Include top 5 additional sequences (beyond highest)
+  include_bottom_n: 5        # Include bottom 5 additional sequences (beyond lowest)
+
+  # Error filtering for top_n and bottom_n selections
+  max_error_percent: 10.0    # Only include sequences with <10% prediction error
+
+  # Custom sequences
+  custom_sequences:
+    # Option 1: Specify sequence by index in the dataset
+    - name: "Interesting_Mutant_1"
+      index: 42
+
+    # Option 2: Specify sequence directly (useful for sequences not in training data)
+    - name: "Novel_Design"
+      sequence: "MKFLVLLFNILLCLFPVLAADNHKTHPEYASFFTFSFPGIQHFNLQGMPEEQFNVVLKTVSSSSSV..."
+
+    # Option 3: Another index-based selection
+    - name: "Control_Sequence"
+      index: 100
+
+integrated_gradients:
+  method: "token"                    # "token" or "embedding"
+  attribution_method: "magnitude"    # "magnitude" or "signed"
+  steps: 50                         # Number of integration steps
+  batch_size: 10                    # Batch size for gradient computation
+
+# Optional: Force retraining even if model exists
+# force_retrain: true
+
+# Optional: Custom results directory
+# results_dir: "custom_results/my_analysis"

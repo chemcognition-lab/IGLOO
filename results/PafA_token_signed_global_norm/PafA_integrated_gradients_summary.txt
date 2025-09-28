@@ -14,19 +14,134 @@ Model Performance:
   Spearman ρ = 0.6962
 
 Sequences Analyzed:
-  Wildtype:
-    Predicted Activity: 46.5595
+  WT:
+    Predicted Activity: 107.2446
     Effect vs Baseline: 0.0000
     Actual Activity: 120.0000
 
+  Lowest_Activity:
+    Predicted Activity: 7.8608
+    Effect vs Baseline: -99.3837
+    Actual Activity: 0.0160
+
+  Highest_Activity:
+    Predicted Activity: 123.2859
+    Effect vs Baseline: 16.0414
+    Actual Activity: 320.0000
+
+  Median_Activity:
+    Predicted Activity: 67.8940
+    Effect vs Baseline: -39.3505
+    Actual Activity: 77.0000
+
+  Top_2_err3.3%:
+    Predicted Activity: 222.3268
+    Effect vs Baseline: 115.0822
+    Actual Activity: 230.0000
+
+  Top_3_err7.8%:
+    Predicted Activity: 212.1170
+    Effect vs Baseline: 104.8724
+    Actual Activity: 230.0000
+
+  Top_4_err1.4%:
+    Predicted Activity: 217.0060
+    Effect vs Baseline: 109.7615
+    Actual Activity: 220.0000
+
+  Top_5_err8.3%:
+    Predicted Activity: 238.3250
+    Effect vs Baseline: 131.0805
+    Actual Activity: 220.0000
+
+  Top_6_err7.8%:
+    Predicted Activity: 215.6910
+    Effect vs Baseline: 108.4464
+    Actual Activity: 200.0000
+
+  Top_7_err9.9%:
+    Predicted Activity: 171.2116
+    Effect vs Baseline: 63.9671
+    Actual Activity: 190.0000
+
+  Top_8_err6.8%:
+    Predicted Activity: 177.0286
+    Effect vs Baseline: 69.7840
+    Actual Activity: 190.0000
+
+  Top_9_err5.3%:
+    Predicted Activity: 170.4615
+    Effect vs Baseline: 63.2170
+    Actual Activity: 180.0000
+
+  Top_10_err4.8%:
+    Predicted Activity: 178.0921
+    Effect vs Baseline: 70.8475
+    Actual Activity: 170.0000
+
+  Top_11_err2.9%:
+    Predicted Activity: 174.9133
+    Effect vs Baseline: 67.6687
+    Actual Activity: 170.0000
+
+  Bottom_2_err3.9%:
+    Predicted Activity: 20.1805
+    Effect vs Baseline: -87.0640
+    Actual Activity: 21.0000
+
+  Bottom_3_err4.4%:
+    Predicted Activity: 27.7171
+    Effect vs Baseline: -79.5274
+    Actual Activity: 29.0000
+
+  Bottom_4_err3.5%:
+    Predicted Activity: 28.9560
+    Effect vs Baseline: -78.2885
+    Actual Activity: 30.0000
+
+  Bottom_5_err4.7%:
+    Predicted Activity: 33.4929
+    Effect vs Baseline: -73.7517
+    Actual Activity: 32.0000
+
+  Bottom_6_err1.4%:
+    Predicted Activity: 34.4758
+    Effect vs Baseline: -72.7688
+    Actual Activity: 34.0000
+
+  Bottom_7_err4.1%:
+    Predicted Activity: 38.3512
+    Effect vs Baseline: -68.8933
+    Actual Activity: 40.0000
+
+  Bottom_8_err7.2%:
+    Predicted Activity: 38.0652
+    Effect vs Baseline: -69.1794
+    Actual Activity: 41.0000
+
+  Bottom_9_err1.9%:
+    Predicted Activity: 54.0116
+    Effect vs Baseline: -53.2330
+    Actual Activity: 53.0000
+
+  Bottom_10_err0.1%:
+    Predicted Activity: 56.0290
+    Effect vs Baseline: -51.2155
+    Actual Activity: 56.0000
+
+  Bottom_11_err5.3%:
+    Predicted Activity: 63.1820
+    Effect vs Baseline: -44.0625
+    Actual Activity: 60.0000
+
 TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
- 1. Position 1 (M): importance = nan
- 2. Position 2 (L): importance = nan
- 3. Position 3 (T): importance = nan
- 4. Position 4 (P): importance = nan
- 5. Position 5 (K): importance = nan
- 6. Position 6 (K): importance = nan
- 7. Position 7 (W): importance = nan
- 8. Position 8 (L): importance = nan
- 9. Position 9 (L): importance = nan
-10. Position 10 (G): importance = nan
+ 1. Position 322 (Y): importance = 0.0176
+ 2. Position 387 (K): importance = 0.0121
+ 3. Position 383 (K): importance = 0.0121
+ 4. Position 378 (K): importance = 0.0121
+ 5. Position 195 (K): importance = 0.0121
+ 6. Position 338 (K): importance = 0.0121
+ 7. Position 342 (K): importance = 0.0121
+ 8. Position 407 (K): importance = 0.0121
+ 9. Position 385 (K): importance = 0.0121
+10. Position 137 (L): importance = 0.0077

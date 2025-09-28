@@ -1158,12 +1158,21 @@ def analyze_sequence_with_token_level_integrated_gradients(
         # Remove special tokens to match training format
         seq_embeddings = x[:, 1:-1, :]  # (batch, seq_len, embed_dim)
 
-        # Apply same normalization as training (per-sample standardization)
+        # Apply the same global normalization as used during training
+        from .data_processing import _global_scaler_mean, _global_scaler_scale
+
         batch_size_cur, seq_len, embed_dim = seq_embeddings.shape
         flat_embeddings = seq_embeddings.reshape(batch_size_cur, -1)
-        mean = flat_embeddings.mean(dim=1, keepdim=True)
-        std = flat_embeddings.std(dim=1, keepdim=True)
-        flat_normalized = (flat_embeddings - mean) / (std + 1e-8)
+
+        # Apply global normalization (same as batch_pad_and_normalize with use_global_normalization=True)
+        if _global_scaler_mean is not None and _global_scaler_scale is not None:
+            flat_normalized = (flat_embeddings - _global_scaler_mean) / _global_scaler_scale
+        else:
+            # Fallback to per-sample normalization if global parameters not available
+            mean = flat_embeddings.mean(dim=1, keepdim=True)
+            std = flat_embeddings.std(dim=1, keepdim=True)
+            flat_normalized = (flat_embeddings - mean) / (std + 1e-8)
+
         normalized_embeddings = flat_normalized.reshape(batch_size_cur, seq_len, embed_dim)
 
         # Apply predictor model
@@ -1175,17 +1184,70 @@ def analyze_sequence_with_token_level_integrated_gradients(
 
         return outputs
 
-    # Get baseline predictions using the direct token approach
-    print("Computing predictions using direct token-level approach...")
+    # Get baseline predictions using DataLoader approach (same as embedding-level IG)
+    print("Computing predictions using DataLoader method (same as embedding analysis)...")
+
+    # First get ESM embeddings using the standard pipeline
+    import hashlib
+
+    import numpy as np
+
+    from .data_processing import CustomDataset
+    from .embedding import get_embeddings
+
+    # Use unique dataset names to avoid caching conflicts
+    seq_hash = hashlib.md5(sequence.encode()).hexdigest()[:8]
+    baseline_hash = hashlib.md5(baseline_sequence.encode()).hexdigest()[:8]
+
+    seq_embedding = get_embeddings(
+        [sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_seq_{seq_hash}'
+    )
+    baseline_embedding = get_embeddings(
+        [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_baseline_{baseline_hash}'
+    )
+
+    # Use DataLoader approach for predictions (exactly like embedding-level IG)
+
+    predictor_model.eval()
+
+    # Sequence prediction using DataLoader with global normalization
+    dummy_target = np.zeros(1)
+    seq_dataset = CustomDataset(seq_embedding, dummy_target)
+    seq_loader = DataLoader(seq_dataset, batch_size=1, shuffle=False, collate_fn=batch_pad_and_normalize)
+    with torch.no_grad():
+        for xb, lengths, yb in seq_loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
+            if pooling_method == 'esm_attention':
+                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                for i, length in enumerate(lengths):
+                    input_mask[i, :length] = 1
+                seq_pred_norm = predictor_model(xb, input_mask).squeeze(-1).cpu().numpy()[0]
+            else:
+                seq_pred_norm = predictor_model(xb).squeeze(-1).cpu().numpy()[0]
+            break
+
+    # Baseline prediction using DataLoader with global normalization
+    baseline_dataset = CustomDataset(baseline_embedding, dummy_target)
+    baseline_loader = DataLoader(
+        baseline_dataset,
+        batch_size=1,
+        shuffle=False,
+        collate_fn=batch_pad_and_normalize
+    )
 
     with torch.no_grad():
-        # Sequence prediction
-        seq_token_embeds = token_embed_matrix[seq_tokens]
-        seq_pred_norm = predict_from_token_embeddings(seq_token_embeds).cpu().numpy()[0, 0]
-
-        # Baseline prediction
-        baseline_token_embeds = token_embed_matrix[baseline_tokens]
-        baseline_pred_norm = predict_from_token_embeddings(baseline_token_embeds).cpu().numpy()[0, 0]
+        for xb, lengths, yb in baseline_loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
+            if pooling_method == 'esm_attention':
+                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                for i, length in enumerate(lengths):
+                    input_mask[i, :length] = 1
+                baseline_pred_norm = predictor_model(xb, input_mask).squeeze(-1).cpu().numpy()[0]
+            else:
+                baseline_pred_norm = predictor_model(xb).squeeze(-1).cpu().numpy()[0]
+            break
 
     # Convert to original scale
     seq_pred = seq_pred_norm * y_log_std + y_log_mean

@@ -1,5 +1,6 @@
 # Configuration for PafA integrated gradients analysis
 # This config runs token-level IG with signed attribution
+# Improved version with better hyperparameters to prevent model collapse
 
 data:
   name: "PafA"
@@ -13,30 +14,52 @@ data:
 model:
   esm_layer: 33
   pooling_method: "esm_attention"
-  hidden_dim1: 1024
-  hidden_dim2: 512
-  hidden_dim3: 255
-  hidden_dim4: 128
-  dropout_rate: 0.2
-  learning_rate: 0.001
-  batch_size: 256
-  epochs: 100
-  loss_type: "huber"
+  hidden_dim1: 512  # Reduced from 1024
+  hidden_dim2: 256  # Reduced from 512
+  hidden_dim3: 128  # Reduced from 255
+  hidden_dim4: 64   # Reduced from 128
+  dropout_rate: 0.1  # Reduced from 0.2
+  learning_rate: 0.0001  # Reduced from 0.001
+  batch_size: 64    # Reduced from 256
+  epochs: 1000       # Increased from 100
+  loss_type: "mse"  # Changed from huber to mse
   final_activation: null
 
+# Sequence selection configuration for integrated gradients analysis
+sequence_selection:
+  # Basic options (True/False)
+  include_extremes: true     # Include lowest and highest activity sequences
+  include_median: true       # Include median activity sequence
+
+  # Advanced options (numbers)
+  include_top_n: 10           # Include top 10 additional sequences (beyond highest)
+  include_bottom_n: 10        # Include bottom 10 additional sequences (beyond lowest)
+
+  # Error filtering for top_n and bottom_n selections
+  max_error_percent: 10.0    # Only include sequences with <10% prediction error
+
+  # Custom sequences (empty list - no custom sequences specified)
+  custom_sequences: []
+
+  # Examples of how to add custom sequences:
+  # custom_sequences:
+  #   # Option 1: Specify sequence by index in the dataset
+  #   - name: "Interesting_Mutant_1"
+  #     index: 42
+  #
+  #   # Option 2: Specify sequence directly (useful for sequences not in training data)
+  #   - name: "Novel_Design"
+  #     sequence: "MKFLVLLFNILLCLFPVLAADNHKTHPEYASFFTFSFPGIQHFNLQGMPEEQFNVVLKTVSSSSSV..."
+  #
+  #   # Option 3: Another index-based selection
+  #   - name: "Control_Sequence"
+  #     index: 100
+
 integrated_gradients:
-  method: "token"  # Use token-level IG
+  method: "token"  # Use token-level IG or embedding-level IG
   attribution_method: "signed"  # Use signed attribution to get directional effects
   steps: 50
   batch_size: 10
 
-analysis:
-  sequence_selection:
-    include_extremes: true
-    include_median: true
-    include_top_n: 5
-    include_bottom_n: 5
-    custom_sequences: []
-
 results_dir: "results/PafA_token_signed_global_norm"
-force_retrain: true
+force_retrain: false

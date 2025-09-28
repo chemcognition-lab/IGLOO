@@ -25,19 +25,42 @@ model:
   loss_type: "mse"  # Changed from huber to mse
   final_activation: null
 
+# Sequence selection configuration for integrated gradients analysis
+sequence_selection:
+  # Basic options (True/False)
+  include_extremes: true     # Include lowest and highest activity sequences
+  include_median: true       # Include median activity sequence
+
+  # Advanced options (numbers)
+  include_top_n: 2           # Include top 2 additional sequences (beyond highest)
+  include_bottom_n: 2        # Include bottom 2 additional sequences (beyond lowest)
+
+  # Error filtering for top_n and bottom_n selections
+  max_error_percent: 10.0    # Only include sequences with <10% prediction error
+
+  # Custom sequences (empty list - no custom sequences specified)
+  custom_sequences: []
+
+  # Examples of how to add custom sequences:
+  # custom_sequences:
+  #   # Option 1: Specify sequence by index in the dataset
+  #   - name: "Interesting_Mutant_1"
+  #     index: 42
+  #
+  #   # Option 2: Specify sequence directly (useful for sequences not in training data)
+  #   - name: "Novel_Design"
+  #     sequence: "MKFLVLLFNILLCLFPVLAADNHKTHPEYASFFTFSFPGIQHFNLQGMPEEQFNVVLKTVSSSSSV..."
+  #
+  #   # Option 3: Another index-based selection
+  #   - name: "Control_Sequence"
+  #     index: 100
+
 integrated_gradients:
-  method: "token"  # Use token-level IG
+  method: "token"  # Use token-level IG or embedding-level IG
   attribution_method: "signed"  # Use signed attribution to get directional effects
   steps: 50
   batch_size: 10
 
-analysis:
-  sequence_selection:
-    include_extremes: true
-    include_median: true
-    include_top_n: 5
-    include_bottom_n: 5
-    custom_sequences: []
 
 results_dir: "results/PafA_token_signed_global_norm"
-force_retrain: true
+force_retrain: false

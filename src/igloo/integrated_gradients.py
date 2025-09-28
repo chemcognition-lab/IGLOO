@@ -17,7 +17,7 @@ from .utils import print_analysis_sections, print_ig_sequence_results, print_seq
 
 
 def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, sequences,
-                                     final_model, results_dir, device):
+                                     final_model, results_dir, device, y_log_mean, y_log_std):
     """Run the integrated gradients analysis"""
     print_analysis_sections("PERFORMING INTEGRATED GRADIENTS ANALYSIS")
 
@@ -48,6 +48,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
             device=device
         )
 
+
         # Run embedding-level analysis
         for name, sequence, baseline in sequences_to_analyze:
             print(f"\nAnalyzing {name} (embedding-level)...")
@@ -67,8 +68,8 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 model=combined_model,
                 alphabet=alphabet,
                 device=device,
-                y_log_mean=config.get('y_log_mean', 0.0),
-                y_log_std=config.get('y_log_std', 1.0),
+                y_log_mean=y_log_mean,
+                y_log_std=y_log_std,
                 steps=ig_config.get('steps', 50),
                 batch_size=ig_config.get('batch_size', 10),
                 method='embedding',
@@ -111,8 +112,8 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 device=device,
                 esm_layer=model_config['esm_layer'],
                 pooling_method=model_config['pooling_method'],
-                y_log_mean=config.get('y_log_mean', 0.0),
-                y_log_std=config.get('y_log_std', 1.0),
+                y_log_mean=y_log_mean,
+                y_log_std=y_log_std,
                 steps=ig_config.get('steps', 50),
                 batch_size=ig_config.get('batch_size', 10),
                 attribution_method=attribution_method,
