@@ -1,0 +1,56 @@
+# Configuration for PafA integrated gradients analysis with 3D structure visualization
+# This config runs token-level IG with signed attribution and creates 3D structure plots
+
+data:
+  name: "PafA"
+  path: "data/PafA_data_processed.csv"
+  target_column: "kcat_cMUP"
+  normalization: "z-score"
+  wildtype:
+    method: "position"  # Use last sequence as WT
+    position: "last"
+
+model:
+  esm_layer: 33
+  pooling_method: "esm_attention"
+  hidden_dim1: 512
+  hidden_dim2: 256
+  hidden_dim3: 128
+  hidden_dim4: 64
+  dropout_rate: 0.1
+  learning_rate: 0.0001
+  batch_size: 64
+  epochs: 1000
+  loss_type: "mse"
+  final_activation: null
+
+# 3D Structure visualization configuration
+structure:
+  pdb_path: "data/PDBs/pafa_5TJ3.pdb"  # Path to PDB file for 3D visualization
+
+# Sequence selection configuration for integrated gradients analysis
+sequence_selection:
+  include_extremes: true  # Include lowest and highest activity sequences
+  include_median: true    # Include median activity sequence
+  include_top_n: 10       # Number of additional top sequences (beyond highest)
+  include_bottom_n: 10    # Number of additional bottom sequences (beyond lowest)
+  custom_sequences: []    # Custom sequences to include
+  max_error_percent: 10.0 # Maximum prediction error for top_n/bottom_n filtering
+
+# Integrated gradients configuration
+integrated_gradients:
+  method: "token"  # Use token-level integrated gradients
+  attribution_method: "signed"  # Use signed gradients to show beneficial vs detrimental
+  steps: 50
+  batch_size: 10
+
+  # Normalization configuration for token-level
+  normalization:
+    method: "global_norm"
+    eps: 1e-12
+
+analysis:
+  dataset_name: "PafA_3D_Analysis"
+
+# Results directory (will include 3D visualization files)
+results_dir: "results/PafA_3d_analysis"

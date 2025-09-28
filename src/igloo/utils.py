@@ -11,7 +11,14 @@ from torch.utils.data import DataLoader
 from src.igloo.models import AttentionConvPoolingModel, ESMAttention1d, LinearRegressionModel, MeanPoolingModel
 
 from .embedding import get_embeddings
-from .plot import plot_gradients_heatmap, plot_integrated_gradients, plot_variants_vs_wt_gradients
+from .plot import (
+    plot_attributions_on_3d_structure,
+    plot_averaged_gradient_effects_comparison,
+    plot_gradients_heatmap,
+    plot_integrated_gradients,
+    plot_signed_gradient_effects,
+    plot_variants_vs_wt_gradients,
+)
 
 
 def print_model_performance(y_true, y_pred, y_raw, y_log_mean, y_log_std, clip_predictions=True):
@@ -392,6 +399,98 @@ def create_visualizations_and_exports(ig_results, r2, pearson_r, spearman_rho, t
     importance_csv_path = os.path.join(results_dir, f'{dataset_name}_position_importance_summary.csv')
     position_importance.to_csv(importance_csv_path)
 
+    # For signed gradients, create additional analysis of beneficial vs detrimental positions
+    attribution_method = ig_config.get('attribution_method', 'magnitude')
+    if attribution_method == 'signed':
+        print("Creating signed gradient analysis for beneficial/detrimental amino acids...")
+
+        # Create amino acid effect analysis
+        amino_acid_effects = []
+        for name, result in ig_results.items():
+            for pos, aa, grad in zip(result['positions'], result['amino_acids'], result['position_gradients']):
+                amino_acid_effects.append({
+                    'sequence_name': name,
+                    'position': pos,
+                    'amino_acid': aa,
+                    'integrated_gradient': grad,
+                    'effect_type': 'beneficial' if grad > 0 else 'detrimental' if grad < 0 else 'neutral',
+                    'effect_magnitude': abs(grad),
+                    'predicted_activity': result['predicted_activity'],
+                    'baseline_activity': result['baseline_activity'],
+                    'effect_vs_baseline': result['effect_vs_baseline'],
+                    'actual_activity': result.get('actual_activity', 'N/A'),
+                    'baseline_actual_activity': result.get('baseline_actual_activity', 'N/A')
+                })
+
+        aa_effects_df = pd.DataFrame(amino_acid_effects)
+
+        # Save detailed amino acid effects
+        aa_effects_path = os.path.join(results_dir, f'{dataset_name}_amino_acid_effects_detailed.csv')
+        aa_effects_df.to_csv(aa_effects_path, index=False)
+        print(f"Detailed amino acid effects saved to: {aa_effects_path}")
+
+        # Create summary of most beneficial and detrimental positions
+        beneficial_positions = aa_effects_df[aa_effects_df['integrated_gradient'] > 0].copy()
+        detrimental_positions = aa_effects_df[aa_effects_df['integrated_gradient'] < 0].copy()
+
+        # Top beneficial positions (sorted by gradient value, descending)
+        top_beneficial = beneficial_positions.nlargest(20, 'integrated_gradient')
+        beneficial_path = os.path.join(results_dir, f'{dataset_name}_top_beneficial_positions.csv')
+        top_beneficial.to_csv(beneficial_path, index=False)
+
+        # Top detrimental positions (sorted by gradient value, ascending - most negative)
+        top_detrimental = detrimental_positions.nsmallest(20, 'integrated_gradient')
+        detrimental_path = os.path.join(results_dir, f'{dataset_name}_top_detrimental_positions.csv')
+        top_detrimental.to_csv(detrimental_path, index=False)
+
+        # Create position-wise signed analysis
+        position_signed_analysis = aa_effects_df.groupby('position').agg({
+            'integrated_gradient': ['mean', 'std', 'min', 'max', 'count'],
+            'effect_magnitude': ['mean', 'max']
+        }).round(4)
+        position_signed_analysis.columns = ['_'.join(col) for col in position_signed_analysis.columns]
+
+        # Add beneficial/detrimental counts per position
+        beneficial_counts = beneficial_positions.groupby('position').size()
+        detrimental_counts = detrimental_positions.groupby('position').size()
+        position_signed_analysis['beneficial_count'] = beneficial_counts.reindex(
+            position_signed_analysis.index, fill_value=0)
+        position_signed_analysis['detrimental_count'] = detrimental_counts.reindex(
+            position_signed_analysis.index, fill_value=0)
+        position_signed_analysis['net_effect'] = position_signed_analysis['integrated_gradient_mean']
+        position_signed_analysis['effect_consistency'] = position_signed_analysis['integrated_gradient_std']
+
+        # Sort by net effect (most beneficial first)
+        position_signed_analysis = position_signed_analysis.sort_values('net_effect', ascending=False)
+
+        signed_analysis_path = os.path.join(results_dir, f'{dataset_name}_position_signed_analysis.csv')
+        position_signed_analysis.to_csv(signed_analysis_path)
+
+        print(f"Top beneficial positions saved to: {beneficial_path}")
+        print(f"Top detrimental positions saved to: {detrimental_path}")
+        print(f"Position-wise signed analysis saved to: {signed_analysis_path}")
+
+        # Create amino acid type analysis (aggregate by amino acid type across all positions)
+        aa_type_analysis = aa_effects_df.groupby('amino_acid').agg({
+            'integrated_gradient': ['mean', 'std', 'min', 'max', 'count'],
+            'effect_magnitude': ['mean', 'max']
+        }).round(4)
+        aa_type_analysis.columns = ['_'.join(col) for col in aa_type_analysis.columns]
+
+        # Add beneficial/detrimental counts per amino acid type
+        aa_beneficial_counts = beneficial_positions.groupby('amino_acid').size()
+        aa_detrimental_counts = detrimental_positions.groupby('amino_acid').size()
+        aa_type_analysis['beneficial_count'] = aa_beneficial_counts.reindex(aa_type_analysis.index, fill_value=0)
+        aa_type_analysis['detrimental_count'] = aa_detrimental_counts.reindex(aa_type_analysis.index, fill_value=0)
+        aa_type_analysis['net_effect'] = aa_type_analysis['integrated_gradient_mean']
+
+        # Sort by net effect
+        aa_type_analysis = aa_type_analysis.sort_values('net_effect', ascending=False)
+
+        aa_type_path = os.path.join(results_dir, f'{dataset_name}_amino_acid_type_analysis.csv')
+        aa_type_analysis.to_csv(aa_type_path)
+        print(f"Amino acid type analysis saved to: {aa_type_path}")
+
     # Create predicted vs actual summary
     pred_vs_actual_summary_path = os.path.join(results_dir, f'{dataset_name}_predicted_vs_actual_summary.csv')
     prediction_summary_data = []
@@ -444,6 +543,61 @@ def create_visualizations_and_exports(ig_results, r2, pearson_r, spearman_rho, t
             aa = wt_seq[pos-1] if pos <= len(wt_seq) else 'N/A'
             f.write(f"{i+1:2d}. Position {pos} ({aa}): importance = {row['importance_score']:.4f}\n")
 
+        # Add signed gradient specific analysis to summary
+        if attribution_method == 'signed':
+            f.write("\nSIGNED GRADIENT ANALYSIS:\n")
+            f.write("-" * 30 + "\n")
+
+            # Top beneficial positions
+            if len(top_beneficial) > 0:
+                f.write("\nTOP 10 MOST BENEFICIAL POSITIONS (positive gradients):\n")
+                for i, (_, row) in enumerate(top_beneficial.head(10).iterrows()):
+                    pos = int(row['position'])
+                    aa = row['amino_acid']
+                    grad = row['integrated_gradient']
+                    seq_name = row['sequence_name']
+                    f.write(f"{i+1:2d}. Position {pos} ({aa}): gradient = +{grad:.4f} [from {seq_name}]\n")
+
+            # Top detrimental positions
+            if len(top_detrimental) > 0:
+                f.write("\nTOP 10 MOST DETRIMENTAL POSITIONS (negative gradients):\n")
+                for i, (_, row) in enumerate(top_detrimental.head(10).iterrows()):
+                    pos = int(row['position'])
+                    aa = row['amino_acid']
+                    grad = row['integrated_gradient']
+                    seq_name = row['sequence_name']
+                    f.write(f"{i+1:2d}. Position {pos} ({aa}): gradient = {grad:.4f} [from {seq_name}]\n")
+
+            # Amino acid type summary
+            f.write("\nAMINO ACID TYPE EFFECTS (averaged across all positions):\n")
+            aa_beneficial = aa_type_analysis[aa_type_analysis['net_effect'] > 0].head(5)
+            aa_detrimental = aa_type_analysis[aa_type_analysis['net_effect'] < 0].tail(5)
+
+            if len(aa_beneficial) > 0:
+                f.write("Most beneficial amino acid types:\n")
+                for i, (aa, row) in enumerate(aa_beneficial.iterrows()):
+                    f.write(f"  {i+1}. {aa}: avg effect = +{row['net_effect']:.4f} "
+                           f"(appeared {int(row['integrated_gradient_count'])} times)\n")
+
+            if len(aa_detrimental) > 0:
+                f.write("Most detrimental amino acid types:\n")
+                for i, (aa, row) in enumerate(aa_detrimental.iterrows()):
+                    f.write(f"  {i+1}. {aa}: avg effect = {row['net_effect']:.4f} "
+                           f"(appeared {int(row['integrated_gradient_count'])} times)\n")
+
+            # Summary statistics
+            total_beneficial = len(beneficial_positions)
+            total_detrimental = len(detrimental_positions)
+            total_positions = len(aa_effects_df)
+            f.write("\nSUMMARY STATISTICS:\n")
+            f.write(f"  Total positions analyzed: {total_positions}\n")
+            f.write(f"  Beneficial positions: {total_beneficial} "
+                   f"({100*total_beneficial/total_positions:.1f}%)\n")
+            f.write(f"  Detrimental positions: {total_detrimental} "
+                   f"({100*total_detrimental/total_positions:.1f}%)\n")
+            f.write(f"  Neutral positions: {total_positions - total_beneficial - total_detrimental} "
+                   f"({100*(total_positions - total_beneficial - total_detrimental)/total_positions:.1f}%)\n")
+
     # Create heatmap
     print("Creating gradient heatmap...")
     heatmap_path = os.path.join(results_dir, f'{dataset_name}_integrated_gradients_heatmap.png')
@@ -454,6 +608,23 @@ def create_visualizations_and_exports(ig_results, r2, pearson_r, spearman_rho, t
     print("Creating comparison plots...")
     comparison_path = os.path.join(results_dir, f'{dataset_name}_variants_vs_WT_gradients.png')
     plot_variants_vs_wt_gradients(ig_results, comparison_path)
+
+    # For signed gradients, create additional mutation effect-style plots
+    if attribution_method == 'signed':
+        print("Creating signed gradient effects plots...")
+
+        # Single scatter plot showing all signed effects
+        signed_effects_path = os.path.join(results_dir, f'{dataset_name}_signed_gradient_effects.png')
+        plot_signed_gradient_effects(ig_results, signed_effects_path, top_n=15)
+
+        # Comparison plot for top vs bottom sequences (if we have enough sequences)
+        if len(ig_results) >= 4:  # Need at least 4 sequences to compare top 2 vs bottom 2
+            comparison_effects_path = os.path.join(results_dir, f'{dataset_name}_top_vs_bottom_effects.png')
+            plot_averaged_gradient_effects_comparison(
+                ig_results, comparison_effects_path,
+                top_n=min(3, len(ig_results)//2),
+                bottom_n=min(3, len(ig_results)//2)
+            )
 
     # Save model and analysis parameters
     analysis_model_path = os.path.join(results_dir, f'{dataset_name}_ig_analysis.pth')
@@ -506,3 +677,36 @@ def create_visualizations_and_exports(ig_results, r2, pearson_r, spearman_rho, t
         results_dir,  # results_dir
         config['data']['name']  # dataset_name
     )
+
+    # Create 3D structure visualization if PDB file is available
+    pdb_path = config.get('structure', {}).get('pdb_path')
+    if pdb_path and attribution_method == 'signed':
+        print("Creating 3D structure visualization...")
+
+        # Check if PDB file exists
+        if not os.path.isabs(pdb_path):
+            full_pdb_path = os.path.join(os.path.dirname(results_dir), pdb_path)
+        else:
+            full_pdb_path = pdb_path
+        if os.path.exists(full_pdb_path):
+            try:
+                # Create 3D visualization
+                structure_3d_path = os.path.join(results_dir, f'{dataset_name}_3d_structure_attributions.html')
+                plot_attributions_on_3d_structure(
+                    attribution_data=results_df,
+                    pdb_path=full_pdb_path,
+                    save_path=structure_3d_path,
+                    attribution_column='integrated_gradient',
+                    aggregation_method='mean',
+                    color_scheme='RdBu_r',
+                    html_output=True,
+                    pymol_output=True,
+                    figsize=(900, 700)
+                )
+                print(f"3D structure visualization saved to: {structure_3d_path}")
+            except ImportError:
+                print("3D visualization skipped: py3Dmol not installed. Install with: pip install py3Dmol")
+            except Exception as e:
+                print(f"3D visualization failed: {e}")
+        else:
+            print(f"PDB file not found: {pdb_path}. Skipping 3D visualization.")

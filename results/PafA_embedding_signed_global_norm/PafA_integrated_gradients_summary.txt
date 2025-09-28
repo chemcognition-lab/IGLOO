@@ -9,59 +9,59 @@ Analysis Configuration:
   Integration Steps: 50
 
 Model Performance:
-  R² = 0.1423
-  Pearson r = 0.4421
-  Spearman ρ = 0.5054
+  R² = 0.4017
+  Pearson r = 0.6347
+  Spearman ρ = 0.6648
 
 Sequences Analyzed:
   WT:
-    Predicted Activity: 81.8096
+    Predicted Activity: 99.9984
     Effect vs Baseline: 0.0000
     Actual Activity: 120.0000
 
   Lowest_Activity:
-    Predicted Activity: 46.2928
-    Effect vs Baseline: -35.5167
+    Predicted Activity: 0.0160
+    Effect vs Baseline: -99.9824
     Actual Activity: 0.0160
 
   Highest_Activity:
-    Predicted Activity: 77.5201
-    Effect vs Baseline: -4.2895
+    Predicted Activity: 103.1948
+    Effect vs Baseline: 3.1964
     Actual Activity: 320.0000
 
   Median_Activity:
-    Predicted Activity: 62.3574
-    Effect vs Baseline: -19.4522
+    Predicted Activity: 54.3914
+    Effect vs Baseline: -45.6070
     Actual Activity: 77.0000
 
-  Top_2_err2.6%:
-    Predicted Activity: 107.1271
-    Effect vs Baseline: 25.3175
-    Actual Activity: 110.0000
+  Top_2_err5.6%:
+    Predicted Activity: 232.2773
+    Effect vs Baseline: 132.2790
+    Actual Activity: 220.0000
 
-  Top_3_err5.9%:
-    Predicted Activity: 94.0580
-    Effect vs Baseline: 12.2484
-    Actual Activity: 100.0000
+  Top_3_err0.3%:
+    Predicted Activity: 219.2694
+    Effect vs Baseline: 119.2710
+    Actual Activity: 220.0000
 
-  Bottom_2_err4.8%:
-    Predicted Activity: 54.4840
-    Effect vs Baseline: -27.3256
-    Actual Activity: 52.0000
+  Bottom_2_err9.8%:
+    Predicted Activity: 10.9847
+    Effect vs Baseline: -89.0137
+    Actual Activity: 10.0000
 
-  Bottom_3_err2.2%:
-    Predicted Activity: 57.2257
-    Effect vs Baseline: -24.5839
-    Actual Activity: 56.0000
+  Bottom_3_err6.0%:
+    Predicted Activity: 10.3388
+    Effect vs Baseline: -89.6596
+    Actual Activity: 11.0000
 
 TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
- 1. Position 79 (T): importance = 0.0371
- 2. Position 522 (T): importance = 0.0269
- 3. Position 500 (F): importance = 0.0114
- 4. Position 309 (H): importance = 0.0086
- 5. Position 207 (K): importance = 0.0086
- 6. Position 305 (D): importance = 0.0047
- 7. Position 352 (D): importance = 0.0038
- 8. Position 353 (H): importance = 0.0036
- 9. Position 338 (K): importance = 0.0036
-10. Position 163 (D): importance = 0.0033
+ 1. Position 522 (T): importance = 0.1178
+ 2. Position 187 (F): importance = 0.1002
+ 3. Position 338 (K): importance = 0.0824
+ 4. Position 378 (K): importance = 0.0763
+ 5. Position 238 (E): importance = 0.0609
+ 6. Position 500 (F): importance = 0.0354
+ 7. Position 386 (Q): importance = 0.0315
+ 8. Position 387 (K): importance = 0.0294
+ 9. Position 339 (K): importance = 0.0279
+10. Position 383 (K): importance = 0.0233

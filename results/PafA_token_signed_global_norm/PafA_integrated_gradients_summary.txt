@@ -145,3 +145,36 @@ TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
  8. Position 407 (K): importance = 0.0121
  9. Position 385 (K): importance = 0.0121
 10. Position 137 (L): importance = 0.0077
+
+SIGNED GRADIENT ANALYSIS:
+------------------------------
+
+TOP 10 MOST BENEFICIAL POSITIONS (positive gradients):
+ 1. Position 322 (V): gradient = +0.0715 [from Highest_Activity]
+ 2. Position 385 (V): gradient = +0.0492 [from Top_8_err6.8%]
+ 3. Position 338 (V): gradient = +0.0492 [from Top_4_err1.4%]
+ 4. Position 378 (V): gradient = +0.0492 [from Top_5_err8.3%]
+ 5. Position 342 (V): gradient = +0.0492 [from Top_11_err2.9%]
+ 6. Position 407 (V): gradient = +0.0492 [from Top_7_err9.9%]
+ 7. Position 383 (V): gradient = +0.0492 [from Top_10_err4.8%]
+ 8. Position 195 (V): gradient = +0.0492 [from Top_9_err5.3%]
+ 9. Position 387 (V): gradient = +0.0492 [from Top_3_err7.8%]
+10. Position 222 (G): gradient = +0.0315 [from Median_Activity]
+
+TOP 10 MOST DETRIMENTAL POSITIONS (negative gradients):
+ 1. Position 500 (G): gradient = -0.0234 [from Lowest_Activity]
+ 2. Position 501 (G): gradient = -0.0185 [from Bottom_10_err0.1%]
+ 3. Position 60 (G): gradient = -0.0185 [from Bottom_6_err1.4%]
+ 4. Position 423 (G): gradient = -0.0159 [from Bottom_8_err7.2%]
+ 5. Position 358 (G): gradient = -0.0157 [from Bottom_5_err4.7%]
+ 6. Position 237 (G): gradient = -0.0087 [from Bottom_3_err4.4%]
+
+AMINO ACID TYPE EFFECTS (averaged across all positions):
+Most beneficial amino acid types:
+  1. V: avg effect = +0.0005 (appeared 1044 times)
+
+SUMMARY STATISTICS:
+  Total positions analyzed: 13104
+  Beneficial positions: 17 (0.1%)
+  Detrimental positions: 6 (0.0%)
+  Neutral positions: 13081 (99.8%)

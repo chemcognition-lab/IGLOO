@@ -1,0 +1,50 @@
+# Configuration for Beta-lactamase integrated gradients analysis
+# This config runs token-level IG with signed attribution
+
+data:
+  name: "betalactamase"
+  path: "data/betalactamase_train.csv"  # Will automatically combine with test data
+  target_column: "quantitative_function"
+  normalization: "none"  # No normalization for beta-lactamase
+  wildtype:
+    method: "sequence"  # Provide the WT sequence directly
+    sequence: "MSIQHFRVALIPFFAAFCLPVFAHPETLVKVKDAEDQLGARVGYIELDLNSGKILESFRPEERFPMMSTFKVLLCGAVLSRVDAGQEQLGRRIHYSQNDLVEYSPVTEKHLTDGMTVRELCSAAITMSDNTAANLLLTTIGGPKELTAFLHNMGDHVTRLDRWEPELNEAIPNDERDTTMPAAMATTLRKLLTGELLTLASRQQLIDWMEADKVAGPLLRSALPAGWFIADKSGAGERGSRGIIAALGPDGKPSRIVVIYTTGSQATMDERNRQIAEIGASLIKHW"
+
+model:
+  esm_layer: 33
+  pooling_method: "esm_attention"
+  hidden_dim1: 512  # Reduced from 1024
+  hidden_dim2: 256  # Reduced from 512
+  hidden_dim3: 128  # Reduced from 255
+  hidden_dim4: 64   # Reduced from 128
+  dropout_rate: 0.1  # Reduced from 0.5
+  learning_rate: 0.0001  # Reduced from 0.0005
+  batch_size: 64    # Reduced from 256
+  epochs: 500       # Increased from 50
+  loss_type: "mse"  # Changed from huber to mse
+  final_activation: null
+
+# Sequence selection configuration for integrated gradients analysis
+sequence_selection:
+  # Basic options (True/False)
+  include_extremes: true     # Include lowest and highest activity sequences
+  include_median: true       # Include median activity sequence
+
+  # Advanced options (numbers)
+  include_top_n: 10           # Include top 10 additional sequences (beyond highest)
+  include_bottom_n: 10        # Include bottom 10 additional sequences (beyond lowest)
+
+  # Error filtering for top_n and bottom_n selections
+  max_error_percent: 10.0    # Only include sequences with <10% prediction error
+
+  # Custom sequences (empty list - no custom sequences specified)
+  custom_sequences: []
+
+integrated_gradients:
+  method: "token"  # Use token-level IG
+  attribution_method: "signed"  # Use signed attribution to get directional effects
+  steps: 50
+  batch_size: 10
+
+results_dir: "results/betalactamase_token_signed"
+force_retrain: false
