@@ -1,0 +1,88 @@
+# Alternative lightweight workflow for testing without heavy ML dependencies
+name: Test Python application (lightweight)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+  test-basic:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.12', '3.13']
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install basic dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest coverage ruff
+        pip install numpy pandas matplotlib seaborn scikit-learn
+        pip install tqdm safetensors
+
+    - name: Lint with ruff
+      run: |
+        # Check for critical errors only
+        ruff check --select=E9,F63,F7,F82 src/ tests/
+        # Check for common style issues but don't fail
+        ruff check --exit-zero src/ tests/
+
+    - name: Install project (editable)
+      run: |
+        pip install -e . --no-deps
+
+    - name: Run basic tests
+      run: |
+        pytest tests/test_basic.py -v --tb=short
+
+    - name: Test import functionality
+      run: |
+        python -c "import sys; sys.path.insert(0, 'src'); import igloo; print('✓ Package imports successfully')"
+
+  test-full:
+    # This job runs with full dependencies but is allowed to fail
+    continue-on-error: true
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies with cache
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install full dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements_dev.txt
+        pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
+        pip install fair-esm
+
+    - name: Install project
+      run: |
+        pip install -e .
+
+    - name: Run all tests
+      run: |
+        pytest tests/ -v

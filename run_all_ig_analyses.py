@@ -72,7 +72,7 @@ def run_analysis(config_path, log_dir):
     # Create the command
     cmd = [
         sys.executable,
-        "scripts/run_integrated_gradients_unified.py",
+        "scripts/run_integrated_gradients.py",
         config_path
     ]
 

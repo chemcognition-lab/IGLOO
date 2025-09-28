@@ -1,0 +1,7 @@
+sequence_name,position,amino_acid,integrated_gradient,effect_type,effect_magnitude,predicted_activity,baseline_activity,effect_vs_baseline,actual_activity,baseline_actual_activity
+Top_3_err7.2%,66,V,-0.026089285,detrimental,0.026089285,92.81555,86.93536,5.880188,100.0,120.0
+Median_Activity,222,G,-0.014817215,detrimental,0.014817215,78.750465,86.93536,-8.184898,77.0,120.0
+Bottom_7_err2.3%,222,G,-0.014817215,detrimental,0.014817215,78.750465,86.93536,-8.184898,77.0,120.0
+Bottom_8_err3.3%,476,G,-0.014817193,detrimental,0.014817193,80.591774,86.93536,-6.34359,78.0,120.0
+Bottom_9_err8.7%,519,V,-0.0016323372,detrimental,0.0016323372,84.75881,86.93536,-2.1765518,78.0,120.0
+Bottom_4_err6.7%,516,G,-0.00041409105,detrimental,0.00041409105,76.80902,86.93536,-10.126343,72.0,120.0

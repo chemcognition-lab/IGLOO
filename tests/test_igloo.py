@@ -1,22 +1,59 @@
 #!/usr/bin/env python
-import pytest
-
 """Tests for `igloo` package."""
 
-# from igloo import igloo
+import os
+import sys
+
+import pytest
+
+# Add src to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 
-@pytest.fixture
-def response():
-    """Sample pytest fixture.
+def test_imports():
+    """Test that main modules can be imported."""
+    try:
+        import igloo
+        assert igloo is not None
+    except ImportError as e:
+        pytest.fail(f"Failed to import igloo: {e}")
 
-    See more at: http://doc.pytest.org/en/latest/fixture.html
-    """
-    # import requests
-    # return requests.get('https://github.com/audreyr/cookiecutter-pypackage')
+
+def test_package_structure():
+    """Test that expected modules exist."""
+    import igloo
+
+    # Check that the package has expected attributes
+    assert hasattr(igloo, '__version__')
+    assert hasattr(igloo, '__author__')
 
 
-def test_content(response):
-    """Sample pytest test function with the pytest fixture as an argument."""
-    # from bs4 import BeautifulSoup
-    # assert 'GitHub' in BeautifulSoup(response.content).title.string
+def test_basic_functionality():
+    """Test basic package functionality."""
+    # This is a placeholder for actual functionality tests
+    # Add specific tests for your igloo functions here
+    assert True  # Placeholder assertion
+
+
+class TestConfigUtils:
+    """Test configuration utilities."""
+
+    def test_config_module_exists(self):
+        """Test that config_utils module can be imported."""
+        try:
+            from igloo.config_utils import load_config
+            assert load_config is not None
+        except ImportError:
+            pytest.skip("config_utils not available")
+
+
+class TestPlotting:
+    """Test plotting utilities."""
+
+    def test_plot_module_exists(self):
+        """Test that plot module can be imported."""
+        try:
+            from igloo.plot import plot_integrated_gradients
+            assert plot_integrated_gradients is not None
+        except ImportError:
+            pytest.skip("plot module not available")

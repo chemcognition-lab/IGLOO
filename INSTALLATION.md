@@ -1,163 +1,258 @@
-# Environment Setup Guide
+# 🧊 IGLOO Installation Guide
 
-This guide provides multiple options for setting up the IGLOO environment.
+**IGLOO (Integrated Gradients for LOcational sensitivity in prOteins)** - A comprehensive ML pipeline for analyzing structural contributions to performance in protein variants.
 
-## Quick Setup (Recommended)
+## 🚀 Quick Start
 
-### Using the Setup Script
-
-The easiest way to set up the environment is using the provided setup script:
-
+### Option 1: One-Command Setup (Recommended)
 ```bash
-# Make the script executable (if not already)
-chmod +x setup_environment.sh
-
-# Run the setup script
-./setup_environment.sh
+# Clone and setup in one go
+git clone https://github.com/ranaabarghout/IGLOO.git && cd IGLOO && ./quick_setup.sh
 ```
 
-This script will automatically detect whether you have conda or pip available and set up the appropriate environment.
-
-## Manual Setup Options
-
-### Option 1: Conda Environment (Recommended for Scientific Computing)
-
-If you have conda installed:
-
+### Option 2: Platform-Specific Setup
 ```bash
-# Create environment from environment.yml
+# macOS
+./setup_macos.sh
+
+# Linux
+./setup_linux.sh
+
+# Windows
+setup_windows.bat
+```
+
+### Option 3: Using Make (After cloning)
+```bash
+make dev-setup    # Complete development setup
+make prod-setup   # Production setup
+```
+
+---
+
+## 📋 System Requirements
+
+### Minimum Requirements
+- **OS**: Linux (Ubuntu 18.04+), macOS (10.15+), or Windows 10+
+- **Python**: 3.9+ (Python 3.10 recommended)
+- **Memory**: 8GB RAM minimum, 16GB+ recommended
+- **Storage**: 5GB free space (10GB+ for datasets and results)
+- **CPU**: Multi-core processor (4+ cores recommended)
+
+### Recommended Requirements
+- **Memory**: 32GB+ RAM for large protein datasets
+- **GPU**: NVIDIA GPU with 8GB+ VRAM (RTX 3080, A100, etc.)
+- **CUDA**: 11.8+ or 12.1+ for GPU acceleration
+- **Storage**: SSD with 20GB+ free space
+
+### GPU Support
+- **NVIDIA GPUs**: Full support with CUDA 11.8/12.1
+- **Apple Silicon (M1/M2)**: Native support with Metal Performance Shaders
+- **AMD GPUs**: Limited support via ROCm (experimental)
+- **Intel GPUs**: CPU fallback mode
+
+---
+
+## 🛠️ Installation Methods
+
+### Method 1: Conda (Recommended)
+
+#### Prerequisites
+```bash
+# Install Miniconda (if not already installed)
+# Linux/macOS:
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh
+
+# macOS Apple Silicon:
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh
+bash Miniconda3-latest-MacOSX-arm64.sh
+```
+
+#### Installation
+```bash
+# Clone repository
+git clone https://github.com/ranaabarghout/IGLOO.git
+cd IGLOO
+
+# Create conda environment
 conda env create -f environment.yml
 
-# Activate the environment
-conda activate erbc_analysis
+# Activate environment
+conda activate igloo
 
-# Install the package in development mode
+# Install development dependencies (optional)
+pip install -r requirements_dev.txt
+
+# Install IGLOO package
 pip install -e .
 ```
 
-### Option 2: Python Virtual Environment with pip
+### Method 2: Python Virtual Environment
 
-If you prefer using pip:
-
+#### Prerequisites
 ```bash
+# Ensure Python 3.10 is installed
+python3.10 --version
+
+# Install venv if not available
+sudo apt-get install python3.10-venv  # Ubuntu/Debian
+```
+
+#### Installation
+```bash
+# Clone repository
+git clone https://github.com/ranaabarghout/IGLOO.git
+cd IGLOO
+
 # Create virtual environment
-python3 -m venv venv_erbc_analysis
+python3.10 -m venv venv_igloo
 
 # Activate virtual environment
-source venv_erbc_analysis/bin/activate  # On Linux/Mac
-# OR
-venv_erbc_analysis\Scripts\activate     # On Windows
+source venv_igloo/bin/activate  # Linux/macOS
+# venv_igloo\Scripts\activate.bat  # Windows
+
+# Upgrade pip
+pip install --upgrade pip setuptools wheel
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Install the package in development mode
+# Install development dependencies (optional)
+pip install -r requirements_dev.txt
+
+# Install IGLOO package
 pip install -e .
 ```
 
-### Option 3: Direct pip install
+### Method 3: Docker
 
-For a simple installation:
-
+#### Prerequisites
 ```bash
-pip install -r requirements.txt
+# Install Docker
+# Linux: https://docs.docker.com/engine/install/
+# macOS: https://docs.docker.com/desktop/mac/install/
+# Windows: https://docs.docker.com/desktop/windows/install/
+
+# Install Docker Compose
+pip install docker-compose
 ```
 
-## Key Dependencies
-
-The main dependencies included are:
-
-- **Scientific Computing**: numpy, pandas, scipy
-- **Machine Learning**: scikit-learn, xgboost
-- **Deep Learning**: PyTorch (torch, torchvision)
-- **Protein Language Models**: fair-esm
-- **Visualization**: matplotlib, seaborn
-- **Data Storage**: safetensors
-- **Utilities**: tqdm (progress bars)
-
-## GPU Support
-
-For GPU acceleration with PyTorch:
-
-### CUDA 11.8
+#### Installation
 ```bash
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+# Clone repository
+git clone https://github.com/ranaabarghout/IGLOO.git
+cd IGLOO
+
+# Build and start development environment
+docker-compose up igloo-dev
+
+# Or build custom image
+docker build -t igloo:latest .
+docker run -it --gpus all -p 8888:8888 igloo:latest
 ```
 
-### CUDA 12.1
+---
+
+## ⚙️ Configuration
+
+### Environment Setup
 ```bash
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# Copy environment template
+cp .env.template .env
+
+# Edit configuration (required)
+nano .env  # or vim .env, code .env
 ```
 
-### CPU Only
+### Key Configuration Options
 ```bash
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# Data directories
+IGLOO_DATA_DIR=/path/to/your/data
+IGLOO_RESULTS_DIR=/path/to/results
+
+# Compute settings
+CUDA_VISIBLE_DEVICES=0,1,2,3  # GPU devices
+OMP_NUM_THREADS=8             # CPU threads
+
+# Model settings
+ESM_MODEL_NAME=esm2_t33_650M_UR50D
+DEFAULT_BATCH_SIZE=32
 ```
 
-## Verification
+---
 
-To verify your installation works:
+## 🧪 Verification
 
+### Basic Tests
 ```bash
-# Test import of main modules
-python -c "import torch; import esm; import numpy; import pandas; print('All imports successful!')"
+# Activate environment
+conda activate igloo  # or source venv_igloo/bin/activate
 
-# Run a simple analysis script
-python scripts/demo_analysis_methods.py
+# Run basic tests
+make test-fast
+
+# Run full test suite
+make test
+
+# Check installation
+make health-check
 ```
 
-## Troubleshooting
+### Manual Verification
+```python
+# Test core functionality
+python -c "
+import igloo
+from igloo.utils import create_visualizations_and_exports
+from igloo.plot import plot_attributions_on_3d_structure
+print('✅ IGLOO installed successfully!')
+print(f'Version: {igloo.__version__}')
+"
+```
+
+---
+
+## 🚨 Troubleshooting
 
 ### Common Issues
 
-1. **ESM Installation Issues**: If `fair-esm` fails to install, try:
-   ```bash
-   pip install fair-esm --no-deps
-   pip install biotite
-   ```
-
-2. **PyTorch CUDA Issues**: Make sure your CUDA version matches the PyTorch installation.
-
-3. **Memory Issues**: The ESM models require significant GPU memory. For CPU-only usage, expect slower performance.
-
-### Environment File Updates
-
-If you need to update the environment:
-
+#### 1. CUDA/GPU Issues
 ```bash
-# For conda
-conda env update -f environment.yml
+# Check NVIDIA drivers
+nvidia-smi
 
-# For pip
-pip install -r requirements.txt --upgrade
+# Reinstall PyTorch with correct CUDA version
+pip uninstall torch torchvision
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 ```
 
-## Development Setup
-
-For development work:
-
+#### 2. Memory Issues
 ```bash
-# Install development dependencies
-pip install -r requirements_dev.txt
-
-# Install pre-commit hooks (optional)
-pip install pre-commit
-pre-commit install
+# Reduce batch size in configuration
+export DEFAULT_BATCH_SIZE=16
+export DEFAULT_INTERNAL_BATCH_SIZE=4
 ```
 
-## Running Analysis Scripts
-
-Once the environment is set up, you can run the analysis scripts:
-
+#### 3. Import Errors
 ```bash
-# Beta-lactamase analysis
-python scripts/betalactamase_linear_IG.py
+# Check Python path
+export PYTHONPATH="/path/to/IGLOO/src:$PYTHONPATH"
 
-# PafA analysis
-python scripts/PafA_linear_IG.py
-
-# XGBoost analysis
-python scripts/PafA_xgboost_variant_regression.py
+# Reinstall in development mode
+pip install -e .
 ```
 
-Make sure your data files are in the `data/` directory as expected by the scripts.
+---
+
+## 📚 Next Steps
+
+### After Installation
+1. **Verify Installation**: `make health-check`
+2. **Run Demo**: `make demo`
+3. **Start Analysis**: `make analysis`
+4. **Open Jupyter**: `make jupyter`
+
+---
+
+**Need help?** Check our troubleshooting guide or open an issue on GitHub.
