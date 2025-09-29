@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # Development environment with Jupyter
+  igloo-dev:
+    build:
+      context: .
+      target: development
+    ports:
+      - "8888:8888"  # Jupyter Lab
+      - "8000:8000"  # Optional web server
+    volumes:
+      - .:/app
+      - igloo_data:/app/data
+      - igloo_results:/app/results
+    environment:
+      - PYTHONPATH=/app/src
+      - JUPYTER_ENABLE_LAB=yes
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token=''
+    networks:
+      - igloo-network
+
+  # Production environment
+  igloo-prod:
+    build:
+      context: .
+      target: production
+    volumes:
+      - igloo_data:/app/data
+      - igloo_results:/app/results
+    environment:
+      - PYTHONPATH=/app/src
+    networks:
+      - igloo-network
+    profiles:
+      - production
+
+  # Testing environment
+  igloo-test:
+    build:
+      context: .
+      target: testing
+    volumes:
+      - .:/app
+      - igloo_test_results:/app/test-results
+    environment:
+      - PYTHONPATH=/app/src
+    networks:
+      - igloo-network
+    profiles:
+      - testing
+
+  # Database for storing results (optional)
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: igloo
+      POSTGRES_USER: igloo
+      POSTGRES_PASSWORD: igloo_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - igloo-network
+    profiles:
+      - database
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - igloo-network
+    profiles:
+      - cache
+
+volumes:
+  igloo_data:
+    driver: local
+  igloo_results:
+    driver: local
+  igloo_test_results:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  igloo-network:
+    driver: bridge

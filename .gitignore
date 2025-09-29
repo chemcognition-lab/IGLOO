@@ -131,22 +131,3 @@ ENV/
 /results/betalactamase_token_signed/
 /results/results_xgb/
 # Keep these tracked: betalactamase_embedding_signed, ERBC_embedding_signed, PafA_embedding_signed
-
-# Symlinked files (actual files are in docs/)
-# Only ignore if they exist as regular files instead of symlinks
-environment.yml
-environment-cpu.yml
-environment_compatible.yml
-requirements.txt
-requirements_dev.txt
-requirements-cpu.txt
-pyproject.toml
-docker-compose.yml
-Makefile
-LICENSE
-MANIFEST.in
-quick_setup.sh
-setup_environment.sh
-setup_linux.sh
-setup_macos.sh
-setup_windows.bat

@@ -1,1 +1,0 @@
-docs/setup/setup_linux.sh

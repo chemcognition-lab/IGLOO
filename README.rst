@@ -53,9 +53,27 @@ A comprehensive machine learning pipeline for analyzing structural contributions
 .. code-block:: bash
 
     # Clone and setup in one go
-    git clone https://github.com/ranaabarghout/IGLOO.git && cd IGLOO && ./quick_setup.sh
+    git clone https://github.com/ranaabarghout/IGLOO.git && cd IGLOO && ./docs/setup/quick_setup.sh
 
 See `Quick Start Guide <docs/quickstart.rst>`_ for detailed setup instructions and alternative installation methods.
+
+**Manual Setup**
+
+.. code-block:: bash
+
+    # Create conda environment
+    conda env create -f docs/config/environment.yml
+    conda activate igloo
+
+    # Or use pip with requirements
+    pip install -r docs/config/requirements.txt
+
+**Configuration Files:**
+   * **Environment**: `docs/config/environment.yml <docs/config/environment.yml>`_
+   * **Requirements**: `docs/config/requirements.txt <docs/config/requirements.txt>`_
+   * **Development**: `docs/config/requirements_dev.txt <docs/config/requirements_dev.txt>`_
+   * **Project Config**: `docs/config/pyproject.toml <docs/config/pyproject.toml>`_
+   * **Docker**: `docs/config/docker-compose.yml <docs/config/docker-compose.yml>`_
 
 
 📋 **System Requirements**
@@ -140,30 +158,28 @@ See `Quick Start Guide <docs/quickstart.rst>`_ for detailed setup instructions a
 .. code-block:: bash
 
     # Environment setup and validation
-    make dev-setup           # Complete development setup
-    make health-check        # Comprehensive environment validation
-    make setup-env          # Create .env configuration
+    make -f docs/development/Makefile dev-setup    # Complete development setup
+    ./health_check.py                              # Comprehensive environment validation
 
     # Analysis and experiments
-    make analysis           # Run full analysis pipeline
-    make analysis-pafa      # Run PafA analysis only
-    make demo               # Run demo analysis
+    make -f docs/development/Makefile analysis     # Run full analysis pipeline
+    make -f docs/development/Makefile analysis-pafa # Run PafA analysis only
+    make -f docs/development/Makefile demo         # Run demo analysis
 
     # Testing and quality
-    make test               # Run full test suite
-    make test-fast          # Quick tests only
-    make lint               # Code linting
-    make format             # Code formatting
+    make -f docs/development/Makefile test         # Run full test suite
+    make -f docs/development/Makefile test-fast    # Quick tests only
+    make -f docs/development/Makefile lint         # Code linting
+    make -f docs/development/Makefile format       # Code formatting
 
-    # Docker operations
-    make docker-dev         # Development container
-    make docker-prod        # Production container
-    make docker-test        # Testing container
+    # Docker operations (using docker-compose in docs/config/)
+    docker-compose -f docs/config/docker-compose.yml up dev    # Development container
+    docker-compose -f docs/config/docker-compose.yml up prod   # Production container
 
     # Documentation and utilities
-    make docs               # Build documentation
-    make jupyter            # Start Jupyter Lab
-    make clean-all          # Deep cleanup
+    make -f docs/development/Makefile docs         # Build documentation
+    make -f docs/development/Makefile jupyter      # Start Jupyter Lab
+    make -f docs/development/Makefile clean-all    # Deep cleanup
 
 🔍 **Environment Validation**
 ----------------------------
