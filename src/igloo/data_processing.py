@@ -125,9 +125,26 @@ def load_and_prepare_data(config, data_path):
     # Get target column
     target_col = config['data']['target_column']
 
-    # Remove rows with NaN or Inf in target
-    df = df[df[target_col].notna()]
-    df = df[np.isfinite(df[target_col])]
+    # Replace NaN or Inf values with 0 instead of removing rows
+    df[target_col] = df[target_col].fillna(0.0)
+    df[target_col] = df[target_col].replace([np.inf, -np.inf], 0.0)
+
+    # Set wildtype sequence target value to 1.0 (only for beta-lactamase dataset)
+    dataset_name = config['data'].get('name', '').lower()
+    if dataset_name == 'betalactamase':
+        wt_config = config['data']['wildtype']
+        try:
+            wt_seq, wt_idx = get_wildtype_sequence(df, wt_config)
+            if wt_idx >= 0:  # Wildtype found in dataset
+                original_value = df.loc[wt_idx, target_col]
+                df.loc[wt_idx, target_col] = 1.0
+                print(f"Set beta-lactamase wildtype sequence target from {original_value:.4f} to 1.0")
+            else:
+                print("Beta-lactamase wildtype sequence not found in dataset - no target adjustment made")
+        except Exception as e:
+            print(f"Warning: Could not set beta-lactamase wildtype target value: {e}")
+    else:
+        print(f"Dataset '{dataset_name}' - skipping wildtype normalization")
 
     sequences = df['SEQ'].astype(str).tolist()
     y_raw = df[target_col].values.astype(np.float32)

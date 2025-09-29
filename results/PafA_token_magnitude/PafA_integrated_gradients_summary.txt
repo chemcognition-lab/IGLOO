@@ -1,0 +1,147 @@
+PAFA INTEGRATED GRADIENTS ANALYSIS SUMMARY
+==================================================
+
+Analysis Configuration:
+  Integration Method: token
+  Attribution Method: magnitude
+  ESM Layer: 33
+  Pooling Method: esm_attention
+  Integration Steps: 50
+
+Model Performance:
+  R² = 0.3811
+  Pearson r = 0.6184
+  Spearman ρ = 0.6549
+
+Sequences Analyzed:
+  WT:
+    Predicted Activity: 98.4196
+    Effect vs Baseline: 0.0000
+    Actual Activity: 120.0000
+
+  Lowest_Activity:
+    Predicted Activity: 14.2136
+    Effect vs Baseline: -84.2059
+    Actual Activity: 0.0160
+
+  Highest_Activity:
+    Predicted Activity: 99.9025
+    Effect vs Baseline: 1.4829
+    Actual Activity: 320.0000
+
+  Median_Activity:
+    Predicted Activity: 46.6131
+    Effect vs Baseline: -51.8065
+    Actual Activity: 77.0000
+
+  Top_2_err8.2%:
+    Predicted Activity: 192.7438
+    Effect vs Baseline: 94.3242
+    Actual Activity: 210.0000
+
+  Top_3_err3.0%:
+    Predicted Activity: 184.2672
+    Effect vs Baseline: 85.8477
+    Actual Activity: 190.0000
+
+  Top_4_err4.7%:
+    Predicted Activity: 171.4995
+    Effect vs Baseline: 73.0799
+    Actual Activity: 180.0000
+
+  Top_5_err1.0%:
+    Predicted Activity: 178.2696
+    Effect vs Baseline: 79.8500
+    Actual Activity: 180.0000
+
+  Top_6_err2.3%:
+    Predicted Activity: 166.1538
+    Effect vs Baseline: 67.7342
+    Actual Activity: 170.0000
+
+  Top_7_err6.0%:
+    Predicted Activity: 159.7388
+    Effect vs Baseline: 61.3192
+    Actual Activity: 170.0000
+
+  Top_8_err0.4%:
+    Predicted Activity: 160.6066
+    Effect vs Baseline: 62.1870
+    Actual Activity: 160.0000
+
+  Top_9_err4.0%:
+    Predicted Activity: 153.5638
+    Effect vs Baseline: 55.1442
+    Actual Activity: 160.0000
+
+  Top_10_err8.5%:
+    Predicted Activity: 146.4622
+    Effect vs Baseline: 48.0426
+    Actual Activity: 160.0000
+
+  Top_11_err4.2%:
+    Predicted Activity: 143.6719
+    Effect vs Baseline: 45.2523
+    Actual Activity: 150.0000
+
+  Bottom_2_err3.6%:
+    Predicted Activity: 14.4556
+    Effect vs Baseline: -83.9640
+    Actual Activity: 15.0000
+
+  Bottom_3_err4.5%:
+    Predicted Activity: 31.5048
+    Effect vs Baseline: -66.9148
+    Actual Activity: 33.0000
+
+  Bottom_4_err8.4%:
+    Predicted Activity: 32.0702
+    Effect vs Baseline: -66.3493
+    Actual Activity: 35.0000
+
+  Bottom_5_err9.5%:
+    Predicted Activity: 44.8988
+    Effect vs Baseline: -53.5208
+    Actual Activity: 41.0000
+
+  Bottom_6_err4.6%:
+    Predicted Activity: 44.9859
+    Effect vs Baseline: -53.4336
+    Actual Activity: 43.0000
+
+  Bottom_7_err5.4%:
+    Predicted Activity: 43.5327
+    Effect vs Baseline: -54.8869
+    Actual Activity: 46.0000
+
+  Bottom_8_err4.3%:
+    Predicted Activity: 44.9983
+    Effect vs Baseline: -53.4212
+    Actual Activity: 47.0000
+
+  Bottom_9_err5.6%:
+    Predicted Activity: 48.1526
+    Effect vs Baseline: -50.2670
+    Actual Activity: 51.0000
+
+  Bottom_10_err3.8%:
+    Predicted Activity: 52.9484
+    Effect vs Baseline: -45.4712
+    Actual Activity: 51.0000
+
+  Bottom_11_err9.4%:
+    Predicted Activity: 60.1802
+    Effect vs Baseline: -38.2394
+    Actual Activity: 55.0000
+
+TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
+ 1. Position 500 (F): importance = 0.9200
+ 2. Position 498 (L): importance = 0.4100
+ 3. Position 222 (L): importance = 0.4100
+ 4. Position 148 (L): importance = 0.4100
+ 5. Position 346 (L): importance = 0.4100
+ 6. Position 407 (K): importance = 0.3390
+ 7. Position 383 (K): importance = 0.3390
+ 8. Position 195 (K): importance = 0.3390
+ 9. Position 342 (K): importance = 0.3390
+10. Position 447 (I): importance = 0.3290

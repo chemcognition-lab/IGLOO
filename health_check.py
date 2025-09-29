@@ -261,8 +261,8 @@ def run_basic_functionality_test() -> bool:
     try:
         # Test imports
         print_info("Testing core imports...")
-        from igloo.utils import create_visualizations_and_exports
         from igloo.plot import plot_attributions_on_3d_structure
+        from igloo.utils import create_visualizations_and_exports
         print_success("Core function imports successful")
 
         # Test basic PyTorch operations

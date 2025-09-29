@@ -1,0 +1,193 @@
+ERBC INTEGRATED GRADIENTS ANALYSIS SUMMARY
+==================================================
+
+Analysis Configuration:
+  Integration Method: embedding
+  Attribution Method: signed
+  ESM Layer: 33
+  Pooling Method: esm_attention
+  Integration Steps: 50
+
+Model Performance:
+  R² = 0.5673
+  Pearson r = 0.7541
+  Spearman ρ = 0.4795
+
+Sequences Analyzed:
+  WT:
+    Predicted Activity: -0.3220
+    Effect vs Baseline: 0.0000
+    Actual Activity: -0.2332
+
+  Lowest_Activity:
+    Predicted Activity: -0.4499
+    Effect vs Baseline: -0.1278
+    Actual Activity: -0.7103
+
+  Highest_Activity:
+    Predicted Activity: 2.4014
+    Effect vs Baseline: 2.7234
+    Actual Activity: 2.4014
+
+  Median_Activity:
+    Predicted Activity: -0.4981
+    Effect vs Baseline: -0.1760
+    Actual Activity: -0.4673
+
+  Top_2_err2.2%:
+    Predicted Activity: 2.1975
+    Effect vs Baseline: 2.5196
+    Actual Activity: 2.1494
+
+  Top_3_err2.2%:
+    Predicted Activity: 1.7693
+    Effect vs Baseline: 2.0913
+    Actual Activity: 1.7318
+
+  Top_4_err0.4%:
+    Predicted Activity: 1.7221
+    Effect vs Baseline: 2.0441
+    Actual Activity: 1.7158
+
+  Top_5_err3.3%:
+    Predicted Activity: 0.9997
+    Effect vs Baseline: 1.3217
+    Actual Activity: 1.0340
+
+  Top_6_err3.6%:
+    Predicted Activity: 1.0687
+    Effect vs Baseline: 1.3908
+    Actual Activity: 1.0320
+
+  Top_7_err0.0%:
+    Predicted Activity: -0.2912
+    Effect vs Baseline: 0.0308
+    Actual Activity: -0.2912
+
+  Top_8_err8.9%:
+    Predicted Activity: -0.3900
+    Effect vs Baseline: -0.0680
+    Actual Activity: -0.3581
+
+  Top_9_err3.4%:
+    Predicted Activity: -0.3460
+    Effect vs Baseline: -0.0240
+    Actual Activity: -0.3581
+
+  Top_10_err8.0%:
+    Predicted Activity: -0.3868
+    Effect vs Baseline: -0.0648
+    Actual Activity: -0.3581
+
+  Top_11_err9.8%:
+    Predicted Activity: -0.3932
+    Effect vs Baseline: -0.0711
+    Actual Activity: -0.3581
+
+  Bottom_2_err6.3%:
+    Predicted Activity: -0.6519
+    Effect vs Baseline: -0.3298
+    Actual Activity: -0.6134
+
+  Bottom_3_err4.0%:
+    Predicted Activity: -0.5888
+    Effect vs Baseline: -0.2667
+    Actual Activity: -0.6134
+
+  Bottom_4_err9.6%:
+    Predicted Activity: -0.4828
+    Effect vs Baseline: -0.1607
+    Actual Activity: -0.5342
+
+  Bottom_5_err6.2%:
+    Predicted Activity: -0.5673
+    Effect vs Baseline: -0.2453
+    Actual Activity: -0.5342
+
+  Bottom_6_err2.6%:
+    Predicted Activity: -0.5479
+    Effect vs Baseline: -0.2258
+    Actual Activity: -0.5342
+
+  Bottom_7_err7.2%:
+    Predicted Activity: -0.4959
+    Effect vs Baseline: -0.1738
+    Actual Activity: -0.5342
+
+  Bottom_8_err1.0%:
+    Predicted Activity: -0.5394
+    Effect vs Baseline: -0.2174
+    Actual Activity: -0.5342
+
+  Bottom_9_err8.5%:
+    Predicted Activity: -0.5795
+    Effect vs Baseline: -0.2575
+    Actual Activity: -0.5342
+
+  Bottom_10_err9.4%:
+    Predicted Activity: -0.4838
+    Effect vs Baseline: -0.1618
+    Actual Activity: -0.5342
+
+  Bottom_11_err2.1%:
+    Predicted Activity: -0.5232
+    Effect vs Baseline: -0.2012
+    Actual Activity: -0.5342
+
+TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
+ 1. Position 61 (V): importance = 0.7607
+ 2. Position 29 (L): importance = 0.0159
+ 3. Position 369 (G): importance = 0.0076
+ 4. Position 370 (C): importance = 0.0075
+ 5. Position 368 (E): importance = 0.0063
+ 6. Position 27 (G): importance = 0.0054
+ 7. Position 382 (C): importance = 0.0046
+ 8. Position 374 (I): importance = 0.0043
+ 9. Position 380 (L): importance = 0.0035
+10. Position 28 (P): importance = 0.0033
+
+SIGNED GRADIENT ANALYSIS:
+------------------------------
+
+TOP 10 MOST BENEFICIAL POSITIONS (positive gradients):
+ 1. Position 61 (F): gradient = +1.3406 [from Highest_Activity]
+ 2. Position 61 (I): gradient = +1.2524 [from Top_2_err2.2%]
+ 3. Position 61 (L): gradient = +1.0430 [from Top_3_err2.2%]
+ 4. Position 61 (C): gradient = +1.0007 [from Top_4_err0.4%]
+ 5. Position 61 (H): gradient = +0.6961 [from Top_6_err3.6%]
+ 6. Position 61 (V): gradient = +0.5828 [from Top_5_err3.3%]
+ 7. Position 29 (L): gradient = +0.0507 [from Top_5_err3.3%]
+ 8. Position 374 (Y): gradient = +0.0144 [from Top_11_err9.8%]
+ 9. Position 380 (P): gradient = +0.0123 [from Top_10_err8.0%]
+10. Position 28 (P): gradient = +0.0093 [from Top_5_err3.3%]
+
+TOP 10 MOST DETRIMENTAL POSITIONS (negative gradients):
+ 1. Position 61 (T): gradient = -0.1565 [from Bottom_2_err6.3%]
+ 2. Position 61 (V): gradient = -0.1265 [from Bottom_9_err8.5%]
+ 3. Position 61 (V): gradient = -0.0907 [from Median_Activity]
+ 4. Position 61 (S): gradient = -0.0894 [from Bottom_8_err1.0%]
+ 5. Position 61 (V): gradient = -0.0830 [from Bottom_5_err6.2%]
+ 6. Position 61 (V): gradient = -0.0407 [from Bottom_11_err2.1%]
+ 7. Position 61 (V): gradient = -0.0397 [from Lowest_Activity]
+ 8. Position 61 (V): gradient = -0.0390 [from Bottom_6_err2.6%]
+ 9. Position 61 (V): gradient = -0.0373 [from Bottom_7_err7.2%]
+10. Position 61 (V): gradient = -0.0364 [from Bottom_3_err4.0%]
+
+AMINO ACID TYPE EFFECTS (averaged across all positions):
+Most beneficial amino acid types:
+  1. C: avg effect = +0.0029 (appeared 309 times)
+  2. F: avg effect = +0.0025 (appeared 528 times)
+  3. H: avg effect = +0.0018 (appeared 383 times)
+  4. I: avg effect = +0.0015 (appeared 841 times)
+  5. L: avg effect = +0.0007 (appeared 1560 times)
+Most detrimental amino acid types:
+  1. M: avg effect = -0.0001 (appeared 288 times)
+  2. G: avg effect = -0.0001 (appeared 1365 times)
+  3. S: avg effect = -0.0002 (appeared 603 times)
+  4. T: avg effect = -0.0003 (appeared 577 times)
+
+SUMMARY STATISTICS:
+  Total positions analyzed: 15912
+  Beneficial positions: 5928 (37.3%)
+  Detrimental positions: 9321 (58.6%)
+  Neutral positions: 663 (4.2%)
