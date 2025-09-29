@@ -131,3 +131,21 @@ ENV/
 /results/betalactamase_token_signed/
 /results/results_xgb/
 # Keep these tracked: betalactamase_embedding_signed, ERBC_embedding_signed, PafA_embedding_signed
+
+# Configuration files that have been organized into docs/config/
+# pyproject.toml needs to stay in root for pip install -e . to work
+environment.yml
+environment-cpu.yml
+environment_compatible.yml
+requirements.txt
+requirements_dev.txt
+requirements-cpu.txt
+docker-compose.yml
+Makefile
+LICENSE
+MANIFEST.in
+quick_setup.sh
+setup_environment.sh
+setup_linux.sh
+setup_macos.sh
+setup_windows.bat

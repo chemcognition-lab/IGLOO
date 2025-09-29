@@ -68,14 +68,14 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/docs/config/requirements*.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
 
     - name: Install full dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements_dev.txt
+        pip install -r docs/config/requirements_dev.txt
         pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
         pip install fair-esm
 
