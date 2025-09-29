@@ -76,7 +76,7 @@ See `Quick Start Guide <docs/quickstart.rst>`_ for detailed setup instructions a
    * **Docker**: `docs/config/docker-compose.yml <docs/config/docker-compose.yml>`_
 
 
-📋 **System Requirements**
+**System Requirements**
 --------------------------
 
 **Minimum Requirements:**
@@ -90,7 +90,7 @@ See `Quick Start Guide <docs/quickstart.rst>`_ for detailed setup instructions a
    * CUDA 11.8+ or 12.1+
    * SSD storage
 
-🔬 **Usage Examples**
+**Usage Examples**
 --------------------
 
 **Configuration-Driven Analysis (Recommended)**
@@ -181,7 +181,7 @@ See `Quick Start Guide <docs/quickstart.rst>`_ for detailed setup instructions a
     make -f docs/development/Makefile jupyter      # Start Jupyter Lab
     make -f docs/development/Makefile clean-all    # Deep cleanup
 
-🔍 **Environment Validation**
+**Environment Validation**
 ----------------------------
 
 Verify your installation with our comprehensive health check:
@@ -198,7 +198,7 @@ This will check:
    * ✅ Data file integrity
    * ✅ Basic functionality tests
 
-📚 **Documentation**
+**Documentation**
 -------------------
 
 * **Quick Start Guide**: `docs/quickstart.rst <docs/quickstart.rst>`_
@@ -210,7 +210,7 @@ This will check:
 * **API Documentation**: Coming soon
 * **Examples**: ``examples/`` directory
 
-🤝 **Contributing**
+**Contributing**
 ------------------
 
 We welcome contributions! To get started:
