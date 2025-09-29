@@ -108,5 +108,45 @@ ENV/
 .vscode/
 .idea/
 
+# Data and embeddings
 /data/embeddings
 /src/igloo/data
+
+# Results folders (keep specific embedding_signed folders tracked)
+/results/ERBC_ig/
+/results/PafA/
+/results/PafA_3d_analysis/
+/results/PafA_embedding_magnitude/
+/results/PafA_embedding_signed_global_norm/
+/results/PafA_ig/
+/results/PafA_token_level_ig/
+/results/PafA_token_magnitude/
+/results/PafA_token_signed/
+/results/PafA_token_signed_global_norm/
+/results/betalactamase/
+/results/betalactamase_embedding_magnitude/
+/results/betalactamase_ig/
+/results/betalactamase_ig_train_test/
+/results/betalactamase_token_magnitude/
+/results/betalactamase_token_signed/
+/results/results_xgb/
+# Keep these tracked: betalactamase_embedding_signed, ERBC_embedding_signed, PafA_embedding_signed
+
+# Symlinked files (actual files are in docs/)
+# Only ignore if they exist as regular files instead of symlinks
+environment.yml
+environment-cpu.yml
+environment_compatible.yml
+requirements.txt
+requirements_dev.txt
+requirements-cpu.txt
+pyproject.toml
+docker-compose.yml
+Makefile
+LICENSE
+MANIFEST.in
+quick_setup.sh
+setup_environment.sh
+setup_linux.sh
+setup_macos.sh
+setup_windows.bat

@@ -39,11 +39,11 @@ def test_config_loading():
 
             # Load config
             config = load_config(str(config_path))
-            print(f"   ✓ Successfully loaded")
+            print("   ✓ Successfully loaded")
 
             # Validate config
             validated_config = validate_config(config)
-            print(f"   ✓ Successfully validated")
+            print("   ✓ Successfully validated")
 
             # Check key components
             dataset_name = validated_config['data']['name']
@@ -58,7 +58,7 @@ def test_config_loading():
             print(f"   ❌ Error: {e}")
             return False
 
-    print(f"\n✅ All configuration files are valid!")
+    print("\n✅ All configuration files are valid!")
     return True
 
 
@@ -113,11 +113,11 @@ def print_usage_examples():
         print(f"\n# {description}")
         print(f"python scripts/run_integrated_gradients.py --config {config_file}")
 
-    print(f"\n# Validate config only")
-    print(f"python scripts/run_integrated_gradients.py --config configs/erbc_config.yaml --validate-only")
+    print("\n# Validate config only")
+    print("python scripts/run_integrated_gradients.py --config configs/erbc_config.yaml --validate-only")
 
-    print(f"\n# For help")
-    print(f"python scripts/run_integrated_gradients.py --help")
+    print("\n# For help")
+    print("python scripts/run_integrated_gradients.py --help")
 
 
 if __name__ == "__main__":
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     print_usage_examples()
 
     if success:
-        print(f"\n🎉 All tests passed! The unified runner is ready to use.")
+        print("\n🎉 All tests passed! The unified runner is ready to use.")
     else:
-        print(f"\n❌ Some tests failed. Please check the errors above.")
+        print("\n❌ Some tests failed. Please check the errors above.")
         sys.exit(1)

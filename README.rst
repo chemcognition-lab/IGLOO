@@ -25,78 +25,38 @@
 
 A comprehensive machine learning pipeline for analyzing structural contributions to performance in protein variants using Integrated Gradients and advanced attribution methods.
 
-✨ **Key Features**
+**Key Features**
 ------------------
 
-🧬 **Protein Analysis**
+**Protein Analysis**
    * ESM-2 protein language model integration
    * Token-level and embedding-level attribution analysis
    * Support for multiple protein datasets (PafA, Beta-lactamase, ERBC)
    * Mutation effect analysis with beneficial/detrimental classification
 
-🎯 **Attribution Methods**
+**Attribution Methods**
    * Integrated Gradients with magnitude and signed analysis
-   * XGBoost-based variant regression
    * Comprehensive statistical analysis of amino acid contributions
    * Position-specific and amino acid type analysis
 
-📊 **Visualization & Results**
+**Visualization & Results**
    * 3D protein structure visualization with PyMOL and py3Dmol
-   * Interactive HTML visualizations
    * Comprehensive CSV exports for further analysis
    * Publication-ready plots and figures
 
-⚡ **High Performance**
-   * GPU acceleration with CUDA support
-   * Batch processing for large datasets
-   * Memory-optimized operations
-   * Multi-platform support (Linux, macOS, Windows)
 
-🚀 **Quick Start**
+**Quick Start**
 -----------------
 
-**Option 1: One-Command Setup (Recommended)**
+**One-Command Setup (Recommended)**
 
 .. code-block:: bash
 
     # Clone and setup in one go
     git clone https://github.com/ranaabarghout/IGLOO.git && cd IGLOO && ./quick_setup.sh
 
-**Option 2: Platform-Specific Setup**
+See `Quick Start Guide <docs/quickstart.rst>`_ for detailed setup instructions and alternative installation methods.
 
-.. code-block:: bash
-
-    # macOS (with Apple Silicon optimizations)
-    ./setup_macos.sh
-
-    # Linux (with CUDA support)
-    ./setup_linux.sh
-
-    # Windows
-    setup_windows.bat
-
-**Option 3: Using Make**
-
-.. code-block:: bash
-
-    make dev-setup    # Complete development setup
-    make prod-setup   # Production setup
-    make docker-dev   # Docker development environment
-
-**Option 4: Manual Setup**
-
-.. code-block:: bash
-
-    # Conda (recommended)
-    conda env create -f environment.yml
-    conda activate igloo
-    pip install -e .
-
-    # Or pip virtual environment
-    python3 -m venv venv_igloo
-    source venv_igloo/bin/activate
-    pip install -r requirements.txt
-    pip install -e .
 
 📋 **System Requirements**
 --------------------------
@@ -112,13 +72,21 @@ A comprehensive machine learning pipeline for analyzing structural contributions
    * CUDA 11.8+ or 12.1+
    * SSD storage
 
-**Platform Support:**
-   * ✅ Linux (Ubuntu 18.04+, CentOS, RHEL)
-   * ✅ macOS (10.15+, native Apple Silicon support)
-   * ✅ Windows 10+ (WSL2 recommended)
-
 🔬 **Usage Examples**
 --------------------
+
+**Configuration-Driven Analysis (Recommended)**
+
+.. code-block:: bash
+
+    # Run analysis using the main configuration-driven script
+    python scripts/run_integrated_gradients.py configs/pafa_config.yaml
+    python scripts/run_integrated_gradients.py configs/betalactamase_config.yaml
+    python scripts/run_integrated_gradients.py configs/erbc_config.yaml
+
+    # Run with specific attribution methods
+    python scripts/run_integrated_gradients.py configs/pafa_config_token-magnitude.yaml
+    python scripts/run_integrated_gradients.py configs/betalactamase_config_embedding-signed.yaml
 
 **Run Complete Analysis Pipeline**
 
@@ -217,9 +185,12 @@ This will check:
 📚 **Documentation**
 -------------------
 
-* **Installation Guide**: `INSTALLATION.md <INSTALLATION.md>`_
-* **Environment Setup**: `ENVIRONMENT_SETUP.md <ENVIRONMENT_SETUP.md>`_
-* **Setup Files Overview**: `SETUP_README.md <SETUP_README.md>`_
+* **Quick Start Guide**: `docs/quickstart.rst <docs/quickstart.rst>`_
+* **Installation Guide**: `docs/setup/installation.md <docs/setup/installation.md>`_
+* **Environment Setup**: `docs/setup/environment_setup.md <docs/setup/environment_setup.md>`_
+* **Setup Files Overview**: `docs/setup/setup_guide.md <docs/setup/setup_guide.md>`_
+* **Configuration Guide**: `docs/configuration/configuration_guide.md <docs/configuration/configuration_guide.md>`_
+* **Results Guide**: `docs/results_guide.md <docs/results_guide.md>`_
 * **API Documentation**: Coming soon
 * **Examples**: ``examples/`` directory
 
@@ -240,9 +211,9 @@ We welcome contributions! To get started:
     # Check code quality
     make check-all
 
-See `CONTRIBUTING.rst <CONTRIBUTING.rst>`_ for detailed guidelines.
+See `docs/development/contributing.rst <docs/development/contributing.rst>`_ for detailed guidelines.
 
-🐛 **Troubleshooting**
+**Troubleshooting**
 ---------------------
 
 **Common Issues:**
@@ -258,25 +229,25 @@ See `CONTRIBUTING.rst <CONTRIBUTING.rst>`_ for detailed guidelines.
 * **Linux**: Install build essentials, check CUDA paths
 * **Windows**: Install Visual C++ Build Tools, consider WSL2
 
-📄 **License**
+**License**
 -------------
 
 This project is licensed under the MIT License - see the `LICENSE <LICENSE>`_ file for details.
 
-🙏 **Acknowledgments**
+**Acknowledgments**
 ---------------------
 
 * ESM-2 protein language models by Meta AI
 * PyTorch and Captum teams for attribution methods
 * The broader computational biology community
 
-📞 **Support**
+**Support**
 -------------
 
-* 🐛 `Report Issues <https://github.com/ranaabarghout/IGLOO/issues>`_
-* 💬 `Ask Questions <https://github.com/ranaabarghout/IGLOO/discussions>`_
-* 📧 `Contact <mailto:ranamoneim@gmail.com>`_
-* 📖 `Documentation <https://igloo.readthedocs.io>`_
+* `Report Issues <https://github.com/ranaabarghout/IGLOO/issues>`_
+* `Ask Questions <https://github.com/ranaabarghout/IGLOO/discussions>`_
+* `Contact <mailto:ranamoneim@gmail.com>`_
+* `Documentation <https://igloo.readthedocs.io>`_
 
 ---
 
