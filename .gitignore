@@ -149,3 +149,5 @@ setup_environment.sh
 setup_linux.sh
 setup_macos.sh
 setup_windows.bat
+
+generate_MLSB_figure.py

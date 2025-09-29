@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
 
 
 def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[str] = None) -> None:
@@ -1023,6 +1024,7 @@ def plot_attributions_on_3d_structure(
         legend_path = save_path.replace('.html', '_legend.png')
         create_attribution_colorbar(attr_min, attr_max, color_scheme, legend_path)
 
+
 def create_attribution_colorbar(
     attr_min: float,
     attr_max: float,
@@ -1089,3 +1091,96 @@ def create_attribution_colorbar(
         print(f"Attribution colorbar saved to: {save_path}")
 
     plt.close()
+
+
+def plot_attribution_heatmap(
+    data,
+    x_labels=None,
+    y_labels=None,
+    title="Attribution Heatmap",
+    value_label="Attribution",
+    vmin=None,
+    vmax=None,
+    center=0.0,
+    figsize=(8, 4),
+    output_path="attribution_heatmap.png"
+):
+    """
+    Plot attribution heatmap with red-white-blue colormap.
+
+    Args:
+        data: 2D array-like data for the heatmap
+        x_labels: Labels for x-axis (columns)
+        y_labels: Labels for y-axis (rows)
+        title: Title for the plot
+        value_label: Label for the colorbar
+        vmin: Minimum value for color scale
+        vmax: Maximum value for color scale
+        center: Center value for diverging colormap
+        figsize: Figure size as (width, height)
+        output_path: Path to save the figure
+
+    Returns:
+        str: Path to the saved figure
+    """
+    # Set Noto Sans font with bigger size
+    plt.rcParams.update({
+        'font.family': 'Noto Sans',
+        'font.size': 14,
+        'axes.titlesize': 16,
+        'axes.labelsize': 14,
+        'xtick.labelsize': 13,
+        'ytick.labelsize': 13,
+        'legend.fontsize': 13
+    })
+
+    data = np.asarray(data, dtype=float)
+
+    if vmin is None:
+        vmin = np.nanmin(data)
+    if vmax is None:
+        vmax = np.nanmax(data)
+
+    # normalization around zero
+    norm = TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
+
+    # red → white → blue colormap
+    rwb = LinearSegmentedColormap.from_list("rwb", ["red", "white", "blue"], N=256)
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=160)
+    im = ax.imshow(data, cmap=rwb, norm=norm, aspect="auto", interpolation="nearest")
+
+    if x_labels is not None:
+        # Set ticks for every position
+        ax.set_xticks(np.arange(len(x_labels)))
+
+        # Create labels - only show every 10th position number
+        tick_labels = []
+        for i in range(len(x_labels)):
+            if (i + 1) % 10 == 0:  # Every 10th position
+                tick_labels.append(str(i + 1))
+            else:
+                tick_labels.append("")
+
+        ax.set_xticklabels(tick_labels)
+        ax.set_xlabel("Position")
+    if y_labels is not None:
+        ax.set_yticks(np.arange(len(y_labels)))
+        ax.set_yticklabels(y_labels)
+
+    ax.set_title(title, pad=10)
+
+    # Create colorbar with reduced spacing and custom ticks
+    cbar = fig.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
+    cbar.set_label(value_label)
+
+    # Set specific ticks for min, zero, and max values
+    tick_values = [vmin, center, vmax]
+    tick_labels = [f'{vmin:.3f}', '0.000', f'{vmax:.3f}']
+    cbar.set_ticks(tick_values)
+    cbar.set_ticklabels(tick_labels)
+
+    fig.tight_layout()
+    fig.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
