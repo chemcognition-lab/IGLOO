@@ -7,15 +7,38 @@
 delete all
 
 # Load all PDB files
-load betalactamase_4ZJ3_Bottom_4_err0.0%_ig_colored.pdb, betalactamase_4ZJ3_Bottom_4_err0.0pct_ig_colored
+load betalactamase_AF3_Bottom_4_err0.0%_ig_colored.pdb, betalactamase_AF3_Bottom_4_err0.0pct_ig_colored
 
 # Set up the visualization
 hide everything
 show cartoon, all
 
-# Color by B-factor with red_white_blue spectrum (range -1 to 1)
-# Red = beneficial (positive IG), Blue = detrimental (negative IG)
-spectrum b, red_white_blue, all, -1, 1
+# Color by B-factor with red_white_blue spectrum (range -100 to 100 (per-variant scale, x100))
+# Red = detrimental (negative IG), Blue = beneficial (positive IG)
+
+# Step 1: Color everything white as baseline
+color white, all
+
+# Step 2: Create selections for different IG ranges (scaled x100)
+select strong_negative, (b < -10)
+select weak_negative, (b > -10) and (b < -2)
+select near_zero, (b > -2) and (b < 2)
+select weak_positive, (b > 2) and (b < 10)
+select strong_positive, (b > 10)
+
+# Step 3: Apply colors manually for better control
+color red, strong_negative
+color salmon, weak_negative
+color white, near_zero
+color lightblue, weak_positive
+color blue, strong_positive
+
+# Step 4: Apply spectrum only to non-zero values for fine-tuning
+select non_zero, (b < -2) or (b > 2)
+spectrum b, red_white_blue, non_zero, -100, 100
+
+# Deselect all for clean view
+deselect
 
 # Set cartoon transparency for better visualization
 set cartoon_transparency, 0.1
@@ -41,7 +64,8 @@ center all
 print("\n" + "="*60)
 print("INTEGRATED GRADIENTS COLOR SCALE:")
 print("="*60)
-print("RED    = Beneficial effects (positive IG values)")
+print("RED    = Detrimental effects (negative IG values)")
 print("WHITE  = Neutral (zero IG values)")
-print("BLUE   = Detrimental effects (negative IG values)")
+print("BLUE   = Beneficial effects (positive IG values)")
+print("RANGE  = range -100 to 100 (per-variant scale, x100)")
 print("="*60)

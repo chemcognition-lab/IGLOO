@@ -13,9 +13,11 @@ import os
 import sys
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 from Bio import PDB
+from matplotlib.colors import LinearSegmentedColormap
 
 # Add the src directory to the path to import igloo modules
 sys.path.append(str(Path(__file__).parent.parent / "src"))
@@ -24,13 +26,25 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 # -----------------------------
 # Load CSV and normalize IG data
 # -----------------------------
-def load_and_normalize_ig(csv_path):
+def load_and_normalize_ig(csv_path, normalization_method="global"):
     df = pd.read_csv(csv_path)
 
-    # Normalize per variant (ensures each variant spans [-1, 1])
-    df["ig_normalized"] = df.groupby("sequence_name")["integrated_gradient"].transform(
-        lambda x: x / x.abs().max() if x.abs().max() > 0 else x
-    )
+    if normalization_method == "per_variant":
+        # Normalize per variant (ensures each variant spans [-1, 1])
+        df["ig_normalized"] = df.groupby("sequence_name")["integrated_gradient"].transform(
+            lambda x: x / x.abs().max() if x.abs().max() > 0 else x
+        )
+    elif normalization_method == "global":
+        # Use global scaling to match heatmap exactly (same as TwoSlopeNorm approach)
+        # This matches how the heatmap normalizes colors around zero
+        # TwoSlopeNorm preserves the actual vmin/vmax, it does NOT make them symmetric
+
+        # Don't force symmetry - use the actual range like TwoSlopeNorm does
+        # This preserves the exact color mapping that appears in heatmaps
+        df["ig_normalized"] = df["integrated_gradient"]
+    else:
+        raise ValueError(f"Unknown normalization method: {normalization_method}")
+
     return df
 
 
@@ -44,7 +58,7 @@ def load_config(config_path):
 def find_pdb_file(dataset_name, pdb_dir="data/PDBs"):
     """Find the appropriate PDB file for the dataset."""
     pdb_patterns = {
-        'betalactamase': ['betalactamase_4ZJ3.pdb', '4ZJ3.pdb', 'betalactamase.pdb'],
+        'betalactamase': ['betalactamase_AF3.pdb', 'betalactamase.pdb'],
         'pafa': ['pafa_5TJ3.pdb', 'PafA.pdb'],
         'erbc': ['erbc_AF3.pdb', 'ERBC.pdb']
     }
@@ -66,7 +80,7 @@ def find_pdb_file(dataset_name, pdb_dir="data/PDBs"):
     raise FileNotFoundError(f"No PDB file found for dataset '{dataset_name}' in {pdb_dir}")
 
 
-def load_ig_data(results_dir):
+def load_ig_data(results_dir, normalization_method="global"):
     """Load integrated gradients data from the detailed CSV file."""
     csv_files = list(Path(results_dir).glob("*amino_acid_effects_detailed.csv"))
 
@@ -75,7 +89,7 @@ def load_ig_data(results_dir):
 
     csv_file = csv_files[0]  # Use the first one found
     print(f"Loading IG data from: {csv_file}")
-    return load_and_normalize_ig(csv_file)
+    return load_and_normalize_ig(csv_file, normalization_method)
 
 
 # -----------------------------
@@ -89,6 +103,14 @@ def write_pdb_with_ig(variant_name, df, pdb_in, pdb_out, chain_id="A"):
     subset = df[df["sequence_name"] == variant_name]
     pos_to_ig = dict(zip(subset["position"], subset["ig_normalized"]))
 
+    # Debug: Print IG value statistics for this variant
+    ig_values = subset["ig_normalized"].values
+    print(f"  Variant {variant_name} IG stats:")
+    print(f"    Min: {ig_values.min():.4f}, Max: {ig_values.max():.4f}")
+    print(f"    Mean: {ig_values.mean():.4f}, Std: {ig_values.std():.4f}")
+    near_zero_count = len(ig_values[(ig_values >= -0.01) & (ig_values <= 0.01)])
+    print(f"    Values near zero (±0.01): {near_zero_count}/{len(ig_values)}")
+
     modified_residues = 0
     for model in structure:
         for chain in model:
@@ -98,8 +120,11 @@ def write_pdb_with_ig(variant_name, df, pdb_in, pdb_out, chain_id="A"):
                 res_id = residue.get_id()[1]  # residue number
                 if res_id in pos_to_ig:
                     ig_val = float(pos_to_ig[res_id])
+                    # Scale up the IG value so it's visible in PDB B-factor field (2 decimal places)
+                    # Multiply by 100 to make small values visible
+                    scaled_ig_val = ig_val * 100.0
                     for atom in residue:
-                        atom.set_bfactor(ig_val)
+                        atom.set_bfactor(scaled_ig_val)
                     modified_residues += 1
                 else:
                     for atom in residue:
@@ -125,9 +150,26 @@ def get_available_variants(df):
 # -----------------------------
 # Generate PyMOL script for red_white_blue coloring
 # -----------------------------
-def generate_pymol_script(output_dir, pdb_files, dataset_name):
+def generate_pymol_script(output_dir, pdb_files, dataset_name, df=None, normalization_method="global"):
     """Generate a PyMOL script to visualize PDB files with red_white_blue coloring."""
     script_path = output_dir / f"{dataset_name}_ig_visualization.pml"
+
+    # Determine color range based on normalization method
+    if normalization_method == "global" and df is not None:
+        # For global normalization, use the actual data range to match heatmap exactly
+        vmin = df["ig_normalized"].min()
+        vmax = df["ig_normalized"].max()
+        color_range_text = f"range {vmin:.3f} to {vmax:.3f} (global scale - matches heatmap, scaled x100 in PDB)"
+    elif normalization_method == "per_variant":
+        color_range_text = "range -100 to 100 (per-variant scale, x100)"
+    else:
+        # Fallback for any other normalization method
+        if df is not None:
+            vmin = df["ig_normalized"].min()
+            vmax = df["ig_normalized"].max()
+            color_range_text = f"range {vmin:.3f} to {vmax:.3f} (scaled x100 in PDB)"
+        else:
+            color_range_text = "range -100 to 100 (default scale, x100)"
 
     script_lines = [
         f"# PyMOL script for visualizing {dataset_name} integrated gradients",
@@ -152,9 +194,32 @@ def generate_pymol_script(output_dir, pdb_files, dataset_name):
         "hide everything",
         "show cartoon, all",
         "",
-        "# Color by B-factor with red_white_blue spectrum (range -1 to 1)",
-        "# Red = beneficial (positive IG), Blue = detrimental (negative IG)",
-        "spectrum b, red_white_blue, all, -1, 1",
+        f"# Color by B-factor with red_white_blue spectrum ({color_range_text})",
+        "# Red = detrimental (negative IG), Blue = beneficial (positive IG)",
+        "",
+        "# Step 1: Color everything white as baseline",
+        "color white, all",
+        "",
+        "# Step 2: Create selections for different IG ranges (scaled x100)",
+        "select strong_negative, (b < -10)",
+        "select weak_negative, (b > -10) and (b < -2)",
+        "select near_zero, (b > -2) and (b < 2)",
+        "select weak_positive, (b > 2) and (b < 10)",
+        "select strong_positive, (b > 10)",
+        "",
+        "# Step 3: Apply colors manually for better control",
+        "color red, strong_negative",
+        "color salmon, weak_negative",
+        "color white, near_zero",
+        "color lightblue, weak_positive",
+        "color blue, strong_positive",
+        "",
+        "# Step 4: Apply spectrum only to non-zero values for fine-tuning",
+        "select non_zero, (b < -2) or (b > 2)",
+        "spectrum b, red_white_blue, non_zero, -100, 100",
+        "",
+        "# Deselect all for clean view",
+        "deselect",
         "",
         "# Set cartoon transparency for better visualization",
         "set cartoon_transparency, 0.1",
@@ -180,9 +245,10 @@ def generate_pymol_script(output_dir, pdb_files, dataset_name):
         "print(\"\\n\" + \"=\"*60)",
         "print(\"INTEGRATED GRADIENTS COLOR SCALE:\")",
         "print(\"=\"*60)",
-        "print(\"RED    = Beneficial effects (positive IG values)\")",
+        "print(\"RED    = Detrimental effects (negative IG values)\")",
         "print(\"WHITE  = Neutral (zero IG values)\")",
-        "print(\"BLUE   = Detrimental effects (negative IG values)\")",
+        "print(\"BLUE   = Beneficial effects (positive IG values)\")",
+        f"print(\"RANGE  = {color_range_text}\")",
         "print(\"=\"*60)"
     ])
 
@@ -195,23 +261,130 @@ def generate_pymol_script(output_dir, pdb_files, dataset_name):
     return script_path
 
 
+def generate_color_legend(output_dir, dataset_name, df=None, normalization_method="global",
+                          figsize=(2, 8), dpi=300):
+    """
+    Generate a standalone color gradient legend for IG values.
+
+    Args:
+        output_dir: Directory to save the legend
+        dataset_name: Name of the dataset (for filename)
+        df: DataFrame containing IG data
+        normalization_method: "global" or "per_variant"
+        figsize: Figure size as (width, height)
+        dpi: Resolution for the saved image
+
+    Returns:
+        str: Path to the saved legend image
+    """
+    # Create red-white-blue colormap (red=negative/detrimental, blue=positive/beneficial)
+    rwb_colormap = LinearSegmentedColormap.from_list(
+        "red_white_blue",
+        ["red", "white", "blue"],
+        N=256
+    )
+
+    # Determine value range
+    if normalization_method == "global" and df is not None:
+        # For global normalization, use the actual data range (like TwoSlopeNorm)
+        vmin = df["ig_normalized"].min()
+        vmax = df["ig_normalized"].max()
+        title = "IG Score\n(Global Scale)"
+    else:
+        # For per-variant normalization, show the actual original range
+        if df is not None:
+            # Get the actual min/max from the original integrated_gradient values
+            actual_vmin = df["integrated_gradient"].min()
+            actual_vmax = df["integrated_gradient"].max()
+            # Ensure symmetric range around zero for proper diverging colormap
+            abs_max = max(abs(actual_vmin), abs(actual_vmax))
+            vmin, vmax = -abs_max, abs_max
+        else:
+            vmin, vmax = -1.0, 1.0
+        title = "IG Score\n(Per-Variant Scale)"
+
+    # Create figure and colorbar
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+
+    # Create a ScalarMappable for the colorbar
+    sm = plt.cm.ScalarMappable(cmap=rwb_colormap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
+    sm.set_array([])
+
+    # Create vertical colorbar
+    cbar = fig.colorbar(sm, ax=ax, orientation='vertical', fraction=1.0, pad=0.0)
+
+    # Set title and labels - position to the left of colorbar
+    cbar.set_label(title, fontsize=14, fontweight='bold', labelpad=-50, rotation=0, ha='right', va='center')
+
+    # Set specific ticks at key values
+    tick_values = [vmin, 0, vmax]
+    tick_labels = [f'{vmin:.2f}', '0.00', f'{vmax:.2f}']
+    cbar.set_ticks(tick_values)
+    cbar.set_ticklabels(tick_labels)
+
+    # Style the colorbar
+    cbar.ax.tick_params(labelsize=12)
+
+    # Add text annotations with better spacing to prevent overlap
+    text_offset = 2.0  # Horizontal offset from colorbar
+
+    # Position text at specific fractions of the range with closer spacing
+    cbar.ax.text(text_offset, vmax * 0.85, 'Beneficial',
+                 ha='left', va='center', fontsize=10, color='darkblue', weight='bold')
+    cbar.ax.text(text_offset, vmax * 0.7, '(Positive)',
+                 ha='left', va='center', fontsize=9, color='darkblue')
+
+    cbar.ax.text(text_offset, 0, 'Neutral',
+                 ha='left', va='center', fontsize=10, color='black', weight='bold')
+
+    cbar.ax.text(text_offset, vmin * 0.7, 'Detrimental',
+                 ha='left', va='center', fontsize=10, color='darkred', weight='bold')
+    cbar.ax.text(text_offset, vmin * 0.85, '(Negative)',
+                 ha='left', va='center', fontsize=9, color='darkred')
+
+    # Remove the main axis
+    ax.set_visible(False)
+
+    # Save the legend
+    legend_path = output_dir / f"{dataset_name}_ig_color_legend.png"
+    try:
+        plt.tight_layout()
+    except UserWarning:
+        # Ignore tight layout warnings for colorbar-only figures
+        pass
+    plt.savefig(legend_path, dpi=dpi, bbox_inches='tight',
+                facecolor='white', edgecolor='none')
+    plt.close(fig)
+
+    print(f"Generated color legend: {legend_path}")
+    return str(legend_path)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate PDB files colored by integrated gradients values",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Generate PDBs for all variants found in results
+    # Generate PDBs with global normalization (matches heatmaps) + color legend
     python generate_ig_colored_pdbs.py configs/betalactamase_config.yaml
+
+    # Generate PDBs with per-variant normalization (each variant spans [-1,1])
+    python generate_ig_colored_pdbs.py configs/betalactamase_config.yaml --normalization per_variant
 
     # Generate PDBs for specific variants only
     python generate_ig_colored_pdbs.py configs/betalactamase_config.yaml --variants "Highest_Activity,Lowest_Activity"
+
+    # Custom legend size (width, height in inches)
+    python generate_ig_colored_pdbs.py configs/betalactamase_config.yaml --legend-size "3,10"
 
     # Specify custom output directory
     python generate_ig_colored_pdbs.py configs/betalactamase_config.yaml --output-dir custom_pdbs
 
     # List available variants
     python generate_ig_colored_pdbs.py configs/betalactamase_config.yaml --list-variants
+
+Note: The generated color legend PNG can be used directly in figures alongside structure snapshots!
         """
     )
 
@@ -220,6 +393,10 @@ Examples:
     parser.add_argument("--output-dir", help="Output directory for colored PDB files")
     parser.add_argument("--pdb-file", help="Specific PDB file to use (overrides auto-detection)")
     parser.add_argument("--chain-id", default="A", help="Chain ID to modify (default: A)")
+    parser.add_argument("--normalization", choices=["global", "per_variant"], default="global",
+                       help="IG normalization: 'global' matches heatmaps, 'per_variant' individual (default: global)")
+    parser.add_argument("--legend-size", default="2,8",
+                       help="Color legend size as 'width,height' in inches (default: 2,8)")
 
     parser.add_argument("--list-variants", action="store_true",
                        help="List available variants and exit")
@@ -242,10 +419,15 @@ Examples:
 
     # Load IG data
     try:
-        df = load_ig_data(results_dir)
+        df = load_ig_data(results_dir, args.normalization)
     except Exception as e:
         print(f"Error loading IG data: {e}")
         return 1
+
+    if args.normalization == "global":
+        print("Using global normalization (matches heatmap color scaling)")
+    else:
+        print("Applied per-variant normalization to IG values (range [-1, 1])")
 
     # List available variants if requested
     if args.list_variants:
@@ -255,8 +437,6 @@ Examples:
             count = len(df[df['sequence_name'] == variant])
             print(f"  - {variant} ({count} residues)")
         return 0
-
-    print("Applied per-variant normalization to IG values (range [-1, 1])")
 
     # Find PDB file
     if args.pdb_file:
@@ -320,14 +500,33 @@ Examples:
                 successful_pdb_files.append(str(output_file))
 
         if successful_pdb_files:
-            pymol_script = generate_pymol_script(output_dir, successful_pdb_files, dataset_name)
+            pymol_script = generate_pymol_script(output_dir, successful_pdb_files, dataset_name, df, args.normalization)
+
+        # Generate color legend for figures
+        try:
+            legend_width, legend_height = map(float, args.legend_size.split(','))
+            legend_figsize = (legend_width, legend_height)
+        except ValueError:
+            print("Warning: Invalid legend size format, using default (2,8)")
+            legend_figsize = (2, 8)
+
+        legend_path = generate_color_legend(output_dir, dataset_name, df, args.normalization, legend_figsize)
 
         print("\nTo visualize in PyMOL:")
         print(f"  Option 1 (automatic): @{pymol_script.name}")
         print("  Option 2 (manual):")
         print(f"    load {output_dir}/*.pdb")
-        print("    spectrum b, red_white_blue, all, -1, 1")
+        if args.normalization == "global" and df is not None:
+            vmin = df["ig_normalized"].min()
+            vmax = df["ig_normalized"].max()
+            vmin_scaled = vmin * 100
+            vmax_scaled = vmax * 100
+            print(f"    spectrum b, red_white_blue, all, {vmin_scaled:.1f}, {vmax_scaled:.1f}")
+        else:
+            print("    spectrum b, red_white_blue, all, -100, 100")
         print("    show cartoon")
+        print(f"\nColor legend saved to: {legend_path}")
+        print("Use this legend image alongside structure snapshots in figures!")
 
     return 0 if success_count > 0 else 1
 
