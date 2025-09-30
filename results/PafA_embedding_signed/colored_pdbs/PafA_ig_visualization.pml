@@ -7,38 +7,38 @@
 delete all
 
 # Load all PDB files
-load pafa_5TJ3_Bottom_10_err0.1%_ig_colored.pdb, pafa_5TJ3_Bottom_10_err0.1pct_ig_colored
-load pafa_5TJ3_Bottom_11_err4.3%_ig_colored.pdb, pafa_5TJ3_Bottom_11_err4.3pct_ig_colored
-load pafa_5TJ3_Bottom_2_err9.0%_ig_colored.pdb, pafa_5TJ3_Bottom_2_err9.0pct_ig_colored
-load pafa_5TJ3_Bottom_3_err1.9%_ig_colored.pdb, pafa_5TJ3_Bottom_3_err1.9pct_ig_colored
-load pafa_5TJ3_Bottom_4_err5.0%_ig_colored.pdb, pafa_5TJ3_Bottom_4_err5.0pct_ig_colored
-load pafa_5TJ3_Bottom_5_err5.8%_ig_colored.pdb, pafa_5TJ3_Bottom_5_err5.8pct_ig_colored
-load pafa_5TJ3_Bottom_6_err3.1%_ig_colored.pdb, pafa_5TJ3_Bottom_6_err3.1pct_ig_colored
-load pafa_5TJ3_Bottom_7_err5.5%_ig_colored.pdb, pafa_5TJ3_Bottom_7_err5.5pct_ig_colored
-load pafa_5TJ3_Bottom_8_err5.0%_ig_colored.pdb, pafa_5TJ3_Bottom_8_err5.0pct_ig_colored
-load pafa_5TJ3_Bottom_9_err2.6%_ig_colored.pdb, pafa_5TJ3_Bottom_9_err2.6pct_ig_colored
-load pafa_5TJ3_Highest_Activity_ig_colored.pdb, pafa_5TJ3_Highest_Activity_ig_colored
-load pafa_5TJ3_Lowest_Activity_ig_colored.pdb, pafa_5TJ3_Lowest_Activity_ig_colored
-load pafa_5TJ3_Median_Activity_ig_colored.pdb, pafa_5TJ3_Median_Activity_ig_colored
-load pafa_5TJ3_Top_10_err0.3%_ig_colored.pdb, pafa_5TJ3_Top_10_err0.3pct_ig_colored
-load pafa_5TJ3_Top_11_err3.3%_ig_colored.pdb, pafa_5TJ3_Top_11_err3.3pct_ig_colored
-load pafa_5TJ3_Top_2_err3.2%_ig_colored.pdb, pafa_5TJ3_Top_2_err3.2pct_ig_colored
 load pafa_5TJ3_Top_3_err1.3%_ig_colored.pdb, pafa_5TJ3_Top_3_err1.3pct_ig_colored
-load pafa_5TJ3_Top_4_err2.6%_ig_colored.pdb, pafa_5TJ3_Top_4_err2.6pct_ig_colored
-load pafa_5TJ3_Top_5_err0.2%_ig_colored.pdb, pafa_5TJ3_Top_5_err0.2pct_ig_colored
-load pafa_5TJ3_Top_6_err2.7%_ig_colored.pdb, pafa_5TJ3_Top_6_err2.7pct_ig_colored
-load pafa_5TJ3_Top_7_err7.3%_ig_colored.pdb, pafa_5TJ3_Top_7_err7.3pct_ig_colored
-load pafa_5TJ3_Top_8_err1.4%_ig_colored.pdb, pafa_5TJ3_Top_8_err1.4pct_ig_colored
-load pafa_5TJ3_Top_9_err0.5%_ig_colored.pdb, pafa_5TJ3_Top_9_err0.5pct_ig_colored
-load pafa_5TJ3_WT_ig_colored.pdb, pafa_5TJ3_WT_ig_colored
 
 # Set up the visualization
 hide everything
 show cartoon, all
 
-# Color by B-factor with red_white_blue spectrum (range -0.372 to 0.525)
+# Color by B-factor with red_white_blue spectrum (range -100 to 100 (per-variant scale, x100))
 # Red = detrimental (negative IG), Blue = beneficial (positive IG)
-spectrum b, red_white_blue, all, -0.372, 0.525
+
+# Step 1: Color everything white as baseline
+color white, all
+
+# Step 2: Create selections for different IG ranges (scaled x100, adjusted for small values)
+select strong_negative, (b < -2)
+select weak_negative, (b > -2) and (b < -0.5)
+select near_zero, (b > -0.5) and (b < 0.5)
+select weak_positive, (b > 0.5) and (b < 2)
+select strong_positive, (b > 2)
+
+# Step 3: Apply colors manually for better control
+color red, strong_negative
+color salmon, weak_negative
+color white, near_zero
+color lightblue, weak_positive
+color blue, strong_positive
+
+# Step 4: Apply spectrum only to non-zero values for fine-tuning
+select non_zero, (b < -0.5) or (b > 0.5)
+spectrum b, red_white_blue, non_zero, -3, 3
+
+# Deselect all for clean view
+deselect
 
 # Set cartoon transparency for better visualization
 set cartoon_transparency, 0.1
@@ -67,5 +67,5 @@ print("="*60)
 print("RED    = Detrimental effects (negative IG values)")
 print("WHITE  = Neutral (zero IG values)")
 print("BLUE   = Beneficial effects (positive IG values)")
-print("RANGE  = range -0.372 to 0.525")
+print("RANGE  = range -100 to 100 (per-variant scale, x100)")
 print("="*60)
