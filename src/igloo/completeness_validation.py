@@ -6,9 +6,14 @@ This module provides functions to validate that integrated gradients analysis
 satisfies the completeness axiom before including sequences in the final analysis.
 """
 
-import torch
+
 import numpy as np
-from typing import Tuple, List, Dict
+import torch
+
+from .sequence_ig import (
+    analyze_sequence_with_integrated_gradients,
+    analyze_sequence_with_token_level_integrated_gradients,
+)
 
 
 def validate_completeness_axiom_token_level(
@@ -26,7 +31,7 @@ def validate_completeness_axiom_token_level(
     batch_size: int = 10,
     attribution_method: str = 'signed',
     completeness_threshold: float = 0.1
-) -> Tuple[bool, float, Dict]:
+) -> tuple[bool, float, dict]:
     """
     Validate that a sequence satisfies the completeness axiom for token-level analysis.
 
@@ -50,8 +55,6 @@ def validate_completeness_axiom_token_level(
         Tuple of (passes_validation, completeness_error, validation_info)
     """
     try:
-        # Import required functions
-        from .sequence_ig import analyze_sequence_with_token_level_integrated_gradients
 
         # Run a quick token-level IG analysis to check completeness
         result = analyze_sequence_with_token_level_integrated_gradients(
@@ -117,7 +120,7 @@ def validate_completeness_axiom(
     batch_size: int = 10,
     attribution_method: str = 'signed',
     completeness_threshold: float = 0.1
-) -> Tuple[bool, float, Dict]:
+) -> tuple[bool, float, dict]:
     """
     Validate that a sequence satisfies the completeness axiom before full analysis.
 
@@ -142,7 +145,6 @@ def validate_completeness_axiom(
     """
     try:
         # Import required functions
-        from .sequence_ig import analyze_sequence_with_integrated_gradients
 
         # Run a quick IG analysis to check completeness
         result = analyze_sequence_with_integrated_gradients(
@@ -195,7 +197,7 @@ def validate_completeness_axiom(
 
 
 def filter_sequences_by_completeness(
-    sequences_to_analyze: List[Tuple[str, str, str]],
+    sequences_to_analyze: list[tuple[str, str, str]],
     model,
     alphabet,
     device: torch.device,
@@ -205,7 +207,7 @@ def filter_sequences_by_completeness(
     attribution_method: str = 'signed',
     completeness_threshold: float = 0.1,
     max_sequences: int = None
-) -> Tuple[List[Tuple[str, str, str]], Dict]:
+) -> tuple[list[tuple[str, str, str]], dict]:
     """
     Filter sequences to only include those that satisfy the completeness axiom.
 
@@ -289,14 +291,14 @@ def filter_sequences_by_completeness(
     passed_count = len([r for r in validation_results.values() if r['passes']])
     failed_count = total_validated - passed_count
 
-    print(f"\n📊 COMPLETENESS VALIDATION SUMMARY:")
+    print("\n📊 COMPLETENESS VALIDATION SUMMARY:")
     print(f"  Total sequences validated: {total_validated}")
     print(f"  ✅ Passed validation: {passed_count}")
     print(f"  ❌ Failed validation: {failed_count}")
     print(f"  📋 Selected for analysis: {len(filtered_sequences)}")
 
     if failed_count > 0:
-        print(f"\n⚠️  FAILED SEQUENCES:")
+        print("\n⚠️  FAILED SEQUENCES:")
         for name, result in validation_results.items():
             if not result['passes'] and 'error' not in result['info']:
                 print(f"    {name}: error={result['error']:.4f}")
