@@ -30,6 +30,7 @@ from src.igloo.config_utils import (
     validate_config,
 )
 from src.igloo.data_processing import load_and_prepare_data, prepare_wildtype_sequence
+from src.igloo.embedding import get_embeddings
 from src.igloo.integrated_gradients import run_integrated_gradients_analysis
 from src.igloo.train_and_eval import train_or_load_model
 from src.igloo.utils import (
@@ -64,7 +65,6 @@ class IntegratedGradientsRunner:
     def load_and_prepare_data(self):
         """Load and prepare the dataset."""
         # Construct data path
-        import os
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
         data_path = os.path.join(project_root, self.config['data']['path'])
@@ -79,7 +79,7 @@ class IntegratedGradientsRunner:
 
     def get_embeddings_for_training(self):
         """Get embeddings for model training."""
-        from src.igloo.embedding import get_embeddings
+
 
         model_cfg = self.config['model']
 
@@ -105,7 +105,6 @@ class IntegratedGradientsRunner:
     def train_or_load_model(self, embedding_dim: int):
         """Train a new model or load an existing one."""
         # Construct results directory path
-        import os
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
         results_dir = os.path.join(

@@ -24,11 +24,6 @@ Sequences Analyzed:
     Effect vs Baseline: -23.2374
     Actual Activity: 0.0000
 
-  Highest_Activity:
-    Predicted Activity: 179.5336
-    Effect vs Baseline: 94.2411
-    Actual Activity: 320.0000
-
   Median_Activity:
     Predicted Activity: 77.7539
     Effect vs Baseline: -7.5386
@@ -38,16 +33,6 @@ Sequences Analyzed:
     Predicted Activity: 101.2590
     Effect vs Baseline: 15.9665
     Actual Activity: 260.0000
-
-  Top_3_err1.3%:
-    Predicted Activity: 165.2665
-    Effect vs Baseline: 79.9740
-    Actual Activity: 250.0000
-
-  Top_4_err2.6%:
-    Predicted Activity: 69.0974
-    Effect vs Baseline: -16.1952
-    Actual Activity: 250.0000
 
   Top_5_err0.2%:
     Predicted Activity: 71.2422
@@ -74,116 +59,66 @@ Sequences Analyzed:
     Effect vs Baseline: 7.7366
     Actual Activity: 220.0000
 
-  Top_10_err0.3%:
-    Predicted Activity: 188.9251
-    Effect vs Baseline: 103.6326
-    Actual Activity: 220.0000
-
-  Top_11_err3.3%:
-    Predicted Activity: 30.4859
-    Effect vs Baseline: -54.8066
-    Actual Activity: 220.0000
-
-  Bottom_2_err9.0%:
-    Predicted Activity: 56.9713
-    Effect vs Baseline: -28.3212
-    Actual Activity: 10.0000
-
-  Bottom_3_err1.9%:
-    Predicted Activity: 10.7861
-    Effect vs Baseline: -74.5064
-    Actual Activity: 11.0000
-
-  Bottom_4_err5.0%:
-    Predicted Activity: 29.7273
-    Effect vs Baseline: -55.5653
-    Actual Activity: 11.0000
-
-  Bottom_5_err5.8%:
-    Predicted Activity: 14.8151
-    Effect vs Baseline: -70.4775
-    Actual Activity: 14.0000
-
   Bottom_6_err3.1%:
     Predicted Activity: 87.4733
     Effect vs Baseline: 2.1808
     Actual Activity: 14.0000
 
-  Bottom_7_err5.5%:
-    Predicted Activity: 120.3338
-    Effect vs Baseline: 35.0413
-    Actual Activity: 14.0000
-
-  Bottom_8_err5.0%:
-    Predicted Activity: 134.6777
-    Effect vs Baseline: 49.3852
-    Actual Activity: 14.0000
-
-  Bottom_9_err2.6%:
-    Predicted Activity: 18.4640
-    Effect vs Baseline: -66.8286
-    Actual Activity: 18.0000
-
-  Bottom_10_err0.1%:
-    Predicted Activity: 62.7760
-    Effect vs Baseline: -22.5165
-    Actual Activity: 19.0000
-
-  Bottom_11_err4.3%:
-    Predicted Activity: 0.0000
-    Effect vs Baseline: -85.2925
-    Actual Activity: 21.0000
-
 TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
- 1. Position 304 (T): importance = 0.1455
- 2. Position 307 (V): importance = 0.1292
- 3. Position 29 (P): importance = 0.0969
- 4. Position 73 (D): importance = 0.0915
- 5. Position 400 (Y): importance = 0.0667
- 6. Position 36 (V): importance = 0.0565
- 7. Position 170 (A): importance = 0.0544
- 8. Position 410 (A): importance = 0.0492
- 9. Position 397 (A): importance = 0.0478
-10. Position 427 (L): importance = 0.0417
+ 1. Position 410 (A): importance = 14.4900
+ 2. Position 304 (T): importance = 8.7508
+ 3. Position 170 (A): importance = 4.8964
+ 4. Position 458 (G): importance = 4.2152
+ 5. Position 217 (G): importance = 3.7619
+ 6. Position 355 (A): importance = 3.0606
+ 7. Position 364 (A): importance = 2.5219
+ 8. Position 98 (A): importance = 2.4571
+ 9. Position 397 (A): importance = 2.2536
+10. Position 335 (N): importance = 1.8846
 
 SIGNED GRADIENT ANALYSIS:
 ------------------------------
 
 TOP 10 MOST BENEFICIAL POSITIONS (positive gradients):
- 1. Position 307 (A): gradient = +0.5252 [from Top_10_err0.3%]
- 2. Position 304 (T): gradient = +0.4979 [from Highest_Activity]
- 3. Position 400 (G): gradient = +0.2710 [from Top_3_err1.3%]
- 4. Position 427 (G): gradient = +0.1695 [from Bottom_8_err5.0%]
- 5. Position 410 (A): gradient = +0.0797 [from Bottom_7_err5.5%]
- 6. Position 397 (A): gradient = +0.0669 [from Top_3_err1.3%]
- 7. Position 403 (G): gradient = +0.0517 [from Bottom_7_err5.5%]
- 8. Position 171 (G): gradient = +0.0425 [from Bottom_4_err5.0%]
- 9. Position 458 (A): gradient = +0.0414 [from Bottom_6_err3.1%]
-10. Position 410 (A): gradient = +0.0411 [from Top_8_err1.4%]
+ 1. Position 458 (A): gradient = +9.5959 [from Bottom_6_err3.1%]
+ 2. Position 410 (A): gradient = +9.5445 [from Top_8_err1.4%]
+ 3. Position 170 (A): gradient = +5.9399 [from Top_7_err7.3%]
+ 4. Position 170 (A): gradient = +5.8966 [from Top_8_err1.4%]
+ 5. Position 355 (A): gradient = +5.7860 [from Top_8_err1.4%]
+ 6. Position 410 (A): gradient = +5.4468 [from Top_9_err0.5%]
+ 7. Position 410 (A): gradient = +4.7910 [from Top_6_err2.7%]
+ 8. Position 170 (A): gradient = +4.3404 [from Top_9_err0.5%]
+ 9. Position 397 (A): gradient = +4.2647 [from Top_6_err2.7%]
+10. Position 217 (G): gradient = +3.4841 [from Top_9_err0.5%]
 
 TOP 10 MOST DETRIMENTAL POSITIONS (negative gradients):
- 1. Position 73 (G): gradient = -0.3721 [from Bottom_11_err4.3%]
- 2. Position 29 (G): gradient = -0.3122 [from Bottom_3_err1.9%]
- 3. Position 36 (G): gradient = -0.2217 [from Bottom_9_err2.6%]
- 4. Position 29 (V): gradient = -0.2064 [from Bottom_5_err5.8%]
- 5. Position 170 (A): gradient = -0.1786 [from Bottom_4_err5.0%]
- 6. Position 397 (V): gradient = -0.1555 [from Top_11_err3.3%]
- 7. Position 410 (A): gradient = -0.1046 [from Top_5_err0.2%]
- 8. Position 174 (G): gradient = -0.0989 [from Bottom_4_err5.0%]
- 9. Position 189 (G): gradient = -0.0809 [from Bottom_10_err0.1%]
-10. Position 52 (V): gradient = -0.0735 [from Top_4_err2.6%]
+ 1. Position 410 (A): gradient = -24.2731 [from Top_5_err0.2%]
+ 2. Position 304 (T): gradient = -14.5245 [from Top_8_err1.4%]
+ 3. Position 304 (T): gradient = -10.0191 [from Top_9_err0.5%]
+ 4. Position 98 (A): gradient = -4.4052 [from Lowest_Activity]
+ 5. Position 335 (N): gradient = -4.2772 [from Top_9_err0.5%]
+ 6. Position 217 (G): gradient = -3.1372 [from Top_7_err7.3%]
+ 7. Position 304 (T): gradient = -3.0142 [from Top_5_err0.2%]
+ 8. Position 304 (T): gradient = -2.9251 [from Median_Activity]
+ 9. Position 410 (A): gradient = -2.8856 [from Bottom_6_err3.1%]
+10. Position 304 (T): gradient = -2.6920 [from Bottom_6_err3.1%]
 
 AMINO ACID TYPE EFFECTS (averaged across all positions):
 Most beneficial amino acid types:
-  1. A: avg effect = +0.0010 (appeared 721 times)
-  2. T: avg effect = +0.0003 (appeared 1031 times)
+  1. A: avg effect = +0.2066 (appeared 301 times)
+  2. G: avg effect = +0.0615 (appeared 449 times)
+  3. E: avg effect = +0.0102 (appeared 210 times)
+  4. D: avg effect = +0.0083 (appeared 378 times)
+  5. Y: avg effect = +0.0051 (appeared 260 times)
 Most detrimental amino acid types:
-  1. I: avg effect = -0.0001 (appeared 647 times)
-  2. G: avg effect = -0.0005 (appeared 1088 times)
-  3. V: avg effect = -0.0006 (appeared 1041 times)
+  1. I: avg effect = -0.0101 (appeared 269 times)
+  2. P: avg effect = -0.0104 (appeared 250 times)
+  3. F: avg effect = -0.0105 (appeared 210 times)
+  4. V: avg effect = -0.0432 (appeared 438 times)
+  5. T: avg effect = -0.0773 (appeared 430 times)
 
 SUMMARY STATISTICS:
-  Total positions analyzed: 13104
-  Beneficial positions: 6512 (49.7%)
-  Detrimental positions: 6046 (46.1%)
-  Neutral positions: 546 (4.2%)
+  Total positions analyzed: 5460
+  Beneficial positions: 2695 (49.4%)
+  Detrimental positions: 2219 (40.6%)
+  Neutral positions: 546 (10.0%)

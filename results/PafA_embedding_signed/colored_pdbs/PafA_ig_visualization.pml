@@ -13,18 +13,18 @@ load pafa_5TJ3_Top_3_err1.3%_ig_colored.pdb, pafa_5TJ3_Top_3_err1.3pct_ig_colore
 hide everything
 show cartoon, all
 
-# Color by B-factor with red_white_blue spectrum (range -100 to 100 (per-variant scale, x100))
+# Color by B-factor with red_white_blue spectrum (range -0.372 to 0.525 (global scale - matches heatmap, scaled x100 in PDB))
 # Red = detrimental (negative IG), Blue = beneficial (positive IG)
 
 # Step 1: Color everything white as baseline
 color white, all
 
-# Step 2: Create selections for different IG ranges (scaled x100, adjusted for small values)
-select strong_negative, (b < -2)
-select weak_negative, (b > -2) and (b < -0.5)
-select near_zero, (b > -0.5) and (b < 0.5)
-select weak_positive, (b > 0.5) and (b < 2)
-select strong_positive, (b > 2)
+# Step 2: Create selections for different IG ranges (scaled x100)
+select strong_negative, (b < -10)
+select weak_negative, (b > -10) and (b < -2)
+select near_zero, (b > -2) and (b < 2)
+select weak_positive, (b > 2) and (b < 10)
+select strong_positive, (b > 10)
 
 # Step 3: Apply colors manually for better control
 color red, strong_negative
@@ -34,8 +34,8 @@ color lightblue, weak_positive
 color blue, strong_positive
 
 # Step 4: Apply spectrum only to non-zero values for fine-tuning
-select non_zero, (b < -0.5) or (b > 0.5)
-spectrum b, red_white_blue, non_zero, -3, 3
+select non_zero, (b < -2) or (b > 2)
+spectrum b, red_white_blue, non_zero, -100, 100
 
 # Deselect all for clean view
 deselect
@@ -67,5 +67,5 @@ print("="*60)
 print("RED    = Detrimental effects (negative IG values)")
 print("WHITE  = Neutral (zero IG values)")
 print("BLUE   = Beneficial effects (positive IG values)")
-print("RANGE  = range -100 to 100 (per-variant scale, x100)")
+print("RANGE  = range -0.372 to 0.525 (global scale - matches heatmap, scaled x100 in PDB)")
 print("="*60)

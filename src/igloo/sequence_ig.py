@@ -825,7 +825,7 @@ def analyze_sequence_with_integrated_gradients(
     steps: int = 50,
     batch_size: int = 10,
     method: str = 'embedding',  # 'embedding' or 'gumbel'
-    attribution_method: str = 'magnitude',  # 'magnitude' (L2 norm) or 'signed' (dot product)
+    attribution_method: str = 'signed',  # 'magnitude' (L2 norm) or 'signed' (dot product)
     actual_activity: Optional[float] = None,
     baseline_actual_activity: Optional[float] = None,
     plot_predictions: bool = False,
@@ -974,56 +974,209 @@ def analyze_sequence_with_integrated_gradients(
             interpolated = baseline_emb_torch + alpha * (seq_emb_torch - baseline_emb_torch)
             interpolated_embeddings.append(interpolated)
 
-        # Stack batch and convert to numpy for CustomDataset
+        # Stack batch - but DON'T apply DataLoader normalization again
+        # The embeddings are already in the right format from ESM
         batch_embeddings = torch.cat(interpolated_embeddings, dim=0)  # (batch_size, seq_len, embed_dim)
-        batch_embeddings_np = batch_embeddings.cpu().numpy()
+        batch_embeddings.requires_grad_(True)  # Enable gradients for embeddings
 
-        # Create dataset and dataloader for this batch
-        dummy_targets = np.zeros(len(batch_alphas))
-        batch_dataset = CustomDataset(batch_embeddings_np, dummy_targets)
-        batch_loader = DataLoader(
-            batch_dataset, batch_size=len(batch_alphas), shuffle=False, collate_fn=batch_pad_and_normalize
-        )
+        # Apply the same normalization as used during training (same as batch_pad_and_normalize)
+        from .data_processing import _global_scaler_mean, _global_scaler_scale
 
-        for xb, lengths, _yb in batch_loader:
-            xb = xb.to(device)
-            xb.requires_grad_(True)  # Enable gradients for embeddings
+        batch_size_actual, seq_len, embed_dim = batch_embeddings.shape
+        flat_embeddings = batch_embeddings.reshape(batch_size_actual, -1)
 
-            if pooling_method == 'esm_attention':
-                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                for j, length in enumerate(lengths):
-                    input_mask[j, :length] = 1
-                outputs = predictor_model(xb, input_mask)
-            else:
-                outputs = predictor_model(xb)
+        if _global_scaler_mean is not None and _global_scaler_scale is not None:
+            flat_normalized = (flat_embeddings - _global_scaler_mean) / _global_scaler_scale
+        else:
+            # Fallback to per-sample normalization if global parameters not available
+            mean = flat_embeddings.mean(dim=1, keepdim=True)
+            std = flat_embeddings.std(dim=1, keepdim=True)
+            flat_normalized = (flat_embeddings - mean) / (std + 1e-8)
 
-            # Compute gradients with respect to embeddings
-            gradients = torch.autograd.grad(
-                outputs=outputs.sum(),
-                inputs=xb,
-                create_graph=False,
-                retain_graph=False
-            )[0]
+        normalized_embeddings = flat_normalized.reshape(batch_size_actual, seq_len, embed_dim)
 
-            all_gradients.append(gradients.detach())
-            break  # Only one batch per alpha set
+        if pooling_method == 'esm_attention':
+            # Create attention mask that matches the DataLoader approach
+            # For consistency with DataLoader method, we need to account for sequence lengths
+            # Since we're working with single sequences from ESM embeddings (no padding),
+            # all positions should be valid, but we need to match the exact mask format
+            input_mask = torch.ones(batch_size_actual, seq_len, device=device)
+            outputs = predictor_model(normalized_embeddings, input_mask)
+        else:
+            outputs = predictor_model(normalized_embeddings)
+
+        # Convert outputs to original scale for gradient computation
+        # Note: We do NOT apply clipping here to preserve mathematical correctness of IG
+        outputs_rescaled = outputs * y_log_std + y_log_mean
+
+        # Compute gradients with respect to the normalized embeddings
+        # This is mathematically correct because the model sees normalized embeddings
+        gradients = torch.autograd.grad(
+            outputs=outputs_rescaled.sum(),
+            inputs=normalized_embeddings,  # Gradients w.r.t. normalized embeddings
+            create_graph=False,
+            retain_graph=False
+        )[0]
+
+        # Transform gradients back to original embedding space for attribution calculation
+        # Since normalized = (original - mean) / scale, we need to divide by scale
+        if _global_scaler_mean is not None and _global_scaler_scale is not None:
+            # For global normalization: grad_original = grad_normalized / scale
+            gradients_original_space = gradients / _global_scaler_scale
+        else:
+            # For per-sample normalization, the transformation is more complex
+            # We'll use the same std that was computed during normalization
+            flat_gradients = gradients.reshape(batch_size_actual, -1)
+            flat_embeddings = batch_embeddings.reshape(batch_size_actual, -1)
+            std = flat_embeddings.std(dim=1, keepdim=True)
+            gradients_original_space = (flat_gradients / (std + 1e-8)).reshape(batch_size_actual, seq_len, embed_dim)
+
+        all_gradients.append(gradients_original_space.detach())
 
     # Combine all gradients and average across integration steps
     all_gradients = torch.cat(all_gradients, dim=0)  # (total_steps, seq_len, embed_dim)
     avg_gradients = torch.mean(all_gradients, dim=0)  # (seq_len, embed_dim)
 
-    # Compute position-level gradients based on attribution method
+    # Compute integrated gradients using the specified attribution method
+    # Attribution = (input - baseline) × average_gradient
+
+    # Get the embedding differences
+    seq_emb_torch = torch.from_numpy(seq_embedding).to(device).float().squeeze(0)  # (seq_len, embed_dim)
+    baseline_emb_torch = torch.from_numpy(baseline_embedding).to(device).float().squeeze(0)  # (seq_len, embed_dim)
+    embed_diff = seq_emb_torch - baseline_emb_torch  # (seq_len, embed_dim)
+
     if attribution_method == 'signed':
         # Compute signed attributions using dot product with embedding differences
-        seq_emb_torch = torch.from_numpy(seq_embedding).to(device).float().squeeze(0)  # (seq_len, embed_dim)
-        baseline_emb_torch = torch.from_numpy(baseline_embedding).to(device).float().squeeze(0)  # (seq_len, embed_dim)
-        embed_diff = seq_emb_torch - baseline_emb_torch  # (seq_len, embed_dim)
-
-        # Dot product between gradients and embedding differences gives signed attribution
+        # This is the theoretically correct integrated gradients formula
         position_gradients = torch.sum(avg_gradients * embed_diff, dim=1).cpu().numpy()  # (seq_len,)
     else:  # attribution_method == 'magnitude'
-        # Compute magnitude attributions using L2 norm of gradients (default behavior)
+        # Compute magnitude attributions using L2 norm of gradients
+        # Note: This violates the completeness axiom but may be useful for interpretation
         position_gradients = torch.norm(avg_gradients, dim=1).cpu().numpy()  # (seq_len,)
+        print("WARNING: Using magnitude attribution method - this violates the completeness axiom!")
+        print("For theoretically correct integrated gradients, use attribution_method='signed'")
+
+    print(f"Using attribution method: {attribution_method}")
+    print(f"Sum of attributions: {np.sum(position_gradients):.6f}")
+    print(f"Predicted difference (sequence - baseline): {seq_pred - baseline_pred:.6f}")
+    print(f"Completeness axiom error: {abs(np.sum(position_gradients) - (seq_pred - baseline_pred)):.6f}")
+
+    # Additional check: Compare with unclipped predictions for theoretical correctness
+    print("\n=== COMPLETENESS AXIOM VALIDATION ===")
+
+    # Compute unclipped predictions for theoretical comparison
+    seq_pred_unclipped = seq_pred_norm * y_log_std + y_log_mean
+    baseline_pred_unclipped = baseline_pred_norm * y_log_std + y_log_mean
+
+    theoretical_diff = seq_pred_unclipped - baseline_pred_unclipped
+    theoretical_error = abs(np.sum(position_gradients) - theoretical_diff)
+
+    print(f"Theoretical (unclipped) difference: {theoretical_diff:.6f}")
+    print(f"Theoretical completeness error: {theoretical_error:.6f}")
+
+    if theoretical_error < 0.01:
+        print("✅ Completeness axiom satisfied for unclipped predictions!")
+    elif theoretical_error < 0.1:
+        print("⚠️ Minor completeness axiom violation (< 0.1)")
+    else:
+        print("❌ Significant completeness axiom violation")
+
+    if clip_min is not None or clip_max is not None:
+        clipping_effect = abs((seq_pred - baseline_pred) - theoretical_diff)
+        print(f"Clipping effect on difference: {clipping_effect:.6f}")
+        if clipping_effect > 0.01:
+            print("📝 Note: Large clipping effect may explain apparent completeness violation")
+
+    print("=" * 50)
+
+    # Additional normalization consistency check
+    print("\n=== NORMALIZATION CONSISTENCY CHECK ===")
+
+    # Check if we can reproduce the predictions using the same method as IG
+    # This helps identify normalization mismatches
+
+    # Method 1: DataLoader prediction (what we currently use for final predictions)
+    seq_pred_str = f"Sequence={seq_pred:.6f}"
+    baseline_pred_str = f"Baseline={baseline_pred:.6f}"
+    diff_str = f"Diff={seq_pred - baseline_pred:.6f}"
+    print(f"Method 1 (DataLoader): {seq_pred_str}, {baseline_pred_str}, {diff_str}")
+
+    # Method 2: Direct model prediction (what IG uses during interpolation)
+    # This should match Method 1 if normalization is consistent
+    try:
+        from .data_processing import _global_scaler_mean, _global_scaler_scale
+
+        # Test direct prediction without DataLoader
+        test_seq_emb = torch.from_numpy(seq_embedding).to(device).float()  # (1, seq_len, embed_dim)
+        test_baseline_emb = torch.from_numpy(baseline_embedding).to(device).float()  # (1, seq_len, embed_dim)
+
+        # Apply same normalization as IG does
+        def normalize_like_ig(embeddings):
+            batch_size, seq_len, embed_dim = embeddings.shape
+            flat_embeddings = embeddings.reshape(batch_size, -1)
+
+            if _global_scaler_mean is not None and _global_scaler_scale is not None:
+                flat_normalized = (flat_embeddings - _global_scaler_mean) / _global_scaler_scale
+            else:
+                mean = flat_embeddings.mean(dim=1, keepdim=True)
+                std = flat_embeddings.std(dim=1, keepdim=True)
+                flat_normalized = (flat_embeddings - mean) / (std + 1e-8)
+
+            return flat_normalized.reshape(batch_size, seq_len, embed_dim)
+
+        with torch.no_grad():
+            seq_normalized = normalize_like_ig(test_seq_emb)
+            baseline_normalized = normalize_like_ig(test_baseline_emb)
+
+            if pooling_method == 'esm_attention':
+                seq_len = seq_normalized.size(1)
+                input_mask = torch.ones(1, seq_len, device=device)
+                seq_pred_direct = predictor_model(seq_normalized, input_mask).item()
+                baseline_pred_direct = predictor_model(baseline_normalized, input_mask).item()
+            else:
+                seq_pred_direct = predictor_model(seq_normalized).item()
+                baseline_pred_direct = predictor_model(baseline_normalized).item()
+
+            # Convert to original scale
+            seq_pred_direct = seq_pred_direct * y_log_std + y_log_mean
+            baseline_pred_direct = baseline_pred_direct * y_log_std + y_log_mean
+
+            # Apply the same clipping as the DataLoader method for consistency
+            if clip_min is not None or clip_max is not None:
+                if clip_min is not None and clip_max is not None:
+                    seq_pred_direct = np.clip(seq_pred_direct, clip_min, clip_max)
+                    baseline_pred_direct = np.clip(baseline_pred_direct, clip_min, clip_max)
+                elif clip_min is not None:
+                    seq_pred_direct = np.maximum(seq_pred_direct, clip_min)
+                    baseline_pred_direct = np.maximum(baseline_pred_direct, clip_min)
+                elif clip_max is not None:
+                    seq_pred_direct = np.minimum(seq_pred_direct, clip_max)
+                    baseline_pred_direct = np.minimum(baseline_pred_direct, clip_max)
+
+            seq_direct_str = f"Sequence={seq_pred_direct:.6f}"
+            baseline_direct_str = f"Baseline={baseline_pred_direct:.6f}"
+            diff_direct_str = f"Diff={seq_pred_direct - baseline_pred_direct:.6f}"
+            print(f"Method 2 (Direct): {seq_direct_str}, {baseline_direct_str}, {diff_direct_str}")
+
+            # Check consistency
+            seq_diff = abs(seq_pred - seq_pred_direct)
+            baseline_diff = abs(baseline_pred - baseline_pred_direct)
+            pred_diff_error = abs((seq_pred - baseline_pred) - (seq_pred_direct - baseline_pred_direct))
+
+            consistency_str = f"Seq_error={seq_diff:.6f}, Baseline_error={baseline_diff:.6f}"
+            diff_error_str = f"Diff_error={pred_diff_error:.6f}"
+            print(f"Consistency: {consistency_str}, {diff_error_str}")
+
+            if pred_diff_error > 1e-4:
+                print("WARNING: Significant prediction difference between DataLoader and direct methods!")
+                print("This suggests a normalization inconsistency that could affect IG completeness.")
+            else:
+                print("✓ Normalization appears consistent between methods.")
+
+    except Exception as e:
+        print(f"Normalization check failed: {e}")
+
+    print("=" * 45)
 
     # Position gradients are already computed above as L2 norm of embedding gradients
     # No need to exclude special tokens since we're working with embeddings directly
@@ -1292,9 +1445,13 @@ def analyze_sequence_with_token_level_integrated_gradients(
             # Forward pass to get prediction
             outputs = predict_from_token_embeddings(interpolated_embeds)
 
+            # Convert outputs to original scale for gradient computation
+            # Note: We do NOT apply clipping here to preserve mathematical correctness of IG
+            outputs_rescaled = outputs * y_log_std + y_log_mean
+
             # Compute gradients w.r.t. interpolated token embeddings
             token_gradients = torch.autograd.grad(
-                outputs=outputs.sum(),
+                outputs=outputs_rescaled.sum(),
                 inputs=interpolated_embeds,
                 create_graph=False,
                 retain_graph=False
@@ -1324,6 +1481,40 @@ def analyze_sequence_with_token_level_integrated_gradients(
 
     print(f"Computed gradients for {len(position_gradients)} positions")
     print(f"Gradient range: [{np.min(position_gradients):.6f}, {np.max(position_gradients):.6f}]")
+
+    # Completeness axiom validation
+    print(f"Using attribution method: {attribution_method}")
+    print(f"Sum of attributions: {np.sum(position_gradients):.6f}")
+    print(f"Predicted difference (sequence - baseline): {seq_pred - baseline_pred:.6f}")
+    print(f"Completeness axiom error: {abs(np.sum(position_gradients) - (seq_pred - baseline_pred)):.6f}")
+
+    # Additional check: Compare with unclipped predictions for theoretical correctness
+    print("\n=== COMPLETENESS AXIOM VALIDATION ===")
+
+    # Compute unclipped predictions for theoretical comparison
+    seq_pred_unclipped = seq_pred_norm * y_log_std + y_log_mean
+    baseline_pred_unclipped = baseline_pred_norm * y_log_std + y_log_mean
+
+    theoretical_diff = seq_pred_unclipped - baseline_pred_unclipped
+    theoretical_error = abs(np.sum(position_gradients) - theoretical_diff)
+
+    print(f"Theoretical (unclipped) difference: {theoretical_diff:.6f}")
+    print(f"Theoretical completeness error: {theoretical_error:.6f}")
+
+    if theoretical_error < 0.01:
+        print("✅ Completeness axiom satisfied for unclipped predictions!")
+    elif theoretical_error < 0.1:
+        print("⚠️ Minor completeness axiom violation (< 0.1)")
+    else:
+        print("❌ Significant completeness axiom violation")
+
+    if clip_min is not None or clip_max is not None:
+        clipping_effect = abs((seq_pred - baseline_pred) - theoretical_diff)
+        print(f"Clipping effect on difference: {clipping_effect:.6f}")
+        if clipping_effect > 0.01:
+            print("📝 Note: Large clipping effect may explain apparent completeness violation")
+
+    print("=" * 50)
 
     # Create predicted vs actual plot if requested
     if plot_predictions and actual_activity is not None and baseline_actual_activity is not None:

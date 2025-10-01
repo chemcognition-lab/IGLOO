@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 
 from src.igloo.models import AttentionConvPoolingModel, ESMAttention1d, LinearRegressionModel, MeanPoolingModel
 
+from .data_processing import CustomDataset, batch_pad_and_normalize
 from .embedding import get_embeddings
 from .plot import (
     plot_attributions_on_3d_structure,
@@ -277,7 +278,6 @@ def create_model(config, device):
 
 def evaluate_model_performance(model, sequences, y, y_raw, y_log_mean, y_log_std, config, results_dir, device):
     """Evaluate the trained model"""
-    from .data_processing import CustomDataset, batch_pad_and_normalize
 
     print("\nEvaluating model performance...")
     model.eval()
@@ -367,7 +367,10 @@ def create_visualizations_and_exports(ig_results, r2, pearson_r, spearman_rho, t
 
     # Create detailed results dataframe
     all_results = []
-    for name, result in ig_results.items():
+    # Filter out special validation results keys that don't have sequence analysis data
+    analysis_results = {name: result for name, result in ig_results.items()
+                       if not name.startswith('_') and 'positions' in result}
+    for name, result in analysis_results.items():
         for pos, aa, grad in zip(result['positions'], result['amino_acids'], result['position_gradients']):
             all_results.append({
                 'sequence_name': name,
@@ -406,7 +409,7 @@ def create_visualizations_and_exports(ig_results, r2, pearson_r, spearman_rho, t
 
         # Create amino acid effect analysis
         amino_acid_effects = []
-        for name, result in ig_results.items():
+        for name, result in analysis_results.items():
             for pos, aa, grad in zip(result['positions'], result['amino_acids'], result['position_gradients']):
                 amino_acid_effects.append({
                     'sequence_name': name,
@@ -494,7 +497,7 @@ def create_visualizations_and_exports(ig_results, r2, pearson_r, spearman_rho, t
     # Create predicted vs actual summary
     pred_vs_actual_summary_path = os.path.join(results_dir, f'{dataset_name}_predicted_vs_actual_summary.csv')
     prediction_summary_data = []
-    for name, result in ig_results.items():
+    for name, result in analysis_results.items():
         if result.get('actual_activity') is not None and isinstance(result['actual_activity'], (int, float)):
             prediction_summary_data.append({
                 'sequence_name': name,
@@ -530,7 +533,7 @@ def create_visualizations_and_exports(ig_results, r2, pearson_r, spearman_rho, t
         f.write(f"  Spearman ρ = {spearman_rho:.4f}\n\n")
 
         f.write("Sequences Analyzed:\n")
-        for name, result in ig_results.items():
+        for name, result in analysis_results.items():
             f.write(f"  {name}:\n")
             f.write(f"    Predicted Activity: {result['predicted_activity']:.4f}\n")
             f.write(f"    Effect vs Baseline: {result['effect_vs_baseline']:.4f}\n")

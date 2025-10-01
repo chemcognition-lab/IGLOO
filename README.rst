@@ -191,12 +191,12 @@ Verify your installation with our comprehensive health check:
     ./health_check.py
 
 This will check:
-   * ✅ Python version compatibility
-   * ✅ Package dependencies
-   * ✅ GPU/CUDA availability
-   * ✅ System resources
-   * ✅ Data file integrity
-   * ✅ Basic functionality tests
+   * Python version compatibility
+   * Package dependencies
+   * GPU/CUDA availability
+   * System resources
+   * Data file integrity
+   * Basic functionality tests
 
 **Documentation**
 -------------------

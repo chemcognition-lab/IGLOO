@@ -161,7 +161,8 @@ def generate_individual_heatmaps(df: pd.DataFrame, mutation_names: dict, output_
             title=f"IG Attributions: {mutation_name}",
             value_label="IG Score",
             figsize=(max(12, len(positions) * 0.05), 2),
-            output_path=output_path
+            output_path=output_path,
+            font_scale=1.0  # Normal font size for individual heatmaps
         )
 
         output_paths.append(output_path)
@@ -176,17 +177,61 @@ def generate_combined_heatmap(df: pd.DataFrame, mutation_names: dict, output_dir
     # Prepare data
     data_matrix, position_labels, variant_labels = prepare_heatmap_data(df, mutation_names)
 
+    # Sort variants by performance (best to worst)
+    # Calculate functional performance for each variant (higher = better performing)
+    variant_performances = []
+    for i, variant_label in enumerate(variant_labels):
+        # Find original sequence name for this variant
+        original_seq_name = None
+        for seq_name, mut_name in mutation_names.items():
+            if mut_name == variant_label:
+                original_seq_name = seq_name
+                break
+
+        if original_seq_name:
+            # Get functional performance value for this variant
+            variant_data = df[df['sequence_name'] == original_seq_name]
+            if len(variant_data) > 0:
+                # Try to find functional performance column (common names)
+                performance_value = None
+                for col in ['functional_score', 'activity', 'fitness', 'performance', 'value', 'score']:
+                    if col in variant_data.columns:
+                        # Take first value (should be same for all positions)
+                        performance_value = variant_data[col].iloc[0]
+                        break
+
+                # If no specific performance column found, use the mean of integrated gradients as fallback
+                if performance_value is None:
+                    performance_value = variant_data['integrated_gradient'].mean()
+                    print(f"Warning: No functional performance column found, using mean IG for {variant_label}")
+
+                variant_performances.append((i, variant_label, performance_value))
+
+    # Sort by functional performance (descending - best to worst)
+    variant_performances.sort(key=lambda x: x[2], reverse=True)
+
+    # Print performance ranking
+    print("Variant performance ranking (by functional performance):")
+    for i, (_, variant_label, performance) in enumerate(variant_performances, 1):
+        print(f"  {i}. {variant_label}: {performance:.4f}")
+
+    # Reorder data matrix and labels
+    sorted_indices = [x[0] for x in variant_performances]
+    sorted_variant_labels = [x[1] for x in variant_performances]
+    sorted_data_matrix = data_matrix[sorted_indices, :]
+
     # Generate combined heatmap
     output_path = os.path.join(output_dir, f"{data_name}_all_variants_combined_heatmap.png")
 
     plot_attribution_heatmap(
-        data=data_matrix,
+        data=sorted_data_matrix,
         x_labels=position_labels,
-        y_labels=variant_labels,
-        title="IG Attributions: All Variants",
+        y_labels=sorted_variant_labels,
+        title="IG Attributions: All Variants (Ordered by Performance)",
         value_label="IG Score",
-        figsize=(max(12, len(position_labels) * 0.08), max(6, len(variant_labels) * 0.4)),
-        output_path=output_path
+        figsize=(max(12, len(position_labels) * 0.08), max(6, len(sorted_variant_labels) * 0.4)),
+        output_path=output_path,
+        font_scale=1.5  # Larger font size for combined heatmap
     )
 
     print(f"Generated combined heatmap: {output_path}")

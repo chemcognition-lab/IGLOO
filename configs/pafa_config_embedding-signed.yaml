@@ -62,4 +62,4 @@ integrated_gradients:
   batch_size: 10
 
 results_dir: "results/PafA_embedding_signed"
-force_retrain: true
+force_retrain: false

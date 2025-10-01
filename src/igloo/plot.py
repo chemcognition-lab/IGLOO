@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
+from scipy import stats
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
 def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[str] = None) -> None:
@@ -23,13 +25,21 @@ def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[
         results_dict: Dictionary containing analysis results for each sequence
         save_path: Optional path to save the plot
     """
-    n_sequences = len(results_dict)
+    # Filter out special validation results keys that don't have sequence analysis data
+    analysis_results = {name: result for name, result in results_dict.items()
+                       if not name.startswith('_') and 'positions' in result}
+
+    n_sequences = len(analysis_results)
+    if n_sequences == 0:
+        print("No valid sequences found for plotting.")
+        return
+
     fig, axes = plt.subplots(n_sequences, 1, figsize=(20, 4 * n_sequences))
 
     if n_sequences == 1:
         axes = [axes]
 
-    for idx, (name, result) in enumerate(results_dict.items()):
+    for idx, (name, result) in enumerate(analysis_results.items()):
         ax = axes[idx]
         positions = result['positions']
         gradients = result['position_gradients']
@@ -113,22 +123,30 @@ def plot_variants_vs_wt_gradients(ig_results: dict[str, Any], save_path: Optiona
         ig_results: Dictionary containing integrated gradients results
         save_path: Optional path to save the plot
     """
+    # Filter out special validation results keys that don't have sequence analysis data
+    analysis_results = {name: result for name, result in ig_results.items()
+                       if not name.startswith('_') and 'positions' in result}
+
+    if len(analysis_results) == 0:
+        print("No valid sequences found for variant comparison plotting.")
+        return
+
     # Find wildtype result - try common keys
     wt_key = None
     for key in ['WT', 'Wildtype', 'wildtype', 'wt']:
-        if key in ig_results:
+        if key in analysis_results:
             wt_key = key
             break
 
     if wt_key is None:
         # If no wildtype found, use the first result as reference
-        wt_key = list(ig_results.keys())[0]
+        wt_key = list(analysis_results.keys())[0]
 
-    wt_result = ig_results[wt_key]
+    wt_result = analysis_results[wt_key]
     wt_gradients = wt_result['position_gradients']
 
     # Check if we have any variants to compare (more than just wildtype)
-    variant_count = len([name for name in ig_results.keys() if name != wt_key])
+    variant_count = len([name for name in analysis_results.keys() if name != wt_key])
 
     if variant_count == 0:
         print("Only wildtype sequence found, skipping variant comparison plot.")
@@ -137,7 +155,7 @@ def plot_variants_vs_wt_gradients(ig_results: dict[str, Any], save_path: Optiona
     plt.figure(figsize=(15, 10))
     plot_idx = 0
 
-    for _i, (name, result) in enumerate(ig_results.items()):
+    for _i, (name, result) in enumerate(analysis_results.items()):
         if name == wt_key:
             continue
 
@@ -373,8 +391,6 @@ def plot_predicted_vs_actual_batch(
         save_path: Optional path to save the plot
         figsize: Figure size
     """
-    from scipy import stats
-    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
     if len(predicted_values) != len(actual_values):
         raise ValueError("predicted_values and actual_values must have the same length")
@@ -524,10 +540,18 @@ def plot_signed_gradient_effects(
         top_n: Number of top effects to label (default: 10)
         figsize: Figure size as tuple (width, height)
     """
+    # Filter out special validation results keys that don't have sequence analysis data
+    analysis_results = {name: result for name, result in results_dict.items()
+                       if not name.startswith('_') and 'positions' in result}
+
+    if len(analysis_results) == 0:
+        print("No valid sequences found for signed gradient effects plotting.")
+        return
+
     # Collect all gradient data
     all_effects = []
 
-    for name, result in results_dict.items():
+    for name, result in analysis_results.items():
         positions = result['positions']
         gradients = result['position_gradients']
         amino_acids = result['amino_acids']
@@ -639,9 +663,17 @@ def plot_averaged_gradient_effects_comparison(
         bottom_n: Number of bottom sequences to average (default: 5)
         figsize: Figure size as tuple (width, height)
     """
+    # Filter out special validation results keys that don't have sequence analysis data
+    analysis_results = {name: result for name, result in results_dict.items()
+                       if not name.startswith('_') and 'positions' in result}
+
+    if len(analysis_results) == 0:
+        print("No valid sequences found for top vs bottom comparison plotting.")
+        return
+
     # Extract predicted activities and sort sequences
     sequence_activities = []
-    for name, result in results_dict.items():
+    for name, result in analysis_results.items():
         sequence_activities.append({
             'name': name,
             'predicted_activity': result['predicted_activity'],
@@ -1103,7 +1135,8 @@ def plot_attribution_heatmap(
     vmax=None,
     center=0.0,
     figsize=(8, 4),
-    output_path="attribution_heatmap.png"
+    output_path="attribution_heatmap.png",
+    font_scale=1.0
 ):
     """
     Plot attribution heatmap with red-white-blue colormap.
@@ -1119,19 +1152,21 @@ def plot_attribution_heatmap(
         center: Center value for diverging colormap
         figsize: Figure size as (width, height)
         output_path: Path to save the figure
+        font_scale: Scale factor for font sizes (1.0 = normal, 1.5 = 50% larger)
 
     Returns:
         str: Path to the saved figure
     """
-    # Set Noto Sans font with bigger size
+    # Set Noto Sans font with scalable size
+    base_font_size = 14
     plt.rcParams.update({
         'font.family': 'Noto Sans',
-        'font.size': 14,
-        'axes.titlesize': 16,
-        'axes.labelsize': 14,
-        'xtick.labelsize': 13,
-        'ytick.labelsize': 13,
-        'legend.fontsize': 13
+        'font.size': int(base_font_size * font_scale),
+        'axes.titlesize': int(16 * font_scale),
+        'axes.labelsize': int(14 * font_scale),
+        'xtick.labelsize': int(13 * font_scale),
+        'ytick.labelsize': int(13 * font_scale),
+        'legend.fontsize': int(13 * font_scale)
     })
 
     data = np.asarray(data, dtype=float)
@@ -1183,4 +1218,132 @@ def plot_attribution_heatmap(
     fig.tight_layout()
     fig.savefig(output_path, bbox_inches="tight")
     plt.close(fig)
+    return output_path
+
+
+def plot_mutation_frequency_heatmap(
+    data,
+    wildtype_sequence,
+    title="Mutation Frequency Heatmap",
+    figsize=(24, 8),
+    output_path="mutation_frequency_heatmap.png",
+    wildtype_marker='o',
+    wildtype_marker_size=50,
+    cmap='Greens'
+):
+    """
+    Plot mutation frequency heatmap with amino acids on y-axis and positions on x-axis.
+
+    Args:
+        data: DataFrame with columns ['position', 'amino_acid', 'frequency'] or 2D array
+        wildtype_sequence: String of wildtype sequence to mark on heatmap
+        title: Title for the plot
+        figsize: Figure size as (width, height)
+        output_path: Path to save the figure
+        wildtype_marker: Marker style for wildtype positions ('o', 'x', 's', etc.)
+        wildtype_marker_size: Size of wildtype markers
+        cmap: Colormap for frequency values
+
+    Returns:
+        str: Path to the saved figure
+    """
+
+    # Set font parameters
+    plt.rcParams.update({
+        'font.family': 'Noto Sans',
+        'font.size': 20,           # Increased from 16
+        'axes.titlesize': 24,      # Increased from 18
+        'axes.labelsize': 20,      # Increased from 16
+        'xtick.labelsize': 16,     # Increased from 12
+        'ytick.labelsize': 16,     # Increased from 12
+        'legend.fontsize': 16      # Increased from 12
+    })
+
+    # Standard amino acids
+    amino_acids = ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L',
+                   'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y']
+
+    if isinstance(data, pd.DataFrame):
+        # Convert DataFrame to pivot table
+        pivot_data = data.pivot(index='amino_acid', columns='position', values='frequency')
+
+        # Reindex to ensure all amino acids are present
+        pivot_data = pivot_data.reindex(amino_acids, fill_value=0)
+
+        # Get positions
+        positions = sorted(pivot_data.columns)
+
+    else:
+        # Assume data is already a 2D array
+        pivot_data = np.asarray(data)
+        positions = list(range(1, pivot_data.shape[1] + 1))
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize, dpi=150)
+
+    # Create custom white-to-dark green colormap
+    from matplotlib.colors import LinearSegmentedColormap
+    colors = ['white', 'darkgreen']
+    custom_cmap = LinearSegmentedColormap.from_list('white_to_darkgreen', colors, N=256)
+
+    # Create heatmap
+    im = ax.imshow(pivot_data.values, cmap=custom_cmap, aspect='auto', interpolation='nearest')
+
+    # Set up x-axis ticks and labels
+    all_positions = range(len(positions))
+    ax.set_xticks(all_positions)  # Set ticks for all positions
+
+    # Create labels - only show every 15th position
+    position_labels = []
+    for i, pos in enumerate(positions):
+        if i % 15 == 0:  # Every 15th position
+            position_labels.append(str(pos))
+        else:
+            position_labels.append('')  # Empty label but tick remains
+
+    ax.set_xticklabels(position_labels)
+    ax.set_yticks(range(len(amino_acids)))
+    ax.set_yticklabels(amino_acids)
+
+    # Set labels
+    ax.set_xlabel('Position', fontweight='bold')
+    ax.set_ylabel('Amino Acid', fontweight='bold')
+    ax.set_title(title, fontweight='bold', pad=15)
+
+    # Add colorbar with only min and max labels
+    cbar = fig.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
+    cbar.set_label('Frequency', fontweight='bold')
+
+    # Set colorbar to show only min and max values
+    vmin, vmax = pivot_data.values.min(), pivot_data.values.max()
+    cbar.set_ticks([vmin, vmax])
+    cbar.set_ticklabels([f'{vmin:.2f}', f'{vmax:.2f}'])
+
+    # Mark wildtype positions
+    if wildtype_sequence:
+        wildtype_positions = []
+        wildtype_amino_acids = []
+
+        for pos_idx, aa in enumerate(wildtype_sequence):
+            if aa in amino_acids and pos_idx < len(positions):
+                aa_idx = amino_acids.index(aa)
+                wildtype_positions.append(pos_idx)
+                wildtype_amino_acids.append(aa_idx)
+
+        # Plot wildtype markers
+        if wildtype_positions:
+            ax.scatter(wildtype_positions, wildtype_amino_acids,
+                      marker=wildtype_marker, s=wildtype_marker_size,
+                      c='red', alpha=0.8, edgecolors='white', linewidth=1.5,
+                      zorder=10)
+
+    # Grid for better readability
+    ax.set_xticks(np.arange(-0.5, len(positions), 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(amino_acids), 1), minor=True)
+    ax.grid(which='minor', color='white', linestyle='-', linewidth=0.5, alpha=0.7)
+
+    plt.tight_layout()
+    plt.savefig(output_path, bbox_inches='tight', dpi=150)
+    plt.close()
+
     return output_path
