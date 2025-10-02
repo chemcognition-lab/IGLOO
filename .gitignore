@@ -111,6 +111,7 @@ ENV/
 # Data and embeddings
 /data/embeddings
 /src/igloo/data
+/data/Data_Donya_ERBC_Converted.csv
 
 # Results folders (keep specific embedding_signed folders tracked)
 /results/ERBC_ig/
