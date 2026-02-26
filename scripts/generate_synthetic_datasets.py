@@ -38,13 +38,12 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _SCRIPT_DIR.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
-from igloo.synthetic_data import (   # noqa: E402
+from igloo.synthetic_data import (  # noqa: E402
+    _NOISE_LEVELS,
     PROTEINS,
     SyntheticDatasetGenerator,
     generate_all_proteins,
-    _NOISE_LEVELS,
 )
-
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -200,6 +199,7 @@ def main() -> int:
         # We need to selectively generate only the requested models.
         # Call generate_all internals per-model to honour --models flag.
         import pandas as pd
+
         from igloo.synthetic_data import _FITNESS_MODELS
 
         saved = []
