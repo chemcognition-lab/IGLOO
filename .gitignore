@@ -113,6 +113,9 @@ ENV/
 /src/igloo/data
 /data/Data_Donya_ERBC_Converted.csv
 
+# Synthetic datasets (generated — recreate with scripts/generate_synthetic_datasets.py)
+/data/synthetic/*.csv
+
 # Results folders (keep specific embedding_signed folders tracked)
 /results/ERBC_ig/
 /results/PafA/
