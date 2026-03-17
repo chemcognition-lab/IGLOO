@@ -4,26 +4,25 @@ generate_synthetic_datasets.py
 -------------------------------
 Generate synthetic protein fitness datasets for IGLOO validation.
 
+Fitness values are stored noiseless; apply noise at model-training time.
+
 Usage examples
 --------------
-# Generate all proteins, all models, all noise levels (default):
+# Generate all proteins, all models (per-protein default n_variants):
     uv run scripts/generate_synthetic_datasets.py
 
-# Generate only GB1 with 500 variants at noise 0.0 and 0.1:
-    uv run scripts/generate_synthetic_datasets.py \
-        --proteins GB1 \
-        --noise-levels 0.0 0.1 \
-        --n-variants 500
-
-# Generate T4Lysozyme and p53DBD, additive + epistatic only:
-    uv run scripts/generate_synthetic_datasets.py \
-        --proteins T4Lysozyme p53DBD \
-        --models additive epistatic
+# Generate T4Lysozyme and p53, additive + epistatic only, 2000 variants each:
+    uv run scripts/generate_synthetic_datasets.py \\
+        --proteins T4Lysozyme p53 \\
+        --models additive epistatic \\
+        --n-variants 2000
 
 # List proteins and exit:
     uv run scripts/generate_synthetic_datasets.py --list
 
 Output directory: data/synthetic/  (customisable with --output-dir)
+Output files:     {protein}_{model}.csv
+                  {protein}_ground_truth_weights.json
 """
 
 from __future__ import annotations
@@ -39,10 +38,9 @@ _PROJECT_ROOT = _SCRIPT_DIR.parent
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
 from igloo.synthetic_data import (  # noqa: E402
-    _NOISE_LEVELS,
+    _FITNESS_MODELS,
     PROTEINS,
     SyntheticDatasetGenerator,
-    generate_all_proteins,
 )
 
 # ---------------------------------------------------------------------------
@@ -70,25 +68,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--models",
         nargs="+",
-        choices=["additive", "epistatic", "nonlinear"],
-        default=["additive", "epistatic", "nonlinear"],
+        choices=list(_FITNESS_MODELS.keys()),
+        default=list(_FITNESS_MODELS.keys()),
         metavar="MODEL",
-        help="Fitness models to generate. Default: all three.",
-    )
-    p.add_argument(
-        "--noise-levels",
-        nargs="+",
-        type=float,
-        default=_NOISE_LEVELS,
-        metavar="FLOAT",
-        help=f"Gaussian noise std values. Default: {_NOISE_LEVELS}",
+        help=f"Fitness models to generate. Choices: {list(_FITNESS_MODELS.keys())}. Default: all.",
     )
     p.add_argument(
         "--n-variants",
         type=int,
-        default=2000,
+        default=None,
         metavar="N",
-        help="Number of variant sequences per noise level. Default: 2000.",
+        help=(
+            "Number of variant sequences to generate. "
+            "Default: per-protein value (GB1=1500, T4Lysozyme=4000, p53=10000)."
+        ),
     )
     p.add_argument(
         "--output-dir",
@@ -129,7 +122,8 @@ def list_proteins() -> None:
         categories  = sorted(set(prot.annotations.values()))
         print(f"  {name:15s}  UniProt={prot.uniprot_id}  "
               f"len={len(prot.sequence)} aa  "
-              f"annotated={n_annotated} positions")
+              f"annotated={n_annotated} positions  "
+              f"default_n_variants={prot.default_n_variants}")
         print(f"  {'':15s}  categories: {', '.join(categories)}")
         print()
 
@@ -137,25 +131,22 @@ def list_proteins() -> None:
 def dry_run_report(
     proteins: list,
     models: list,
-    noise_levels: list,
-    n_variants: int,
+    n_variants_override: int | None,
     output_dir: str,
 ) -> None:
     print("\n[DRY RUN — no files will be written]\n")
     total_files = 0
     total_rows  = 0
-    for protein in proteins:
+    for protein_name in proteins:
+        prot = PROTEINS[protein_name]
+        nv   = n_variants_override if n_variants_override is not None else prot.default_n_variants
+        n_rows = nv + 1  # +1 for WT
         for model in models:
-            for noise in noise_levels:
-                fname = (
-                    Path(output_dir) /
-                    f"{protein}_{model}_noise{noise:.1f}.csv"
-                )
-                n_rows = n_variants + 1  # +1 for WT
-                print(f"  Would write  {fname}  ({n_rows} rows)")
-                total_files += 1
-                total_rows  += n_rows
-        gt_path = Path(output_dir) / f"{protein}_ground_truth_weights.json"
+            fname = Path(output_dir) / f"{protein_name}_{model}.csv"
+            print(f"  Would write  {fname}  (~{n_rows} rows)")
+            total_files += 1
+            total_rows  += n_rows
+        gt_path = Path(output_dir) / f"{protein_name}_ground_truth_weights.json"
         print(f"  Would write  {gt_path}")
         total_files += 1
     print()
@@ -180,7 +171,6 @@ def main() -> int:
         dry_run_report(
             args.proteins,
             args.models,
-            args.noise_levels,
             args.n_variants,
             str(out_dir),
         )
@@ -195,35 +185,25 @@ def main() -> int:
         print(f"  {protein_name}")
         print(f"{'='*60}")
         gen = SyntheticDatasetGenerator(protein_name)
+        nv  = args.n_variants if args.n_variants is not None else gen.protein.default_n_variants
 
-        # We need to selectively generate only the requested models.
-        # Call generate_all internals per-model to honour --models flag.
-        import pandas as pd
-
-        from igloo.synthetic_data import _FITNESS_MODELS
-
+        out_dir.mkdir(parents=True, exist_ok=True)
         saved = []
+
         for model in args.models:
             if model not in _FITNESS_MODELS:
                 print(f"  [WARN] Unknown model '{model}', skipping.")
                 continue
-            frames = []
-            for noise in args.noise_levels:
-                df = gen._generate_one(
-                    model=model,
-                    n_variants=args.n_variants,
-                    noise=noise,
-                    seed=args.seed,
-                )
-                frames.append(df)
-                fname = out_dir / f"{protein_name}_{model}_noise{noise:.1f}.csv"
-                out_dir.mkdir(parents=True, exist_ok=True)
-                df.to_csv(fname, index=False)
-                print(f"  Saved {fname}  ({len(df):,} rows)")
-                saved.append(str(fname))
+            df = gen.generate(
+                model=model,
+                n_variants=nv,
+                seed=args.seed,
+            )
+            fname = out_dir / f"{protein_name}_{model}.csv"
+            df.to_csv(fname, index=False)
+            print(f"  Saved {fname}  ({len(df):,} rows)")
+            saved.append(str(fname))
 
-        # Ground-truth importance vector
-        from igloo.synthetic_data import _p53_pos  # noqa
         gt_path = out_dir / f"{protein_name}_ground_truth_weights.json"
         gen._save_ground_truth(gt_path)
         print(f"  Saved {gt_path}")
