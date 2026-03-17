@@ -3,9 +3,9 @@
   "uniprot_id": "P00720",
   "sequence_length": 164,
   "category_weights": {
-    "active_site": 2.0,
+    "active_site": 5,
     "binding_site": 1.5,
-    "structural": 0.8
+    "structural": 0.5
   },
   "annotations": {
     "10": "active_site",
@@ -27,7 +27,7 @@
     0.05,
     0.05,
     0.05,
-    2.0,
+    5.0,
     0.05,
     0.05,
     0.05,
@@ -36,7 +36,7 @@
     0.05,
     0.05,
     0.05,
-    2.0,
+    5.0,
     0.05,
     0.05,
     0.05,
@@ -47,7 +47,7 @@
     0.05,
     0.05,
     0.05,
-    0.8,
+    0.5,
     0.05,
     0.05,
     0.05,
@@ -86,7 +86,7 @@
     0.05,
     0.05,
     0.05,
-    0.8,
+    0.5,
     0.05,
     0.05,
     0.05,
@@ -183,18 +183,18 @@
     0.05
   ],
   "annotated_positions": {
-    "binding_site": [
-      25,
-      116,
-      131
+    "active_site": [
+      10,
+      19
     ],
     "structural": [
       30,
       69
     ],
-    "active_site": [
-      10,
-      19
+    "binding_site": [
+      25,
+      116,
+      131
     ]
   }
 }

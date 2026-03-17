@@ -833,7 +833,8 @@ def analyze_sequence_with_integrated_gradients(
     baseline_name: str = "Baseline",
     save_plot_path: Optional[str] = None,
     clip_min: Optional[float] = None,
-    clip_max: Optional[float] = None
+    clip_max: Optional[float] = None,
+    embeddings_subdir: Optional[str] = None
 ) -> dict:
     """
     Analyze a sequence using integrated gradients.
@@ -873,10 +874,12 @@ def analyze_sequence_with_integrated_gradients(
     baseline_hash = hashlib.md5(baseline_sequence.encode()).hexdigest()[:8]
 
     seq_embedding = get_embeddings(
-        [sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_seq_{seq_hash}'
+        [sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_seq_{seq_hash}',
+        subdir=embeddings_subdir
     )
     baseline_embedding = get_embeddings(
-        [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_baseline_{baseline_hash}'
+        [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_baseline_{baseline_hash}',
+        subdir=embeddings_subdir
     )
 
     # Get predictions using DataLoader approach (exactly like training/evaluation)
@@ -1231,7 +1234,8 @@ def analyze_sequence_with_token_level_integrated_gradients(
     baseline_name: str = "Baseline",
     save_plot_path: Optional[str] = None,
     clip_min: Optional[float] = None,
-    clip_max: Optional[float] = None
+    clip_max: Optional[float] = None,
+    embeddings_subdir: Optional[str] = None
 ) -> dict:
     """
     Analyze a sequence using direct token-level integrated gradients.
@@ -1353,10 +1357,12 @@ def analyze_sequence_with_token_level_integrated_gradients(
     baseline_hash = hashlib.md5(baseline_sequence.encode()).hexdigest()[:8]
 
     seq_embedding = get_embeddings(
-        [sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_seq_{seq_hash}'
+        [sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_seq_{seq_hash}',
+        subdir=embeddings_subdir
     )
     baseline_embedding = get_embeddings(
-        [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_baseline_{baseline_hash}'
+        [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_baseline_{baseline_hash}',
+        subdir=embeddings_subdir
     )
 
     # Use DataLoader approach for predictions (exactly like embedding-level IG)

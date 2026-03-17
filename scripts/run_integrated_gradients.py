@@ -82,6 +82,7 @@ class IntegratedGradientsRunner:
 
 
         model_cfg = self.config['model']
+        embeddings_subdir = 'synthetic' if 'synthetic' in self.config['data'].get('path', '') else None
 
         # Get sample embeddings to determine dimensions
         print("Getting sample embeddings to determine dimensions...")
@@ -90,7 +91,8 @@ class IntegratedGradientsRunner:
             sample_sequences,
             layer=model_cfg.get('esm_layer', 33),
             batch_size=model_cfg.get('batch_size', 16),
-            dataset_name=f"{self.config['data']['name']}_sample"
+            dataset_name=f"{self.config['data']['name']}_sample",
+            subdir=embeddings_subdir
         )
 
         # Determine embedding dimensions

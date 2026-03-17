@@ -89,24 +89,24 @@ class ProteinDefinition:
 # Per-protein category importance weights
 # Values reflect the biological role of each category within that protein's function.
 _T4L_WEIGHTS: dict[str, float] = {
-    "active_site":  2.0,  # Glu11/Asp20 — catalytic, complete loss of activity when mutated
-    "binding_site": 1.5,  # substrate binding residues
-    "structural":   0.8,  # salt bridges (His31, Asp70) — stability contribution
-}
+    "active_site": 5, # Glu11/Asp20 — catalytic, complete loss of activity when mutated
+    "binding_site": 1.5, # substrate binding residues
+    "structural": 0.5, # salt bridges (His31, Asp70) — stability contribution
+    }
 
 _P53_WEIGHTS: dict[str, float] = {
-    "active_site":    2.0,  # direct DNA contacts (R248, R273, K120, C277, R280) — oncogenic hotspots
-    "metal_binding":  2.0,  # Zn coordination (C176, H179, C238, C242) — loss unfolds DBD
-    "binding_site":   1.5,  # MDM2 interface, polymerization, DNA backbone contacts
-    "signalling":     1.2,  # NLS residues — affects localization, less directly lethal
-    "structural":     1.0,  # TET hinge/salt bridge — affects tetramerization
-}
+    "active_site": 1.5, # direct DNA contacts (R248, R273, K120, C277, R280) — oncogenic hotspots
+    "metal_binding": 5, # Zn coordination (C176, H179, C238, C242) — loss unfolds DBD
+    "binding_site": 0.5, # MDM2 interface, polymerization, DNA backbone contacts
+    "structural": 1.0, # TET hinge/salt bridge — affects tetramerization
+    "signalling": 0.5, # NLS residues — affects localization, less directly lethal
+    }
 
 _GB1_WEIGHTS: dict[str, float] = {
-    "binding_site": 2.0,  # Fc/Fab interface — primary function of the domain
-    "structural":   1.8,  # core packing — critical for stability of this 56-aa domain
-    "folding":      1.2,  # beta-hairpin residues — important for folding/stability
-}
+    "binding_site": 1.5, # Fc/Fab interface — primary function of the domain
+    "structural": 1.0, # core packing — critical for stability of this 56-aa domain
+    "folding": 0.5, # beta-hairpin residues — important for folding/stability
+    }
 
 # ---------------------------------------------------------------------------
 # T4 Lysozyme  (P00720, 164 aa)

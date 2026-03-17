@@ -30,7 +30,8 @@ def validate_completeness_axiom_token_level(
     steps: int = 25,
     batch_size: int = 10,
     attribution_method: str = 'signed',
-    completeness_threshold: float = 0.1
+    completeness_threshold: float = 0.1,
+    embeddings_subdir: str = None
 ) -> tuple[bool, float, dict]:
     """
     Validate that a sequence satisfies the completeness axiom for token-level analysis.
@@ -75,7 +76,8 @@ def validate_completeness_axiom_token_level(
             baseline_actual_activity=None,
             plot_predictions=False,  # Don't create plots for validation
             sequence_name="Validation",
-            baseline_name="Baseline"
+            baseline_name="Baseline",
+            embeddings_subdir=embeddings_subdir
         )
 
         # Extract completeness information from the result
@@ -119,7 +121,8 @@ def validate_completeness_axiom(
     steps: int = 50,
     batch_size: int = 10,
     attribution_method: str = 'signed',
-    completeness_threshold: float = 0.1
+    completeness_threshold: float = 0.1,
+    embeddings_subdir: str = None
 ) -> tuple[bool, float, dict]:
     """
     Validate that a sequence satisfies the completeness axiom before full analysis.
@@ -163,7 +166,8 @@ def validate_completeness_axiom(
             baseline_actual_activity=None,
             plot_predictions=False,  # Don't create plots for validation
             sequence_name="Validation",
-            baseline_name="Baseline"
+            baseline_name="Baseline",
+            embeddings_subdir=embeddings_subdir
         )
 
         # Extract completeness information from the result
@@ -206,7 +210,8 @@ def filter_sequences_by_completeness(
     validation_steps: int = 25,  # Fewer steps for faster validation
     attribution_method: str = 'signed',
     completeness_threshold: float = 0.1,
-    max_sequences: int = None
+    max_sequences: int = None,
+    embeddings_subdir: str = None
 ) -> tuple[list[tuple[str, str, str]], dict]:
     """
     Filter sequences to only include those that satisfy the completeness axiom.
@@ -241,7 +246,8 @@ def filter_sequences_by_completeness(
         # Still validate WT for reporting
         passes, error, info = validate_completeness_axiom(
             wt_entry[1], wt_entry[2], model, alphabet, device,
-            y_log_mean, y_log_std, validation_steps, 10, attribution_method, completeness_threshold
+            y_log_mean, y_log_std, validation_steps, 10, attribution_method, completeness_threshold,
+            embeddings_subdir=embeddings_subdir
         )
         validation_results[wt_entry[0]] = {
             'passes': passes,
@@ -261,7 +267,8 @@ def filter_sequences_by_completeness(
 
         passes, error, info = validate_completeness_axiom(
             sequence, baseline, model, alphabet, device,
-            y_log_mean, y_log_std, validation_steps, 10, attribution_method, completeness_threshold
+            y_log_mean, y_log_std, validation_steps, 10, attribution_method, completeness_threshold,
+            embeddings_subdir=embeddings_subdir
         )
 
         validation_results[name] = {

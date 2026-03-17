@@ -24,6 +24,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
 
     ig_config = config['integrated_gradients']
     model_config = config['model']
+    embeddings_subdir = 'synthetic' if 'synthetic' in config.get('data', {}).get('path', '') else None
 
     # Load ESM model
     print("Loading ESM model for integrated gradients...")
@@ -67,7 +68,8 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 validation_steps=validation_steps,
                 attribution_method=attribution_method,
                 completeness_threshold=completeness_threshold,
-                max_sequences=completeness_config.get('max_sequences_to_validate', None)
+                max_sequences=completeness_config.get('max_sequences_to_validate', None),
+                embeddings_subdir=embeddings_subdir
             )
 
             # Store validation results for later reporting
@@ -108,7 +110,8 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 save_plot_path=os.path.join(results_dir,
                                           f"{config['data']['name']}_{name}_predicted_vs_actual.png"),
                 clip_min=data_min,
-                clip_max=data_max
+                clip_max=data_max,
+                embeddings_subdir=embeddings_subdir
             )
             ig_results[name] = result
             print_ig_sequence_results(name, actual_activity, result, None)
@@ -124,7 +127,8 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 passes, error, info = validate_completeness_axiom_token_level(
                     sequence, baseline, esm_model, final_model, alphabet, device,
                     model_config['esm_layer'], model_config['pooling_method'],
-                    y_log_mean, y_log_std, validation_steps, 10, attribution_method, completeness_threshold
+                    y_log_mean, y_log_std, validation_steps, 10, attribution_method, completeness_threshold,
+                    embeddings_subdir=embeddings_subdir
                 )
 
                 if passes:
@@ -238,7 +242,8 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 save_plot_path=os.path.join(results_dir,
                                           f"{config['data']['name']}_{name}_predicted_vs_actual.png"),
                 clip_min=data_min,
-                clip_max=data_max
+                clip_max=data_max,
+                embeddings_subdir=embeddings_subdir
             )
             ig_results[name] = result
             print_ig_sequence_results(name, actual_activity, result, None)

@@ -286,12 +286,14 @@ def evaluate_model_performance(model, sequences, y, y_raw, y_log_mean, y_log_std
 
     # Get embeddings for evaluation
     print("Getting embeddings for evaluation...")
+    embeddings_subdir = 'synthetic' if 'synthetic' in config.get('data', {}).get('path', '') else None
 
     all_embeddings = get_embeddings(
         sequences,
         layer=model_config['esm_layer'],
         batch_size=16,
-        dataset_name=f"{config['data']['name']}_eval"
+        dataset_name=f"{config['data']['name']}_eval",
+        subdir=embeddings_subdir
     )
 
     # Evaluate using DataLoader
