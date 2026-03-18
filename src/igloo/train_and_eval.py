@@ -146,7 +146,8 @@ def train_model_with_embeddings(
     save_path: Optional[str] = None,
     loss_type: str = 'mse',
     results_dir: Optional[str] = None,
-    model_config: Optional[dict[str, Any]] = None
+    model_config: Optional[dict[str, Any]] = None,
+    embeddings_subdir: Optional[str] = None
 ) -> dict:
     """
     Train a model using the same embedding + DataLoader approach as integrated gradients.
@@ -183,7 +184,8 @@ def train_model_with_embeddings(
         train_sequences,
         layer=esm_layer,
         batch_size=batch_size,
-        dataset_name=f"{dataset_name}_train"
+        dataset_name=f"{dataset_name}_train",
+        subdir=embeddings_subdir
     )
 
     val_embeddings = None
@@ -193,7 +195,8 @@ def train_model_with_embeddings(
             val_sequences,
             layer=esm_layer,
             batch_size=batch_size,
-            dataset_name=f"{dataset_name}_val"
+            dataset_name=f"{dataset_name}_val",
+            subdir=embeddings_subdir
         )
 
     # Compute global normalization parameters for IG analysis (but don't use them for training)
@@ -974,6 +977,7 @@ def train(
 
 
 def train_or_load_model(config, sequences, y, results_dir, device):
+    embeddings_subdir = 'synthetic' if 'synthetic' in config.get('data', {}).get('path', '') else None
     """Train a new model or load existing one"""
 
     model_config = config['model']
@@ -985,7 +989,8 @@ def train_or_load_model(config, sequences, y, results_dir, device):
         [sequences[0]],
         layer=model_config['esm_layer'],
         batch_size=1,
-        dataset_name=f"{config['data']['name']}_sample"
+        dataset_name=f"{config['data']['name']}_sample",
+        subdir=embeddings_subdir
     )
     L, D = sample_embeddings.shape[1], sample_embeddings.shape[2]
 
@@ -1097,7 +1102,8 @@ def train_or_load_model(config, sequences, y, results_dir, device):
             loss_type=model_config.get('loss_type', 'huber').lower(),
             results_dir=results_dir,
             save_path=training_model_path,
-            model_config=model_cfg
+            model_config=model_cfg,
+            embeddings_subdir=embeddings_subdir
         )
 
         final_model = training_results['model']

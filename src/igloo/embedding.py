@@ -7,7 +7,7 @@ from safetensors.torch import load_file, save_file
 
 # Determine script directory and set paths relative to it
 
-def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA'):
+def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA', subdir=None):
     # Always compute project_root as the top-level project directory (containing 'data')
     import inspect
     caller_frame = inspect.stack()[1]
@@ -23,6 +23,8 @@ def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA'):
 
     embeddings = []
     emb_dir = Path(project_root) / 'data' / 'embeddings'
+    if subdir:
+        emb_dir = emb_dir / subdir
     emb_dir.mkdir(parents=True, exist_ok=True)
     n = len(sequences)
     batch_files = []
