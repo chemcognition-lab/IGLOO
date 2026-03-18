@@ -813,6 +813,92 @@ def export_sequence_analysis_results(
     print(f"Analysis results exported to {output_dir}")
 
 
+# ---------------------------------------------------------------------------
+# Interpolation path helpers
+# ---------------------------------------------------------------------------
+
+def interpolate_embeddings(
+    baseline: torch.Tensor,
+    sequence: torch.Tensor,
+    alpha: float,
+    method: str = 'linear',
+) -> torch.Tensor:
+    """
+    Interpolate between baseline and sequence embeddings at a given alpha.
+
+    Parameters
+    ----------
+    baseline : Tensor of shape (..., embed_dim)
+        Starting point; alpha=0 returns baseline, alpha=1 returns sequence.
+    sequence : Tensor of the same shape as baseline.
+    alpha    : Scalar in [0, 1].
+    method   : Interpolation strategy:
+        'linear'           — straight-line path (standard IG).
+        'slerp'            — spherical linear interpolation applied
+                             independently to each embedding vector
+                             (preserves L2 norm along the path); falls
+                             back to linear when vectors are nearly
+                             parallel (omega ≈ 0).
+        'nearest_neighbor' — discrete staircase path: positions switch
+                             from baseline to sequence one at a time as
+                             alpha increases (ordered by position index).
+                             Position i activates when alpha >= i / L,
+                             where L = number of positions. Produces a
+                             piecewise-constant path through embedding
+                             space; useful for probing position-order
+                             sensitivity of attributions.
+
+    Returns
+    -------
+    Tensor of same shape as inputs.
+    """
+    if method == 'linear':
+        return baseline + alpha * (sequence - baseline)
+
+    elif method == 'slerp':
+        eps = 1e-8
+        v0 = baseline.float()
+        v1 = sequence.float()
+
+        v0_norm = torch.nn.functional.normalize(v0, dim=-1)
+        v1_norm = torch.nn.functional.normalize(v1, dim=-1)
+
+        # Angle between the two unit vectors at each position
+        dot = torch.clamp((v0_norm * v1_norm).sum(dim=-1, keepdim=True), -1.0, 1.0)
+        omega = torch.acos(dot)         # (..., 1)
+        sin_omega = torch.sin(omega)    # (..., 1)
+
+        slerp = (
+            (torch.sin((1.0 - alpha) * omega) / (sin_omega + eps)) * v0
+            + (torch.sin(alpha * omega) / (sin_omega + eps)) * v1
+        )
+        linear = v0 + alpha * (v1 - v0)
+
+        # Fall back to linear wherever sin_omega is too small
+        return torch.where(sin_omega > eps, slerp, linear)
+
+    elif method == 'nearest_neighbor':
+        # Discrete staircase: position i switches from baseline to sequence
+        # embedding when alpha >= i / seq_len. For alpha=0 every position
+        # uses baseline; for alpha=1 every position uses sequence (since
+        # i/L < 1 for all i in [0, L-1]).
+        seq_len = baseline.shape[-2]
+        thresholds = torch.arange(seq_len, dtype=torch.float32, device=baseline.device) / seq_len
+        switched = (thresholds <= alpha).to(baseline.dtype)  # (seq_len,)
+
+        # Reshape for broadcasting against (..., seq_len, embed_dim):
+        #   2-D input (seq_len, embed_dim)      → switched: (seq_len, 1)
+        #   3-D input (batch, seq_len, embed_dim) → switched: (1, seq_len, 1)
+        shape = [1] * (baseline.dim() - 2) + [seq_len, 1]
+        switched = switched.view(*shape)
+        return baseline + switched * (sequence - baseline)
+
+    else:
+        raise ValueError(
+            f"Unknown interpolation method '{method}'. "
+            f"Choose from: 'linear', 'slerp', 'nearest_neighbor'"
+        )
+
 
 def analyze_sequence_with_integrated_gradients(
     sequence: str,
@@ -826,15 +912,18 @@ def analyze_sequence_with_integrated_gradients(
     batch_size: int = 10,
     method: str = 'embedding',  # 'embedding' or 'gumbel'
     attribution_method: str = 'signed',  # 'magnitude' (L2 norm) or 'signed' (dot product)
-    actual_activity: Optional[float] = None,
-    baseline_actual_activity: Optional[float] = None,
+    actual_activity: float | None = None,
+    baseline_actual_activity: float | None = None,
     plot_predictions: bool = False,
     sequence_name: str = "Sequence",
     baseline_name: str = "Baseline",
-    save_plot_path: Optional[str] = None,
-    clip_min: Optional[float] = None,
-    clip_max: Optional[float] = None,
-    embeddings_subdir: Optional[str] = None
+    save_plot_path: str | None = None,
+    clip_min: float | None = None,
+    clip_max: float | None = None,
+    embeddings_subdir: str | None = None,
+    interpolation_path: str = 'linear',
+    plot_interpolation_umap: bool = False,
+    interpolation_umap_save_path: str | None = None,
 ) -> dict:
     """
     Analyze a sequence using integrated gradients.
@@ -964,18 +1053,45 @@ def analyze_sequence_with_integrated_gradients(
     # Generate interpolated embeddings between baseline and sequence
     alphas = torch.linspace(0, 1, steps + 1, device=device)
     all_gradients = []
+    umap_trajectory: list = []
+    umap_alphas: list = []
 
     # Convert to torch tensors for interpolation
     seq_emb_torch = torch.from_numpy(seq_embedding).to(device).float()
     baseline_emb_torch = torch.from_numpy(baseline_embedding).to(device).float()
+
+    # Quick sanity-check: print mean embedding norm at 3 alpha checkpoints.
+    # slerp  → norms stay constant  (all three values ≈ equal)
+    # linear → norm dips at midpoint (middle value < endpoints)
+    with torch.no_grad():
+        _ref_alphas = [0.0, 0.5, 1.0]
+        _ref_norms = [
+            interpolate_embeddings(baseline_emb_torch, seq_emb_torch, a, method=interpolation_path)
+            .squeeze(0).norm(dim=-1).mean().item()
+            for a in _ref_alphas
+        ]
+    print(
+        f"  Interpolation path check [{interpolation_path}]  "
+        f"norm(α=0)={_ref_norms[0]:.4f}  "
+        f"norm(α=0.5)={_ref_norms[1]:.4f}  "
+        f"norm(α=1)={_ref_norms[2]:.4f}"
+        + ("  ✓ norms stable (slerp working)" if abs(_ref_norms[1] - _ref_norms[0]) < 0.01 * _ref_norms[0]
+           else "  (midpoint dip expected for linear/nn)")
+    )
 
     for i in range(0, len(alphas), batch_size):
         batch_alphas = alphas[i:i + batch_size]
         interpolated_embeddings = []
 
         for alpha in batch_alphas:
-            interpolated = baseline_emb_torch + alpha * (seq_emb_torch - baseline_emb_torch)
+            interpolated = interpolate_embeddings(
+                baseline_emb_torch, seq_emb_torch, alpha.item(), method=interpolation_path
+            )
             interpolated_embeddings.append(interpolated)
+            if plot_interpolation_umap:
+                pooled = interpolated.squeeze(0).mean(dim=0).detach().cpu().numpy()
+                umap_trajectory.append(pooled)
+                umap_alphas.append(alpha.item())
 
         # Stack batch - but DON'T apply DataLoader normalization again
         # The embeddings are already in the right format from ESM
@@ -1039,6 +1155,36 @@ def analyze_sequence_with_integrated_gradients(
     # Combine all gradients and average across integration steps
     all_gradients = torch.cat(all_gradients, dim=0)  # (total_steps, seq_len, embed_dim)
     avg_gradients = torch.mean(all_gradients, dim=0)  # (seq_len, embed_dim)
+
+    # Optionally visualise the interpolation path in UMAP-projected embedding space
+    if plot_interpolation_umap and umap_trajectory:
+        # ── Norm diagnostics ──────────────────────────────────────────────
+        # slerp  → norms stay constant throughout (CV ≈ 0, no midpoint dip)
+        # linear → norms decrease toward the midpoint then recover (CV > 0)
+        # nearest_neighbor → norms jump in discrete steps
+        _norms = np.linalg.norm(np.stack(umap_trajectory), axis=1)
+        _mid = len(_norms) // 2
+        _cv = _norms.std() / _norms.mean() if _norms.mean() > 0 else float('nan')
+        print(
+            f"[interpolation diagnostics | method={interpolation_path}]\n"
+            f"  mean-pooled embedding norm:  "
+            f"α=0 → {_norms[0]:.4f}   "
+            f"α≈0.5 → {_norms[_mid]:.4f}   "
+            f"α=1 → {_norms[-1]:.4f}\n"
+            f"  norm CV across path: {_cv:.5f}  "
+            f"(slerp → ~0; linear → >0 with midpoint dip; nn → step changes)"
+        )
+        # ─────────────────────────────────────────────────────────────────
+        from .plot import plot_interpolation_path_umap
+        print(f"Plotting interpolation path UMAP ({len(umap_trajectory)} steps)...")
+        plot_interpolation_path_umap(
+            emb_trajectory=umap_trajectory,
+            alphas=np.array(umap_alphas),
+            sequence_name=sequence_name,
+            baseline_name=baseline_name,
+            interpolation_method=interpolation_path,
+            save_path=interpolation_umap_save_path,
+        )
 
     # Compute integrated gradients using the specified attribution method
     # Attribution = (input - baseline) × average_gradient
@@ -1227,15 +1373,16 @@ def analyze_sequence_with_token_level_integrated_gradients(
     steps: int = 50,
     batch_size: int = 10,
     attribution_method: str = 'magnitude',  # 'magnitude' (L2 norm) or 'signed' (dot product)
-    actual_activity: Optional[float] = None,
-    baseline_actual_activity: Optional[float] = None,
+    actual_activity: float | None = None,
+    baseline_actual_activity: float | None = None,
     plot_predictions: bool = False,
     sequence_name: str = "Sequence",
     baseline_name: str = "Baseline",
-    save_plot_path: Optional[str] = None,
-    clip_min: Optional[float] = None,
-    clip_max: Optional[float] = None,
-    embeddings_subdir: Optional[str] = None
+    save_plot_path: str | None = None,
+    clip_min: float | None = None,
+    clip_max: float | None = None,
+    embeddings_subdir: str | None = None,
+    interpolation_path: str = 'linear'
 ) -> dict:
     """
     Analyze a sequence using direct token-level integrated gradients.
@@ -1445,8 +1592,10 @@ def analyze_sequence_with_token_level_integrated_gradients(
             baseline_token_embeds = token_embed_matrix[baseline_tokens]  # (1, seq_len+2, embed_dim)
 
             # Interpolate at token embedding level
-            interpolated_embeds = baseline_token_embeds + alpha * (seq_token_embeds - baseline_token_embeds)
-            interpolated_embeds.requires_grad_(True)
+            interpolated_embeds = interpolate_embeddings(
+                baseline_token_embeds, seq_token_embeds, alpha.item(), method=interpolation_path
+            )
+            interpolated_embeds = interpolated_embeds.clone().detach().requires_grad_(True)
 
             # Forward pass to get prediction
             outputs = predict_from_token_embeddings(interpolated_embeds)

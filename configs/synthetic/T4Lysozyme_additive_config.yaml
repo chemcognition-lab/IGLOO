@@ -27,6 +27,7 @@ model:
 integrated_gradients:
   method: "embedding"
   attribution_method: "signed"
+  interpolation_path: "linear"  # 'linear' | 'slerp' | 'nearest_neighbor'
   steps: 50
   batch_size: 10
 

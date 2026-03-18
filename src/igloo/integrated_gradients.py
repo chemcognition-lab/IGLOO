@@ -35,6 +35,8 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
     # Run analysis based on method
     ig_method = ig_config['method']  # 'embedding' or 'token'
     attribution_method = ig_config.get('attribution_method', 'magnitude')
+    interpolation_path = ig_config.get('interpolation_path', 'linear')  # 'linear' | 'slerp' | 'nearest_neighbor'
+    plot_umap = ig_config.get('plot_interpolation_umap', False)
 
     # Check if completeness validation is enabled
     completeness_config = ig_config.get('completeness_validation', {})
@@ -111,7 +113,13 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                                           f"{config['data']['name']}_{name}_predicted_vs_actual.png"),
                 clip_min=data_min,
                 clip_max=data_max,
-                embeddings_subdir=embeddings_subdir
+                embeddings_subdir=embeddings_subdir,
+                interpolation_path=interpolation_path,
+                plot_interpolation_umap=plot_umap,
+                interpolation_umap_save_path=(
+                    os.path.join(results_dir, f"{name}_interpolation_umap.png")
+                    if plot_umap else None
+                ),
             )
             ig_results[name] = result
             print_ig_sequence_results(name, actual_activity, result, None)
@@ -243,7 +251,8 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                                           f"{config['data']['name']}_{name}_predicted_vs_actual.png"),
                 clip_min=data_min,
                 clip_max=data_max,
-                embeddings_subdir=embeddings_subdir
+                embeddings_subdir=embeddings_subdir,
+                interpolation_path=interpolation_path,
             )
             ig_results[name] = result
             print_ig_sequence_results(name, actual_activity, result, None)

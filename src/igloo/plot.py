@@ -1347,3 +1347,109 @@ def plot_mutation_frequency_heatmap(
     plt.close()
 
     return output_path
+
+
+def plot_interpolation_path_umap(
+    emb_trajectory: list,
+    alphas: np.ndarray,
+    sequence_name: str = "Sequence",
+    baseline_name: str = "Baseline",
+    interpolation_method: str = 'linear',
+    save_path: Optional[str] = None,
+    umap_n_neighbors: int = 15,
+    umap_min_dist: float = 0.1,
+    random_state: int = 42,
+) -> None:
+    """Plot a 2-D UMAP projection of the interpolation path through embedding space.
+
+    Each point along the path (one per IG alpha step) is mean-pooled to a
+    single vector and then projected with UMAP for visualisation.
+
+    Parameters
+    ----------
+    emb_trajectory:
+        List of ``(embed_dim,)`` numpy arrays, one per alpha step.
+    alphas:
+        1-D array of alpha values corresponding to each trajectory point.
+    sequence_name:
+        Label for the target sequence (alpha=1 endpoint).
+    baseline_name:
+        Label for the baseline (alpha=0 endpoint).
+    interpolation_method:
+        Name of the interpolation method (shown in the plot title).
+    save_path:
+        If provided, the figure is saved to this path (PNG/PDF/…).
+    umap_n_neighbors:
+        ``n_neighbors`` passed to UMAP.
+    umap_min_dist:
+        ``min_dist`` passed to UMAP.
+    random_state:
+        Random seed for UMAP reproducibility.
+    """
+    try:
+        import umap  # type: ignore
+    except ImportError:
+        print("umap-learn is not installed. Run `pip install umap-learn`. Skipping UMAP plot.")
+        return
+
+    X = np.stack(emb_trajectory, axis=0).astype(np.float32)
+    n_steps = X.shape[0]
+
+    if n_steps < 4:
+        print(f"Too few interpolation steps ({n_steps}) for UMAP (need ≥ 4). Skipping.")
+        return
+
+    n_neighbors = min(umap_n_neighbors, n_steps - 1)
+    reducer = umap.UMAP(
+        n_components=2,
+        n_neighbors=n_neighbors,
+        min_dist=umap_min_dist,
+        random_state=random_state,
+    )
+    coords = reducer.fit_transform(X)  # (n_steps, 2)
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+
+    # Connecting line
+    ax.plot(coords[:, 0], coords[:, 1], color='grey', linewidth=1.0, alpha=0.45, zorder=1)
+
+    # Scatter coloured by alpha
+    sc = ax.scatter(
+        coords[:, 0], coords[:, 1],
+        c=alphas, cmap='viridis',
+        s=40, edgecolors='none', alpha=0.85, zorder=2,
+    )
+    cbar = plt.colorbar(sc, ax=ax)
+    cbar.set_label('α  (interpolation step)', fontsize=10)
+
+    # Endpoint markers
+    ax.scatter(
+        coords[0, 0], coords[0, 1],
+        s=200, marker='s', color='royalblue', zorder=3,
+        edgecolors='white', linewidth=1.5,
+        label=f'α=0  ({baseline_name})',
+    )
+    ax.scatter(
+        coords[-1, 0], coords[-1, 1],
+        s=200, marker='*', color='crimson', zorder=3,
+        edgecolors='white', linewidth=1.5,
+        label=f'α=1  ({sequence_name})',
+    )
+
+    ax.set_xlabel('UMAP 1', fontsize=11)
+    ax.set_ylabel('UMAP 2', fontsize=11)
+    ax.set_title(
+        f'Interpolation path in embedding space\n'
+        f'{baseline_name} → {sequence_name}   [{interpolation_method}]',
+        fontsize=12,
+    )
+    ax.legend(fontsize=9, loc='best')
+    sns.despine(ax=ax)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Interpolation UMAP saved to {save_path}")
+
+    plt.show()
+    plt.close()
