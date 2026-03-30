@@ -16,7 +16,9 @@ Example:
 import argparse
 import os
 import sys
+import time
 import traceback
+from datetime import datetime
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -30,7 +32,6 @@ from src.igloo.config_utils import (
     validate_config,
 )
 from src.igloo.data_processing import load_and_prepare_data, prepare_wildtype_sequence
-from src.igloo.embedding import get_embeddings
 from src.igloo.integrated_gradients import run_integrated_gradients_analysis
 from src.igloo.train_and_eval import train_or_load_model
 from src.igloo.utils import (
@@ -77,34 +78,7 @@ class IntegratedGradientsRunner:
         """Prepare the wildtype sequence for analysis."""
         self.wt_seq, self.wt_idx = prepare_wildtype_sequence(self.df, self.config)
 
-    def get_embeddings_for_training(self):
-        """Get embeddings for model training."""
-
-
-        model_cfg = self.config['model']
-        embeddings_subdir = 'synthetic' if 'synthetic' in self.config['data'].get('path', '') else None
-
-        # Get sample embeddings to determine dimensions
-        print("Getting sample embeddings to determine dimensions...")
-        sample_sequences = self.sequences[:min(5, len(self.sequences))]
-        sample_embeddings = get_embeddings(
-            sample_sequences,
-            layer=model_cfg.get('esm_layer', 33),
-            batch_size=model_cfg.get('batch_size', 16),
-            dataset_name=f"{self.config['data']['name']}_sample",
-            subdir=embeddings_subdir
-        )
-
-        # Determine embedding dimensions
-        if isinstance(sample_embeddings, tuple):
-            embedding_dim = sample_embeddings[0].shape[-1]
-        else:
-            embedding_dim = sample_embeddings.shape[-1]
-
-        print(f"Embedding dimension: {embedding_dim}")
-        return embedding_dim
-
-    def train_or_load_model(self, embedding_dim: int):
+    def train_or_load_model(self):
         """Train a new model or load an existing one."""
         # Construct results directory path
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -207,8 +181,72 @@ class IntegratedGradientsRunner:
             self.config, results_dir, self.wt_seq, self.final_model
         )
 
+    def _write_timing_report(self, timing: dict, results_dir: str) -> None:
+        """Write a timing summary to a .txt file in the results directory."""
+        os.makedirs(results_dir, exist_ok=True)
+        report_path = os.path.join(results_dir, f"{self.config['data']['name']}_timing_report.txt")
+
+        total = timing.get('total', 0.0)
+        n_ig = timing.get('n_ig_sequences', 0)
+
+        lines = [
+            "=" * 60,
+            "PIPELINE TIMING REPORT",
+            "=" * 60,
+            f"Dataset      : {self.config['data']['name']}",
+            f"Started at   : {timing.get('start_time', 'N/A')}",
+            f"Finished at  : {timing.get('end_time', 'N/A')}",
+            f"Device       : {self.device}",
+            "-" * 60,
+            f"{'Step':<40} {'Duration':>10}",
+            "-" * 60,
+        ]
+
+        step_keys = [
+            ('data_loading',        'Data loading & preparation'),
+            ('wildtype_prep',       'Wildtype sequence preparation'),
+            ('embedding_retrieval', 'Embedding retrieval (if needed)'),
+            ('model_train_load',    'Model training / loading'),
+            ('model_evaluation',    'Model evaluation'),
+            ('integrated_gradients', f'Integrated gradients ({n_ig} sequence(s))'),
+            ('visualizations',      'Visualizations & exports'),
+        ]
+
+        for key, label in step_keys:
+            secs = timing.get(key)
+            if secs is not None:
+                lines.append(f"  {label:<38} {self._fmt_duration(secs):>10}")
+
+        lines += [
+            "-" * 60,
+            f"  {'TOTAL':<38} {self._fmt_duration(total):>10}",
+            "=" * 60,
+        ]
+
+        report = "\n".join(lines) + "\n"
+        print(report)
+
+        with open(report_path, 'w') as f:
+            f.write(report)
+        print(f"Timing report saved to {report_path}")
+
+    @staticmethod
+    def _fmt_duration(secs: float) -> str:
+        """Format seconds as a human-readable string."""
+        if secs < 60:
+            return f"{secs:.1f}s"
+        m, s = divmod(int(secs), 60)
+        if m < 60:
+            return f"{m}m {s:02d}s"
+        h, m = divmod(m, 60)
+        return f"{h}h {m:02d}m {s:02d}s"
+
     def run_complete_analysis(self):
         """Run the complete integrated gradients analysis pipeline."""
+        timing: dict = {}
+        pipeline_start = time.perf_counter()
+        timing['start_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
         try:
             print("="*60)
             print("INTEGRATED GRADIENTS ANALYSIS PIPELINE")
@@ -218,29 +256,45 @@ class IntegratedGradientsRunner:
             print()
 
             # Step 1: Load and prepare data
+            _t = time.perf_counter()
             self.load_and_prepare_data()
+            timing['data_loading'] = time.perf_counter() - _t
 
             # Step 2: Prepare wildtype sequence
+            _t = time.perf_counter()
             self.prepare_wildtype_sequence()
+            timing['wildtype_prep'] = time.perf_counter() - _t
 
-            # Step 3: Get embedding dimensions
-            embedding_dim = self.get_embeddings_for_training()
+            # Step 3: Train or load model
+            _t = time.perf_counter()
+            self.train_or_load_model()
+            timing['model_train_load'] = time.perf_counter() - _t
+            timing['embedding_retrieval'] = 0.0
 
-            # Step 4: Train or load model
-            self.train_or_load_model(embedding_dim)
-
-            # Step 5: Evaluate model performance
+            # Step 4: Evaluate model performance
+            _t = time.perf_counter()
             eval_results = self.evaluate_model_performance()
+            timing['model_evaluation'] = time.perf_counter() - _t
 
-            # Step 6: Run integrated gradients analysis
+            # Step 5: Run integrated gradients analysis
+            _t = time.perf_counter()
             ig_results = self.run_integrated_gradients_analysis(eval_results)
+            timing['integrated_gradients'] = time.perf_counter() - _t
+            # Count analysed sequences (exclude internal keys starting with '_')
+            timing['n_ig_sequences'] = sum(
+                1 for k in (ig_results or {}) if not k.startswith('_')
+            )
 
-            # Step 7: Create visualizations and exports
+            # Step 6: Create visualizations and exports
+            _t = time.perf_counter()
             if ig_results:
                 self.create_visualizations_and_exports(ig_results, eval_results)
+            timing['visualizations'] = time.perf_counter() - _t
 
-            # Step 8: Print completion summary
-            # Convert eval_results tuple to dict for print function
+            timing['end_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            timing['total'] = time.perf_counter() - pipeline_start
+
+            # Step 7: Print completion summary
             r2, pearson_r, spearman_rho, _ = eval_results
             eval_results_dict = {
                 'r2': r2,
@@ -256,9 +310,19 @@ class IntegratedGradientsRunner:
                 self.config['data']['name']
             )
 
+            # Step 8: Write timing report
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
+            results_dir = os.path.join(
+                project_root,
+                self.config.get('results_dir', f"results/{self.config['data']['name']}_ig")
+            )
+            self._write_timing_report(timing, results_dir)
+
             return {
                 'evaluation': eval_results,
-                'integrated_gradients': ig_results
+                'integrated_gradients': ig_results,
+                'timing': timing,
             }
 
         except Exception as e:

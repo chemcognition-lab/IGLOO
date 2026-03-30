@@ -147,7 +147,8 @@ def train_model_with_embeddings(
     loss_type: str = 'mse',
     results_dir: Optional[str] = None,
     model_config: Optional[dict[str, Any]] = None,
-    embeddings_subdir: Optional[str] = None
+    embeddings_subdir: Optional[str] = None,
+    esm_model_name: str = 'esmc_300m',
 ) -> dict:
     """
     Train a model using the same embedding + DataLoader approach as integrated gradients.
@@ -185,7 +186,8 @@ def train_model_with_embeddings(
         layer=esm_layer,
         batch_size=batch_size,
         dataset_name=f"{dataset_name}_train",
-        subdir=embeddings_subdir
+        subdir=embeddings_subdir,
+        esm_model_name=esm_model_name,
     )
 
     val_embeddings = None
@@ -196,7 +198,8 @@ def train_model_with_embeddings(
             layer=esm_layer,
             batch_size=batch_size,
             dataset_name=f"{dataset_name}_val",
-            subdir=embeddings_subdir
+            subdir=embeddings_subdir,
+            esm_model_name=esm_model_name,
         )
 
     # Compute global normalization parameters for IG analysis (but don't use them for training)
@@ -985,12 +988,14 @@ def train_or_load_model(config, sequences, y, results_dir, device):
 
     # Get embedding dimensions
     print("Getting embedding dimensions...")
+    esm_model_name = model_config.get('esm_model_name', 'esmc_300m')
     sample_embeddings = get_embeddings(
         [sequences[0]],
         layer=model_config['esm_layer'],
         batch_size=1,
         dataset_name=f"{config['data']['name']}_sample",
-        subdir=embeddings_subdir
+        subdir=embeddings_subdir,
+        esm_model_name=esm_model_name,
     )
     L, D = sample_embeddings.shape[1], sample_embeddings.shape[2]
 
@@ -1103,7 +1108,8 @@ def train_or_load_model(config, sequences, y, results_dir, device):
             results_dir=results_dir,
             save_path=training_model_path,
             model_config=model_cfg,
-            embeddings_subdir=embeddings_subdir
+            embeddings_subdir=embeddings_subdir,
+            esm_model_name=esm_model_name,
         )
 
         final_model = training_results['model']

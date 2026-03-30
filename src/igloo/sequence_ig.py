@@ -9,7 +9,7 @@ of which amino acids at which positions contribute to predictions.
 import hashlib
 from typing import Optional
 
-import esm
+import esm  # kept for ESMBasedPredictor / token-level IG internals (ESM-2 only)
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -23,17 +23,22 @@ from .data_processing import CustomDataset, batch_pad_and_normalize
 from .embedding import get_embeddings
 
 
-def load_esm_model(model_name: str = 'esm2_t33_650M_UR50D', device: torch.device = None):
-    """Load ESM model and alphabet."""
+def load_esm_model(model_name: str = 'esmc_300m', device: torch.device = None):
+    """Load an ESM model and return ``(raw_model, alphabet)``.
+
+    Delegates to :func:`~src.igloo.esm_adapter.load_esm_backend`.  For ESM-2
+    the return is the classic ``(model, alphabet)`` pair.  For ESM-C the
+    alphabet position returns the backend object (``alphabet=None`` is set
+    inside the backend, so callers should not attempt to use it for
+    tokenisation — token-level IG is ESM-2 only).
+    """
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    print(f"Loading ESM model {model_name}...")
-    esm_model, alphabet = esm.pretrained.load_model_and_alphabet(model_name)
-    esm_model = esm_model.to(device)
-    esm_model.eval()
-
-    return esm_model, alphabet
+    from .esm_adapter import load_esm_backend
+    backend = load_esm_backend(model_name, device)
+    # Return the raw model + alphabet (None for ESM-C) for backward compat
+    return backend.model, backend.alphabet
 
 
 def sequence_to_tokens(sequence: str, alphabet) -> torch.Tensor:
@@ -924,6 +929,7 @@ def analyze_sequence_with_integrated_gradients(
     interpolation_path: str = 'linear',
     plot_interpolation_umap: bool = False,
     interpolation_umap_save_path: str | None = None,
+    _esm_backend=None,
 ) -> dict:
     """
     Analyze a sequence using integrated gradients.
@@ -932,6 +938,11 @@ def analyze_sequence_with_integrated_gradients(
         sequence: Input protein sequence
         baseline_sequence: Baseline sequence (usually wild-type)
         model: Combined ESM + predictor model (ESMBasedPredictor or ESMBasedPredictorGumbel)
+        _esm_backend: Optional pre-loaded ESM backend
+            (:class:`~src.igloo.esm_adapter.ESM2Backend` or
+            :class:`~src.igloo.esm_adapter.ESMCBackend`) to pass to
+            :func:`~src.igloo.embedding.get_embeddings` so the ESM model is
+            not loaded a second time for cache-miss sequences.
         alphabet: ESM alphabet
         device: PyTorch device
         y_log_mean: Mean for denormalization (default 0.0 for no denormalization)
@@ -964,11 +975,13 @@ def analyze_sequence_with_integrated_gradients(
 
     seq_embedding = get_embeddings(
         [sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_seq_{seq_hash}',
-        subdir=embeddings_subdir
+        subdir=embeddings_subdir,
+        esm_backend=_esm_backend,
     )
     baseline_embedding = get_embeddings(
         [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_baseline_{baseline_hash}',
-        subdir=embeddings_subdir
+        subdir=embeddings_subdir,
+        esm_backend=_esm_backend,
     )
 
     # Get predictions using DataLoader approach (exactly like training/evaluation)
@@ -1345,6 +1358,11 @@ def analyze_sequence_with_integrated_gradients(
             save_path=save_plot_path
         )
 
+    # Trim gradients to actual sequence length — DataLoader padding may add extra positions
+    seq_len_actual = len(sequence)
+    if len(position_gradients) > seq_len_actual:
+        position_gradients = position_gradients[:seq_len_actual]
+
     return {
         'sequence': sequence,
         'baseline_sequence': baseline_sequence,
@@ -1352,7 +1370,7 @@ def analyze_sequence_with_integrated_gradients(
         'baseline_activity': baseline_pred,
         'effect_vs_baseline': seq_pred - baseline_pred,
         'position_gradients': position_gradients,
-        'positions': list(range(1, len(sequence) + 1)),
+        'positions': list(range(1, seq_len_actual + 1)),
         'amino_acids': list(sequence),
         'actual_activity': actual_activity,
         'baseline_actual_activity': baseline_actual_activity
@@ -1382,14 +1400,16 @@ def analyze_sequence_with_token_level_integrated_gradients(
     clip_min: float | None = None,
     clip_max: float | None = None,
     embeddings_subdir: str | None = None,
-    interpolation_path: str = 'linear'
+    interpolation_path: str = 'linear',
+    _esm_backend=None,
 ) -> dict:
     """
     Analyze a sequence using direct token-level integrated gradients.
 
-    This function computes gradients directly with respect to ESM token embeddings,
-    providing true token-level attributions without needing embedding interpolation
-    or L2 norm projections.
+    .. note::
+        Token-level IG requires direct access to ESM-2 internals (token embedding
+        matrix, transformer layers).  **ESM-C is not supported** for this analysis
+        mode.  Use ``method: embedding`` in your config when using ESM-C.
 
     Args:
         sequence: Input protein sequence
@@ -1423,6 +1443,15 @@ def analyze_sequence_with_token_level_integrated_gradients(
     # Convert sequences to tokens
     seq_tokens = sequence_to_tokens(sequence, alphabet).to(device)
     baseline_tokens = sequence_to_tokens(baseline_sequence, alphabet).to(device)
+
+    # Guard: token-level IG is ESM-2 only
+    if alphabet is None:
+        raise ValueError(
+            "Token-level integrated gradients requires direct access to ESM-2 model "
+            "internals and is not supported with ESM-C.  "
+            "Set 'integrated_gradients.method: embedding' in your config when using "
+            "an ESM-C model."
+        )
 
     print(f"Sequence tokens shape: {seq_tokens.shape}")
     print(f"Baseline tokens shape: {baseline_tokens.shape}")
@@ -1505,11 +1534,13 @@ def analyze_sequence_with_token_level_integrated_gradients(
 
     seq_embedding = get_embeddings(
         [sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_seq_{seq_hash}',
-        subdir=embeddings_subdir
+        subdir=embeddings_subdir,
+        esm_backend=_esm_backend,
     )
     baseline_embedding = get_embeddings(
         [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_baseline_{baseline_hash}',
-        subdir=embeddings_subdir
+        subdir=embeddings_subdir,
+        esm_backend=_esm_backend,
     )
 
     # Use DataLoader approach for predictions (exactly like embedding-level IG)

@@ -287,13 +287,15 @@ def evaluate_model_performance(model, sequences, y, y_raw, y_log_mean, y_log_std
     # Get embeddings for evaluation
     print("Getting embeddings for evaluation...")
     embeddings_subdir = 'synthetic' if 'synthetic' in config.get('data', {}).get('path', '') else None
-
+    esm_model_name = model_config.get('esm_model_name', 'esmc_300m')
+    embedding_cache_name = f"{config['data']['name']}_integrated_gradients_train"
     all_embeddings = get_embeddings(
         sequences,
         layer=model_config['esm_layer'],
-        batch_size=16,
-        dataset_name=f"{config['data']['name']}_eval",
-        subdir=embeddings_subdir
+        batch_size=model_config['batch_size'],
+        dataset_name=embedding_cache_name,
+        subdir=embeddings_subdir,
+        esm_model_name=esm_model_name,
     )
 
     # Evaluate using DataLoader

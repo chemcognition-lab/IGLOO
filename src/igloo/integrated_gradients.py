@@ -8,13 +8,15 @@ on protein sequences using both embedding-level and token-level methods.
 import os
 
 from .completeness_validation import filter_sequences_by_completeness, validate_completeness_axiom_token_level
+from .esm_adapter import load_esm_backend
 from .sequence_ig import (
     analyze_sequence_with_integrated_gradients,
     analyze_sequence_with_token_level_integrated_gradients,
     create_combined_model,
-    load_esm_model,
 )
-from .utils import print_analysis_sections, print_ig_sequence_results, print_sequence_analysis_info
+from .utils import print_analysis_sections, print_ig_sequence_results
+
+_DEFAULT_ESM_MODEL = 'esmc_300m'
 
 
 def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, sequences,
@@ -25,15 +27,21 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
     ig_config = config['integrated_gradients']
     model_config = config['model']
     embeddings_subdir = 'synthetic' if 'synthetic' in config.get('data', {}).get('path', '') else None
-
-    # Load ESM model
-    print("Loading ESM model for integrated gradients...")
-    esm_model, alphabet = load_esm_model('esm2_t33_650M_UR50D', device)
-
-    print_sequence_analysis_info(sequences_to_analyze, y_raw, sequences)
-
-    # Run analysis based on method
+    esm_model_name = model_config.get('esm_model_name', _DEFAULT_ESM_MODEL)
     ig_method = ig_config['method']  # 'embedding' or 'token'
+
+    # Load ESM backend (model + optional alphabet)
+    print(f"Loading ESM model for integrated gradients ({esm_model_name})...")
+    esm_backend = load_esm_backend(esm_model_name, device)
+    esm_model = esm_backend.model
+    alphabet  = esm_backend.alphabet  # None for ESM-C
+
+    # Guard: token-level IG requires ESM-2
+    if ig_method == 'token' and esm_backend.family == 'esmc':
+        raise ValueError(
+            "Token-level integrated gradients is not supported with ESM-C models. "
+            "Set 'integrated_gradients.method: embedding' in your config."
+        )
     attribution_method = ig_config.get('attribution_method', 'magnitude')
     interpolation_path = ig_config.get('interpolation_path', 'linear')  # 'linear' | 'slerp' | 'nearest_neighbor'
     plot_umap = ig_config.get('plot_interpolation_umap', False)
@@ -120,6 +128,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                     os.path.join(results_dir, f"{name}_interpolation_umap.png")
                     if plot_umap else None
                 ),
+                _esm_backend=esm_backend,
             )
             ig_results[name] = result
             print_ig_sequence_results(name, actual_activity, result, None)
@@ -253,6 +262,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 clip_max=data_max,
                 embeddings_subdir=embeddings_subdir,
                 interpolation_path=interpolation_path,
+                _esm_backend=esm_backend,
             )
             ig_results[name] = result
             print_ig_sequence_results(name, actual_activity, result, None)
