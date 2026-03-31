@@ -1068,6 +1068,7 @@ def analyze_sequence_with_integrated_gradients(
     all_gradients = []
     umap_trajectory: list = []
     umap_alphas: list = []
+    path_predictions: list = []  # model output at each interpolation step
 
     # Convert to torch tensors for interpolation
     seq_emb_torch = torch.from_numpy(seq_embedding).to(device).float()
@@ -1141,6 +1142,9 @@ def analyze_sequence_with_integrated_gradients(
         # Note: We do NOT apply clipping here to preserve mathematical correctness of IG
         outputs_rescaled = outputs * y_log_std + y_log_mean
 
+        if plot_interpolation_umap:
+            path_predictions.extend(outputs_rescaled.detach().cpu().numpy().flatten().tolist())
+
         # Compute gradients with respect to the normalized embeddings
         # This is mathematically correct because the model sees normalized embeddings
         gradients = torch.autograd.grad(
@@ -1188,14 +1192,20 @@ def analyze_sequence_with_integrated_gradients(
             f"(slerp → ~0; linear → >0 with midpoint dip; nn → step changes)"
         )
         # ─────────────────────────────────────────────────────────────────
-        from .plot import plot_interpolation_path_umap
-        print(f"Plotting interpolation path UMAP ({len(umap_trajectory)} steps)...")
-        plot_interpolation_path_umap(
+        from .plot import plot_interpolation_path
+        print(f"Plotting interpolation path figure ({len(umap_trajectory)} steps)...")
+        # Mean-pool the endpoint embeddings for the chord-plane projection
+        _baseline_pooled = baseline_emb_torch.squeeze(0).mean(dim=0).detach().cpu().numpy()
+        _seq_pooled = seq_emb_torch.squeeze(0).mean(dim=0).detach().cpu().numpy()
+        plot_interpolation_path(
             emb_trajectory=umap_trajectory,
             alphas=np.array(umap_alphas),
+            baseline_emb=_baseline_pooled,
+            seq_emb=_seq_pooled,
             sequence_name=sequence_name,
             baseline_name=baseline_name,
             interpolation_method=interpolation_path,
+            predictions=np.array(path_predictions) if path_predictions else None,
             save_path=interpolation_umap_save_path,
         )
 

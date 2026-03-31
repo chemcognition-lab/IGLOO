@@ -1483,3 +1483,171 @@ def plot_interpolation_path_umap(
 
     plt.show()
     plt.close()
+
+
+def plot_interpolation_path(
+    emb_trajectory: list,
+    alphas: np.ndarray,
+    baseline_emb: np.ndarray,
+    seq_emb: np.ndarray,
+    sequence_name: str = "Sequence",
+    baseline_name: str = "Baseline",
+    interpolation_method: str = 'linear',
+    predictions: Optional[np.ndarray] = None,
+    save_path: Optional[str] = None,
+) -> None:
+    """Three-panel diagnostic plot for an IG interpolation path.
+
+    Panels
+    ------
+    1. **Chord-plane projection** — projects every trajectory point onto the
+       2-D subspace spanned by the baseline→sequence chord.  The x-axis is
+       the fraction of the chord already traversed; the y-axis is the
+       perpendicular deviation normalised by the chord length.
+       * ``linear``          → straight diagonal line  (y = 0 everywhere)
+       * ``slerp``           → smooth arc above the chord  (y > 0)
+       * ``nearest_neighbor``→ staircase in x, near-zero y
+
+    2. **Embedding norm vs α** — mean-pooled L2 norm at each step.
+       Flat for slerp, midpoint-dip for linear, discrete steps for nn.
+
+    3. **Prediction vs α** (shown when *predictions* is provided) — model
+       output along the path; reveals whether the traversal is smooth or
+       has unexpected jumps.
+
+    Parameters
+    ----------
+    emb_trajectory:
+        List of ``(D,)`` numpy arrays (mean-pooled embedding at each step).
+    alphas:
+        1-D array of α values for each step, length = len(emb_trajectory).
+    baseline_emb:
+        Mean-pooled baseline embedding ``(D,)``.
+    seq_emb:
+        Mean-pooled sequence embedding ``(D,)``.
+    sequence_name, baseline_name:
+        Labels for the α=1 and α=0 endpoints.
+    interpolation_method:
+        Name shown in the title.
+    predictions:
+        Optional 1-D array of model outputs (rescaled) at each step.
+    save_path:
+        If given, writes the figure to this path.
+    """
+    X = np.stack(emb_trajectory, axis=0).astype(np.float64)  # (n_steps, D)
+    n_steps = X.shape[0]
+
+    # ── Degenerate case: sequence == baseline ───────────────────────────
+    total_variance = float(np.var(X))
+    if total_variance < 1e-10:
+        n_panels = 2 if predictions is None else 3
+        fig, axes = plt.subplots(1, n_panels, figsize=(5 * n_panels, 4))
+        for ax in (axes if n_panels > 1 else [axes]):
+            ax.set_xticks([]); ax.set_yticks([])
+            ax.text(0.5, 0.5, f'Trivial path\n{baseline_name} = {sequence_name}',
+                    ha='center', va='center', transform=ax.transAxes, fontsize=11,
+                    color='grey', style='italic')
+        fig.suptitle(
+            f'Interpolation path  [{interpolation_method}]\n'
+            f'{baseline_name} → {sequence_name}',
+            fontsize=12,
+        )
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            print(f"Interpolation path figure saved to {save_path}")
+        plt.close()
+        return
+
+    # ── Chord-plane decomposition ────────────────────────────────────────
+    e0 = baseline_emb.astype(np.float64)
+    e1 = seq_emb.astype(np.float64)
+    chord = e1 - e0
+    chord_norm = float(np.linalg.norm(chord))
+    chord_unit = chord / chord_norm
+
+    deltas = X - e0[None, :]                              # (n_steps, D)
+    along = deltas @ chord_unit                           # (n_steps,) — along chord
+    perp_vec = deltas - along[:, None] * chord_unit       # (n_steps, D)
+    perp = np.linalg.norm(perp_vec, axis=1)               # (n_steps,) — perp deviation
+
+    # Normalise by chord length → dimensionless coordinates in [0,1]
+    along_norm = along / chord_norm
+    perp_norm = perp / chord_norm
+
+    # ── Embedding norms ──────────────────────────────────────────────────
+    norms = np.linalg.norm(X, axis=1)  # (n_steps,)
+
+    # ── Layout ──────────────────────────────────────────────────────────
+    with_pred = predictions is not None
+    n_panels = 3 if with_pred else 2
+    fig = plt.figure(figsize=(5 * n_panels + 1, 4.5))
+    from matplotlib.gridspec import GridSpec
+    gs = GridSpec(1, n_panels, figure=fig, wspace=0.38)
+
+    cmap = plt.get_cmap('viridis')
+    colors = cmap(alphas)
+
+    # ── Panel 1: chord-plane projection ─────────────────────────────────
+    ax1 = fig.add_subplot(gs[0, 0])
+    sc = ax1.scatter(along_norm, perp_norm, c=alphas, cmap='viridis',
+                     s=30, alpha=0.85, edgecolors='none', zorder=2)
+    ax1.plot(along_norm, perp_norm, color='grey', linewidth=0.8, alpha=0.4, zorder=1)
+    # Endpoint markers
+    ax1.scatter(along_norm[0], perp_norm[0], s=180, marker='s', color='royalblue',
+                edgecolors='white', linewidth=1.2, zorder=3, label=f'α=0  ({baseline_name})')
+    ax1.scatter(along_norm[-1], perp_norm[-1], s=180, marker='*', color='crimson',
+                edgecolors='white', linewidth=1.2, zorder=3, label=f'α=1  ({sequence_name})')
+    # Reference line: where linear interpolation lies (y=0, x in [0,1])
+    ax1.axhline(0, color='steelblue', linewidth=1.2, linestyle='--', alpha=0.5,
+                label='linear  (y=0)')
+    cbar1 = plt.colorbar(sc, ax=ax1, pad=0.02)
+    cbar1.set_label('α', fontsize=9)
+    ax1.set_xlabel('Along chord  (fraction of ‖e₁−e₀‖)', fontsize=9)
+    ax1.set_ylabel('Perp. deviation  (fraction of ‖e₁−e₀‖)', fontsize=9)
+    ax1.set_title('Chord-plane projection', fontsize=10, fontweight='bold')
+    ax1.legend(fontsize=7, loc='upper left')
+    sns.despine(ax=ax1)
+
+    # ── Panel 2: embedding norm vs α ────────────────────────────────────
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.scatter(alphas, norms, c=alphas, cmap='viridis', s=25, alpha=0.85,
+                edgecolors='none', zorder=2)
+    ax2.plot(alphas, norms, color='grey', linewidth=0.8, alpha=0.4, zorder=1)
+    ax2.axhline(norms[0], color='royalblue', linewidth=1, linestyle=':', alpha=0.6,
+                label=f'‖e₀‖ = {norms[0]:.3f}')
+    ax2.axhline(norms[-1], color='crimson', linewidth=1, linestyle=':', alpha=0.6,
+                label=f'‖e₁‖ = {norms[-1]:.3f}')
+    ax2.set_xlabel('α  (interpolation step)', fontsize=9)
+    ax2.set_ylabel('Mean-pooled embedding norm', fontsize=9)
+    ax2.set_title('Embedding norm vs α', fontsize=10, fontweight='bold')
+    ax2.legend(fontsize=7)
+    sns.despine(ax=ax2)
+
+    # ── Panel 3: prediction vs α ─────────────────────────────────────────
+    if with_pred:
+        ax3 = fig.add_subplot(gs[0, 2])
+        ax3.scatter(alphas, predictions, c=alphas, cmap='viridis', s=25,
+                    alpha=0.85, edgecolors='none', zorder=2)
+        ax3.plot(alphas, predictions, color='grey', linewidth=0.8, alpha=0.4, zorder=1)
+        ax3.axhline(predictions[0], color='royalblue', linewidth=1, linestyle=':',
+                    alpha=0.6, label=f'{baseline_name}  ({predictions[0]:.3f})')
+        ax3.axhline(predictions[-1], color='crimson', linewidth=1, linestyle=':',
+                    alpha=0.6, label=f'{sequence_name}  ({predictions[-1]:.3f})')
+        ax3.set_xlabel('α  (interpolation step)', fontsize=9)
+        ax3.set_ylabel('Model prediction (original scale)', fontsize=9)
+        ax3.set_title('Prediction vs α', fontsize=10, fontweight='bold')
+        ax3.legend(fontsize=7)
+        sns.despine(ax=ax3)
+
+    fig.suptitle(
+        f'Interpolation path  [{interpolation_method}]\n'
+        f'{baseline_name} → {sequence_name}',
+        fontsize=11,
+    )
+    plt.tight_layout(rect=[0, 0, 1, 0.93])
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Interpolation path figure saved to {save_path}")
+    plt.close()
