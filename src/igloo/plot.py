@@ -1547,14 +1547,13 @@ def plot_interpolation_path(
             ax.text(0.5, 0.5, f'Trivial path\n{baseline_name} = {sequence_name}',
                     ha='center', va='center', transform=ax.transAxes, fontsize=13,
                     color='grey', style='italic')
-        fig.suptitle(
-            f'Interpolation path  [{interpolation_method}]\n'
-            f'{baseline_name} → {sequence_name}',
-            fontsize=14, y=0.97,
-        )
-        fig.subplots_adjust(top=0.78, bottom=0.12, left=0.08, right=0.96)
+        fig.text(0.5, 0.98, f'Interpolation path  [{interpolation_method}]',
+                 ha='center', va='top', fontsize=14, fontweight='bold')
+        fig.text(0.5, 0.92, f'{baseline_name} → {sequence_name}',
+                 ha='center', va='top', fontsize=12)
+        fig.subplots_adjust(top=0.83, bottom=0.12, left=0.08, right=0.96)
         if save_path:
-            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            plt.savefig(save_path, dpi=150)
             print(f"Interpolation path figure saved to {save_path}")
         plt.close()
         return
@@ -1643,14 +1642,13 @@ def plot_interpolation_path(
         ax3.tick_params(labelsize=10)
         sns.despine(ax=ax3)
 
-    fig.suptitle(
-        f'Interpolation path  [{interpolation_method}]\n'
-        f'{baseline_name} → {sequence_name}',
-        fontsize=14, y=0.97,
-    )
-    fig.subplots_adjust(top=0.78, bottom=0.12, left=0.08, right=0.96, wspace=0.45)
+    fig.text(0.5, 0.98, f'Interpolation path  [{interpolation_method}]',
+             ha='center', va='top', fontsize=14, fontweight='bold')
+    fig.text(0.5, 0.92, f'{baseline_name} → {sequence_name}',
+             ha='center', va='top', fontsize=12)
+    fig.subplots_adjust(top=0.83, bottom=0.12, left=0.08, right=0.96, wspace=0.45)
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150)
         print(f"Interpolation path figure saved to {save_path}")
     plt.close()
