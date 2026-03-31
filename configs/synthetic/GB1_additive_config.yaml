@@ -27,7 +27,7 @@ model:
 integrated_gradients:
   method: "embedding"
   attribution_method: "signed"
-  interpolation_path: "slerp"  # 'linear' | 'slerp' | 'nearest_neighbor'
+  interpolation_path: "guided_ig"  # 'linear' | 'slerp' | 'nearest_neighbor' | 'guided_ig'
   plot_interpolation_umap: true   # UMAP projection of interpolation path; saved to results_dir
   steps: 50
   batch_size: 10
@@ -40,5 +40,5 @@ analysis:
     include_bottom_n: 0
     custom_sequences: []
 
-results_dir: "results/synthetic/GB1_additive_SLERP"
+results_dir: "results/synthetic/GB1_additive_GUIDED_IG"
 force_retrain: false

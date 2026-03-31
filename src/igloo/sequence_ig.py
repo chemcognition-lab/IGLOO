@@ -901,8 +901,116 @@ def interpolate_embeddings(
     else:
         raise ValueError(
             f"Unknown interpolation method '{method}'. "
-            f"Choose from: 'linear', 'slerp', 'nearest_neighbor'"
+            f"Choose from: 'linear', 'slerp', 'nearest_neighbor'. "
+            f"(note: 'guided_ig' is pre-built by build_guided_ig_path() and does not use this function)"
         )
+
+
+# ── Guided IG helpers ──────────────────────────────────────────────────────
+
+def _guided_ig_model_forward(
+    emb: "torch.Tensor",
+    predictor_model,
+    pooling_method: str,
+    y_log_mean: float,
+    y_log_std: float,
+) -> "torch.Tensor":
+    """Normalise *emb* exactly as the training pipeline does, then run the predictor.
+
+    Returns the rescaled scalar output (or batch of outputs).
+    """
+    from .data_processing import _global_scaler_mean, _global_scaler_scale  # noqa: PLC0415
+    device = emb.device
+    b, L, D = emb.shape
+    flat = emb.reshape(b, -1)
+    if _global_scaler_mean is not None and _global_scaler_scale is not None:
+        flat_norm = (flat - _global_scaler_mean) / _global_scaler_scale
+    else:
+        mu = flat.mean(dim=1, keepdim=True)
+        sigma = flat.std(dim=1, keepdim=True)
+        flat_norm = (flat - mu) / (sigma + 1e-8)
+    norm_emb = flat_norm.reshape(b, L, D)
+    if pooling_method == 'esm_attention':
+        mask = torch.ones(b, L, device=device)
+        out = predictor_model(norm_emb, mask)
+    else:
+        out = predictor_model(norm_emb)
+    return out * y_log_std + y_log_mean
+
+
+def build_guided_ig_path(
+    baseline_emb: "torch.Tensor",
+    seq_emb: "torch.Tensor",
+    predictor_model,
+    pooling_method: str,
+    y_log_mean: float,
+    y_log_std: float,
+    device: "torch.device",
+    steps: int,
+) -> list:
+    """Build a Guided IG interpolation path (Kapishnikov et al., 2021).
+
+    Constructs a position-level gradient-reordered staircase path:
+
+    1. Compute the gradient \u2207F at the linear midpoint between baseline and sequence.
+    2. For each sequence position *p*, compute relevance::
+
+           r_p = \u2016\u2207F_p\u2016\u2082  \u00d7  \u2016e\u2081_p \u2212 e\u2080_p\u2016\u2082
+
+    3. Sort positions in *ascending* relevance order so that low-importance
+       positions activate first (small \u03b1) and high-importance positions activate
+       last (\u03b1 \u2192 1).  This concentrates attribution mass near the sequence
+       endpoint where the model is most sensitive.
+
+    The result is a staircase identical in structure to *nearest_neighbor* but with
+    steps occurring in gradient-priority order rather than positional order.
+
+    Parameters
+    ----------
+    baseline_emb, seq_emb:
+        Tensors of shape ``(1, L, D)`` (a single sequence).
+    steps:
+        Number of integration steps (same as the IG ``steps`` argument).
+
+    Returns
+    -------
+    list of ``(1, L, D)`` tensors, one per \u03b1 value in
+    ``torch.linspace(0, 1, steps + 1)``.
+    """
+    predictor_model.eval()
+    baseline_emb = baseline_emb.to(device).float()
+    seq_emb = seq_emb.to(device).float()
+    L = baseline_emb.shape[-2]
+
+    # ── Gradient at the linear midpoint ────────────────────────────────────
+    midpoint = (baseline_emb + seq_emb) / 2.0
+    x_mid = midpoint.clone().requires_grad_(True)
+    out_mid = _guided_ig_model_forward(x_mid, predictor_model, pooling_method, y_log_mean, y_log_std)
+    grad = torch.autograd.grad(out_mid.sum(), x_mid)[0].detach()  # (1, L, D)
+
+    # ── Per-position relevance: ||grad_p||\u2082 \u00d7 ||displacement_p||\u2082 ─────────┤
+    displacement = seq_emb - baseline_emb  # (1, L, D)
+    relevance = (
+        grad.norm(dim=-1) * displacement.norm(dim=-1)
+    ).squeeze(0)  # (L,)
+
+    # Ascending sort: low relevance \u2192 activates early (small \u03b1)
+    sorted_positions = torch.argsort(relevance)  # (L,)
+
+    # ── Build staircase path ────────────────────────────────────────────────
+    alphas = torch.linspace(0, 1, steps + 1)
+    path: list = []
+    for alpha in alphas:
+        n_activated = min(int(alpha.item() * L), L)
+        x_step = baseline_emb.clone()
+        if n_activated > 0:
+            active_pos = sorted_positions[:n_activated]  # (n_activated,)
+            x_step[0, active_pos, :] = seq_emb[0, active_pos, :]
+        path.append(x_step.detach())
+    return path
+
+
+# ── End Guided IG helpers ───────────────────────────────────────────────────
 
 
 def analyze_sequence_with_integrated_gradients(
@@ -1077,35 +1185,55 @@ def analyze_sequence_with_integrated_gradients(
     # Quick sanity-check: print mean embedding norm at 3 alpha checkpoints.
     # slerp  → norms stay constant  (all three values ≈ equal)
     # linear → norm dips at midpoint (middle value < endpoints)
-    with torch.no_grad():
-        _ref_alphas = [0.0, 0.5, 1.0]
-        _ref_norms = [
-            interpolate_embeddings(baseline_emb_torch, seq_emb_torch, a, method=interpolation_path)
-            .squeeze(0).norm(dim=-1).mean().item()
-            for a in _ref_alphas
-        ]
-    print(
-        f"  Interpolation path check [{interpolation_path}]  "
-        f"norm(α=0)={_ref_norms[0]:.4f}  "
-        f"norm(α=0.5)={_ref_norms[1]:.4f}  "
-        f"norm(α=1)={_ref_norms[2]:.4f}"
-        + ("  ✓ norms stable (slerp working)" if abs(_ref_norms[1] - _ref_norms[0]) < 0.01 * _ref_norms[0]
-           else "  (midpoint dip expected for linear/nn)")
-    )
+    # guided_ig → path is built later; skip this check
+    if interpolation_path == 'guided_ig':
+        print(f"  Interpolation path check [guided_ig] — path built adaptively from gradients")
+    else:
+        with torch.no_grad():
+            _ref_alphas = [0.0, 0.5, 1.0]
+            _ref_norms = [
+                interpolate_embeddings(baseline_emb_torch, seq_emb_torch, a, method=interpolation_path)
+                .squeeze(0).norm(dim=-1).mean().item()
+                for a in _ref_alphas
+            ]
+        print(
+            f"  Interpolation path check [{interpolation_path}]  "
+            f"norm(α=0)={_ref_norms[0]:.4f}  "
+            f"norm(α=0.5)={_ref_norms[1]:.4f}  "
+            f"norm(α=1)={_ref_norms[2]:.4f}"
+            + ("  ✓ norms stable (slerp working)" if abs(_ref_norms[1] - _ref_norms[0]) < 0.01 * _ref_norms[0]
+               else "  (midpoint dip expected for linear/nn)")
+        )
 
+    # ── Guided IG: pre-build the complete path before integration ──────────
+    _guided_path: list = []
+    if interpolation_path == 'guided_ig':
+        print("  Building guided IG path (gradient-relevance-ordered staircase)...")
+        _guided_path = build_guided_ig_path(
+            baseline_emb_torch, seq_emb_torch,
+            predictor_model, pooling_method,
+            y_log_mean, y_log_std, device, steps,
+        )
+        print(f"  Guided IG path built: {len(_guided_path)} steps.")
+
+    _global_step = 0  # tracks position in _guided_path across batches
     for i in range(0, len(alphas), batch_size):
         batch_alphas = alphas[i:i + batch_size]
         interpolated_embeddings = []
 
         for alpha in batch_alphas:
-            interpolated = interpolate_embeddings(
-                baseline_emb_torch, seq_emb_torch, alpha.item(), method=interpolation_path
-            )
+            if interpolation_path == 'guided_ig':
+                interpolated = _guided_path[_global_step]
+            else:
+                interpolated = interpolate_embeddings(
+                    baseline_emb_torch, seq_emb_torch, alpha.item(), method=interpolation_path
+                )
             interpolated_embeddings.append(interpolated)
             if plot_interpolation_umap:
                 pooled = interpolated.squeeze(0).mean(dim=0).detach().cpu().numpy()
                 umap_trajectory.append(pooled)
                 umap_alphas.append(alpha.item())
+            _global_step += 1
 
         # Stack batch - but DON'T apply DataLoader normalization again
         # The embeddings are already in the right format from ESM

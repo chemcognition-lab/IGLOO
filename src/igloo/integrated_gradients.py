@@ -43,7 +43,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
             "Set 'integrated_gradients.method: embedding' in your config."
         )
     attribution_method = ig_config.get('attribution_method', 'magnitude')
-    interpolation_path = ig_config.get('interpolation_path', 'linear')  # 'linear' | 'slerp' | 'nearest_neighbor'
+    interpolation_path = ig_config.get('interpolation_path', 'linear')  # 'linear' | 'slerp' | 'nearest_neighbor' | 'guided_ig'
     plot_umap = ig_config.get('plot_interpolation_umap', False)
 
     # Check if completeness validation is enabled
