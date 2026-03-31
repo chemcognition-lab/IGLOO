@@ -1541,18 +1541,18 @@ def plot_interpolation_path(
     total_variance = float(np.var(X))
     if total_variance < 1e-10:
         n_panels = 2 if predictions is None else 3
-        fig, axes = plt.subplots(1, n_panels, figsize=(5 * n_panels, 4))
+        fig, axes = plt.subplots(1, n_panels, figsize=(5 * n_panels, 5))
         for ax in (axes if n_panels > 1 else [axes]):
             ax.set_xticks([]); ax.set_yticks([])
             ax.text(0.5, 0.5, f'Trivial path\n{baseline_name} = {sequence_name}',
-                    ha='center', va='center', transform=ax.transAxes, fontsize=11,
+                    ha='center', va='center', transform=ax.transAxes, fontsize=13,
                     color='grey', style='italic')
         fig.suptitle(
             f'Interpolation path  [{interpolation_method}]\n'
             f'{baseline_name} → {sequence_name}',
-            fontsize=12,
+            fontsize=14, y=0.97,
         )
-        plt.tight_layout()
+        fig.subplots_adjust(top=0.78, bottom=0.12, left=0.08, right=0.96)
         if save_path:
             plt.savefig(save_path, dpi=150, bbox_inches='tight')
             print(f"Interpolation path figure saved to {save_path}")
@@ -1581,9 +1581,9 @@ def plot_interpolation_path(
     # ── Layout ──────────────────────────────────────────────────────────
     with_pred = predictions is not None
     n_panels = 3 if with_pred else 2
-    fig = plt.figure(figsize=(5 * n_panels + 1, 4.5))
+    fig = plt.figure(figsize=(5 * n_panels + 1, 6.2))
     from matplotlib.gridspec import GridSpec
-    gs = GridSpec(1, n_panels, figure=fig, wspace=0.38)
+    gs = GridSpec(1, n_panels, figure=fig)
 
     cmap = plt.get_cmap('viridis')
     colors = cmap(alphas)
@@ -1602,11 +1602,12 @@ def plot_interpolation_path(
     ax1.axhline(0, color='steelblue', linewidth=1.2, linestyle='--', alpha=0.5,
                 label='linear  (y=0)')
     cbar1 = plt.colorbar(sc, ax=ax1, pad=0.02)
-    cbar1.set_label('α', fontsize=9)
-    ax1.set_xlabel('Along chord  (fraction of ‖e₁−e₀‖)', fontsize=9)
-    ax1.set_ylabel('Perp. deviation  (fraction of ‖e₁−e₀‖)', fontsize=9)
-    ax1.set_title('Chord-plane projection', fontsize=10, fontweight='bold')
-    ax1.legend(fontsize=7, loc='upper left')
+    cbar1.set_label('α', fontsize=11)
+    ax1.set_xlabel('Along chord  (fraction of ‖e₁−e₀‖)', fontsize=11)
+    ax1.set_ylabel('Perp. deviation  (fraction of ‖e₁−e₀‖)', fontsize=11)
+    ax1.set_title('Chord-plane projection', fontsize=12, fontweight='bold', pad=8)
+    ax1.legend(fontsize=9, loc='upper left')
+    ax1.tick_params(labelsize=10)
     sns.despine(ax=ax1)
 
     # ── Panel 2: embedding norm vs α ────────────────────────────────────
@@ -1618,10 +1619,11 @@ def plot_interpolation_path(
                 label=f'‖e₀‖ = {norms[0]:.3f}')
     ax2.axhline(norms[-1], color='crimson', linewidth=1, linestyle=':', alpha=0.6,
                 label=f'‖e₁‖ = {norms[-1]:.3f}')
-    ax2.set_xlabel('α  (interpolation step)', fontsize=9)
-    ax2.set_ylabel('Mean-pooled embedding norm', fontsize=9)
-    ax2.set_title('Embedding norm vs α', fontsize=10, fontweight='bold')
-    ax2.legend(fontsize=7)
+    ax2.set_xlabel('α  (interpolation step)', fontsize=11)
+    ax2.set_ylabel('Mean-pooled embedding norm', fontsize=11)
+    ax2.set_title('Embedding norm vs α', fontsize=12, fontweight='bold', pad=8)
+    ax2.legend(fontsize=9)
+    ax2.tick_params(labelsize=10)
     sns.despine(ax=ax2)
 
     # ── Panel 3: prediction vs α ─────────────────────────────────────────
@@ -1634,18 +1636,19 @@ def plot_interpolation_path(
                     alpha=0.6, label=f'{baseline_name}  ({predictions[0]:.3f})')
         ax3.axhline(predictions[-1], color='crimson', linewidth=1, linestyle=':',
                     alpha=0.6, label=f'{sequence_name}  ({predictions[-1]:.3f})')
-        ax3.set_xlabel('α  (interpolation step)', fontsize=9)
-        ax3.set_ylabel('Model prediction (original scale)', fontsize=9)
-        ax3.set_title('Prediction vs α', fontsize=10, fontweight='bold')
-        ax3.legend(fontsize=7)
+        ax3.set_xlabel('α  (interpolation step)', fontsize=11)
+        ax3.set_ylabel('Model prediction (original scale)', fontsize=11)
+        ax3.set_title('Prediction vs α', fontsize=12, fontweight='bold', pad=8)
+        ax3.legend(fontsize=9)
+        ax3.tick_params(labelsize=10)
         sns.despine(ax=ax3)
 
     fig.suptitle(
         f'Interpolation path  [{interpolation_method}]\n'
         f'{baseline_name} → {sequence_name}',
-        fontsize=11,
+        fontsize=14, y=0.97,
     )
-    plt.tight_layout(rect=[0, 0, 1, 0.93])
+    fig.subplots_adjust(top=0.78, bottom=0.12, left=0.08, right=0.96, wspace=0.45)
 
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
