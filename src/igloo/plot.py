@@ -1399,6 +1399,36 @@ def plot_interpolation_path_umap(
         print(f"Too few interpolation steps ({n_steps}) for UMAP (need ≥ 4). Skipping.")
         return
 
+    # Detect degenerate case: sequence == baseline → all points are identical.
+    # UMAP has no structure to preserve and will scatter them randomly, which is
+    # misleading. Render a single-point figure instead.
+    total_variance = float(np.var(X))
+    if total_variance < 1e-10:
+        print(f"Interpolation path is trivial (sequence == baseline). Skipping UMAP, saving single-point figure.")
+        fig, ax = plt.subplots(figsize=(7, 6))
+        ax.scatter([0], [0], s=300, marker='s', color='royalblue', zorder=3,
+                   edgecolors='white', linewidth=1.5, label=f'α=0  ({baseline_name})')
+        ax.scatter([0], [0], s=300, marker='*', color='crimson', zorder=3,
+                   edgecolors='white', linewidth=1.5, label=f'α=1  ({sequence_name})')
+        ax.set_xlabel('UMAP 1', fontsize=11)
+        ax.set_ylabel('UMAP 2', fontsize=11)
+        ax.set_title(
+            f'Interpolation path in embedding space\n'
+            f'{baseline_name} → {sequence_name}   [{interpolation_method}]\n'
+            f'(trivial path: sequence = baseline)',
+            fontsize=12,
+        )
+        ax.legend(fontsize=9, loc='best')
+        ax.set_xticks([])
+        ax.set_yticks([])
+        sns.despine(ax=ax)
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            print(f"Interpolation UMAP saved to {save_path}")
+        plt.close()
+        return
+
     n_neighbors = min(umap_n_neighbors, n_steps - 1)
     reducer = umap.UMAP(
         n_components=2,
