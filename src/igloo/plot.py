@@ -1589,13 +1589,28 @@ def plot_interpolation_path(
 
     # ── Panel 1: chord-plane projection ─────────────────────────────────
     ax1 = fig.add_subplot(gs[0, 0])
-    sc = ax1.scatter(along_norm, perp_norm, c=alphas, cmap='viridis',
-                     s=30, alpha=0.85, edgecolors='none', zorder=2)
-    ax1.plot(along_norm, perp_norm, color='grey', linewidth=0.8, alpha=0.4, zorder=1)
+    # If max perpendicular deviation is < 1e-5 it is numerical noise (e.g. linear
+    # interpolation in float32 leaving ~1e-7 residuals).  Show a clean "on chord" view.
+    _on_chord = float(np.max(perp_norm)) < 1e-5
+    if _on_chord:
+        sc = ax1.scatter(along_norm, np.zeros_like(along_norm), c=alphas, cmap='viridis',
+                         s=30, alpha=0.85, edgecolors='none', zorder=2)
+        ax1.plot(along_norm, np.zeros_like(along_norm),
+                 color='grey', linewidth=0.8, alpha=0.4, zorder=1)
+        ax1.text(0.5, 0.65, 'Path lies exactly on chord\n(perp. deviation < 1e-5;\nconsistent with float32 noise)',
+                 ha='center', va='center', transform=ax1.transAxes,
+                 fontsize=9, color='steelblue', style='italic',
+                 bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    else:
+        sc = ax1.scatter(along_norm, perp_norm, c=alphas, cmap='viridis',
+                         s=30, alpha=0.85, edgecolors='none', zorder=2)
+        ax1.plot(along_norm, perp_norm, color='grey', linewidth=0.8, alpha=0.4, zorder=1)
     # Endpoint markers
-    ax1.scatter(along_norm[0], perp_norm[0], s=180, marker='s', color='royalblue',
+    _y0 = 0 if _on_chord else perp_norm[0]
+    _y1 = 0 if _on_chord else perp_norm[-1]
+    ax1.scatter(along_norm[0], _y0, s=180, marker='s', color='royalblue',
                 edgecolors='white', linewidth=1.2, zorder=3, label=f'α=0  ({baseline_name})')
-    ax1.scatter(along_norm[-1], perp_norm[-1], s=180, marker='*', color='crimson',
+    ax1.scatter(along_norm[-1], _y1, s=180, marker='*', color='crimson',
                 edgecolors='white', linewidth=1.2, zorder=3, label=f'α=1  ({sequence_name})')
     # Reference line: where linear interpolation lies (y=0, x in [0,1])
     ax1.axhline(0, color='steelblue', linewidth=1.2, linestyle='--', alpha=0.5,
