@@ -1,0 +1,20 @@
+============================================================
+PIPELINE TIMING REPORT
+============================================================
+Dataset      : GB1_additive
+Started at   : 2026-03-31 17:19:36
+Finished at  : 2026-03-31 17:19:58
+Device       : cuda
+------------------------------------------------------------
+Step                                       Duration
+------------------------------------------------------------
+  Data loading & preparation                   0.1s
+  Wildtype sequence preparation                0.0s
+  Embedding retrieval (if needed)              0.0s
+  Model training / loading                     0.4s
+  Model evaluation                             1.9s
+  Integrated gradients (4 sequence(s))        10.0s
+  Visualizations & exports                    10.1s
+------------------------------------------------------------
+  TOTAL                                       22.5s
+============================================================

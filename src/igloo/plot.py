@@ -1597,10 +1597,6 @@ def plot_interpolation_path(
                          s=30, alpha=0.85, edgecolors='none', zorder=2)
         ax1.plot(along_norm, np.zeros_like(along_norm),
                  color='grey', linewidth=0.8, alpha=0.4, zorder=1)
-        ax1.text(0.5, 0.65, 'Path lies exactly on chord\n(perp. deviation < 1e-5;\nconsistent with float32 noise)',
-                 ha='center', va='center', transform=ax1.transAxes,
-                 fontsize=9, color='steelblue', style='italic',
-                 bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     else:
         sc = ax1.scatter(along_norm, perp_norm, c=alphas, cmap='viridis',
                          s=30, alpha=0.85, edgecolors='none', zorder=2)
