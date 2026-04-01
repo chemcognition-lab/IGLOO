@@ -80,6 +80,7 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
             'normalization': 'z-score'
         },
         'model': {
+            'esm_model_name': 'esmc_300m',
             'hidden_dim1': 1024,
             'hidden_dim2': 512,
             'hidden_dim3': 255,
@@ -94,7 +95,8 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         'integrated_gradients': {
             'steps': 50,
             'batch_size': 10,
-            'attribution_method': 'magnitude'
+            'attribution_method': 'magnitude',
+            'method': 'embedding',
         },
         'analysis': {
             'sequence_selection': {

@@ -1347,3 +1347,319 @@ def plot_mutation_frequency_heatmap(
     plt.close()
 
     return output_path
+
+
+def plot_interpolation_path_umap(
+    emb_trajectory: list,
+    alphas: np.ndarray,
+    sequence_name: str = "Sequence",
+    baseline_name: str = "Baseline",
+    interpolation_method: str = 'linear',
+    save_path: Optional[str] = None,
+    umap_n_neighbors: int = 15,
+    umap_min_dist: float = 0.1,
+    random_state: int = 42,
+) -> None:
+    """Plot a 2-D UMAP projection of the interpolation path through embedding space.
+
+    Each point along the path (one per IG alpha step) is mean-pooled to a
+    single vector and then projected with UMAP for visualisation.
+
+    Parameters
+    ----------
+    emb_trajectory:
+        List of ``(embed_dim,)`` numpy arrays, one per alpha step.
+    alphas:
+        1-D array of alpha values corresponding to each trajectory point.
+    sequence_name:
+        Label for the target sequence (alpha=1 endpoint).
+    baseline_name:
+        Label for the baseline (alpha=0 endpoint).
+    interpolation_method:
+        Name of the interpolation method (shown in the plot title).
+    save_path:
+        If provided, the figure is saved to this path (PNG/PDF/…).
+    umap_n_neighbors:
+        ``n_neighbors`` passed to UMAP.
+    umap_min_dist:
+        ``min_dist`` passed to UMAP.
+    random_state:
+        Random seed for UMAP reproducibility.
+    """
+    try:
+        import umap  # type: ignore
+    except ImportError:
+        print("umap-learn is not installed. Run `pip install umap-learn`. Skipping UMAP plot.")
+        return
+
+    X = np.stack(emb_trajectory, axis=0).astype(np.float32)
+    n_steps = X.shape[0]
+
+    if n_steps < 4:
+        print(f"Too few interpolation steps ({n_steps}) for UMAP (need ≥ 4). Skipping.")
+        return
+
+    # Detect degenerate case: sequence == baseline → all points are identical.
+    # UMAP has no structure to preserve and will scatter them randomly, which is
+    # misleading. Render a single-point figure instead.
+    total_variance = float(np.var(X))
+    if total_variance < 1e-10:
+        print(f"Interpolation path is trivial (sequence == baseline). Skipping UMAP, saving single-point figure.")
+        fig, ax = plt.subplots(figsize=(7, 6))
+        ax.scatter([0], [0], s=300, marker='s', color='royalblue', zorder=3,
+                   edgecolors='white', linewidth=1.5, label=f'α=0  ({baseline_name})')
+        ax.scatter([0], [0], s=300, marker='*', color='crimson', zorder=3,
+                   edgecolors='white', linewidth=1.5, label=f'α=1  ({sequence_name})')
+        ax.set_xlabel('UMAP 1', fontsize=11)
+        ax.set_ylabel('UMAP 2', fontsize=11)
+        ax.set_title(
+            f'Interpolation path in embedding space\n'
+            f'{baseline_name} → {sequence_name}   [{interpolation_method}]\n'
+            f'(trivial path: sequence = baseline)',
+            fontsize=12,
+        )
+        ax.legend(fontsize=9, loc='best')
+        ax.set_xticks([])
+        ax.set_yticks([])
+        sns.despine(ax=ax)
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            print(f"Interpolation UMAP saved to {save_path}")
+        plt.close()
+        return
+
+    n_neighbors = min(umap_n_neighbors, n_steps - 1)
+    reducer = umap.UMAP(
+        n_components=2,
+        n_neighbors=n_neighbors,
+        min_dist=umap_min_dist,
+        random_state=random_state,
+    )
+    coords = reducer.fit_transform(X)  # (n_steps, 2)
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+
+    # Connecting line
+    ax.plot(coords[:, 0], coords[:, 1], color='grey', linewidth=1.0, alpha=0.45, zorder=1)
+
+    # Scatter coloured by alpha
+    sc = ax.scatter(
+        coords[:, 0], coords[:, 1],
+        c=alphas, cmap='viridis',
+        s=40, edgecolors='none', alpha=0.85, zorder=2,
+    )
+    cbar = plt.colorbar(sc, ax=ax)
+    cbar.set_label('α  (interpolation step)', fontsize=10)
+
+    # Endpoint markers
+    ax.scatter(
+        coords[0, 0], coords[0, 1],
+        s=200, marker='s', color='royalblue', zorder=3,
+        edgecolors='white', linewidth=1.5,
+        label=f'α=0  ({baseline_name})',
+    )
+    ax.scatter(
+        coords[-1, 0], coords[-1, 1],
+        s=200, marker='*', color='crimson', zorder=3,
+        edgecolors='white', linewidth=1.5,
+        label=f'α=1  ({sequence_name})',
+    )
+
+    ax.set_xlabel('UMAP 1', fontsize=11)
+    ax.set_ylabel('UMAP 2', fontsize=11)
+    ax.set_title(
+        f'Interpolation path in embedding space\n'
+        f'{baseline_name} → {sequence_name}   [{interpolation_method}]',
+        fontsize=12,
+    )
+    ax.legend(fontsize=9, loc='best')
+    sns.despine(ax=ax)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Interpolation UMAP saved to {save_path}")
+
+    plt.show()
+    plt.close()
+
+
+def plot_interpolation_path(
+    emb_trajectory: list,
+    alphas: np.ndarray,
+    baseline_emb: np.ndarray,
+    seq_emb: np.ndarray,
+    sequence_name: str = "Sequence",
+    baseline_name: str = "Baseline",
+    interpolation_method: str = 'linear',
+    predictions: Optional[np.ndarray] = None,
+    save_path: Optional[str] = None,
+) -> None:
+    """Three-panel diagnostic plot for an IG interpolation path.
+
+    Panels
+    ------
+    1. **Chord-plane projection** — projects every trajectory point onto the
+       2-D subspace spanned by the baseline→sequence chord.  The x-axis is
+       the fraction of the chord already traversed; the y-axis is the
+       perpendicular deviation normalised by the chord length.
+       * ``linear``          → straight diagonal line  (y = 0 everywhere)
+       * ``slerp``           → smooth arc above the chord  (y > 0)
+       * ``nearest_neighbor``→ staircase in x, near-zero y
+
+    2. **Embedding norm vs α** — mean-pooled L2 norm at each step.
+       Flat for slerp, midpoint-dip for linear, discrete steps for nn.
+
+    3. **Prediction vs α** (shown when *predictions* is provided) — model
+       output along the path; reveals whether the traversal is smooth or
+       has unexpected jumps.
+
+    Parameters
+    ----------
+    emb_trajectory:
+        List of ``(D,)`` numpy arrays (mean-pooled embedding at each step).
+    alphas:
+        1-D array of α values for each step, length = len(emb_trajectory).
+    baseline_emb:
+        Mean-pooled baseline embedding ``(D,)``.
+    seq_emb:
+        Mean-pooled sequence embedding ``(D,)``.
+    sequence_name, baseline_name:
+        Labels for the α=1 and α=0 endpoints.
+    interpolation_method:
+        Name shown in the title.
+    predictions:
+        Optional 1-D array of model outputs (rescaled) at each step.
+    save_path:
+        If given, writes the figure to this path.
+    """
+    X = np.stack(emb_trajectory, axis=0).astype(np.float64)  # (n_steps, D)
+    n_steps = X.shape[0]
+
+    # ── Degenerate case: sequence == baseline ───────────────────────────
+    total_variance = float(np.var(X))
+    if total_variance < 1e-10:
+        n_panels = 2 if predictions is None else 3
+        fig, axes = plt.subplots(1, n_panels, figsize=(5 * n_panels, 5))
+        for ax in (axes if n_panels > 1 else [axes]):
+            ax.set_xticks([]); ax.set_yticks([])
+            ax.text(0.5, 0.5, f'Trivial path\n{baseline_name} = {sequence_name}',
+                    ha='center', va='center', transform=ax.transAxes, fontsize=13,
+                    color='grey', style='italic')
+        fig.text(0.5, 0.98, f'Interpolation path  [{interpolation_method}]',
+                 ha='center', va='top', fontsize=14, fontweight='bold')
+        fig.text(0.5, 0.92, f'{baseline_name} → {sequence_name}',
+                 ha='center', va='top', fontsize=12)
+        fig.subplots_adjust(top=0.83, bottom=0.12, left=0.08, right=0.96)
+        if save_path:
+            plt.savefig(save_path, dpi=150)
+            print(f"Interpolation path figure saved to {save_path}")
+        plt.close()
+        return
+
+    # ── Chord-plane decomposition ────────────────────────────────────────
+    e0 = baseline_emb.astype(np.float64)
+    e1 = seq_emb.astype(np.float64)
+    chord = e1 - e0
+    chord_norm = float(np.linalg.norm(chord))
+    chord_unit = chord / chord_norm
+
+    deltas = X - e0[None, :]                              # (n_steps, D)
+    along = deltas @ chord_unit                           # (n_steps,) — along chord
+    perp_vec = deltas - along[:, None] * chord_unit       # (n_steps, D)
+    perp = np.linalg.norm(perp_vec, axis=1)               # (n_steps,) — perp deviation
+
+    # Normalise by chord length → dimensionless coordinates in [0,1]
+    along_norm = along / chord_norm
+    perp_norm = perp / chord_norm
+
+    # ── Embedding norms ──────────────────────────────────────────────────
+    norms = np.linalg.norm(X, axis=1)  # (n_steps,)
+
+    # ── Layout ──────────────────────────────────────────────────────────
+    with_pred = predictions is not None
+    n_panels = 3 if with_pred else 2
+    fig = plt.figure(figsize=(5 * n_panels + 1, 6.2))
+    from matplotlib.gridspec import GridSpec
+    gs = GridSpec(1, n_panels, figure=fig)
+
+    cmap = plt.get_cmap('viridis')
+    colors = cmap(alphas)
+
+    # ── Panel 1: chord-plane projection ─────────────────────────────────
+    ax1 = fig.add_subplot(gs[0, 0])
+    # If max perpendicular deviation is < 1e-5 it is numerical noise (e.g. linear
+    # interpolation in float32 leaving ~1e-7 residuals).  Show a clean "on chord" view.
+    _on_chord = float(np.max(perp_norm)) < 1e-5
+    if _on_chord:
+        sc = ax1.scatter(along_norm, np.zeros_like(along_norm), c=alphas, cmap='viridis',
+                         s=30, alpha=0.85, edgecolors='none', zorder=2)
+        ax1.plot(along_norm, np.zeros_like(along_norm),
+                 color='grey', linewidth=0.8, alpha=0.4, zorder=1)
+    else:
+        sc = ax1.scatter(along_norm, perp_norm, c=alphas, cmap='viridis',
+                         s=30, alpha=0.85, edgecolors='none', zorder=2)
+        ax1.plot(along_norm, perp_norm, color='grey', linewidth=0.8, alpha=0.4, zorder=1)
+    # Endpoint markers
+    _y0 = 0 if _on_chord else perp_norm[0]
+    _y1 = 0 if _on_chord else perp_norm[-1]
+    ax1.scatter(along_norm[0], _y0, s=180, marker='s', color='royalblue',
+                edgecolors='white', linewidth=1.2, zorder=3, label=f'α=0  ({baseline_name})')
+    ax1.scatter(along_norm[-1], _y1, s=180, marker='*', color='crimson',
+                edgecolors='white', linewidth=1.2, zorder=3, label=f'α=1  ({sequence_name})')
+    # Reference line: where linear interpolation lies (y=0, x in [0,1])
+    ax1.axhline(0, color='steelblue', linewidth=1.2, linestyle='--', alpha=0.5,
+                label='linear  (y=0)')
+    cbar1 = plt.colorbar(sc, ax=ax1, pad=0.02)
+    cbar1.set_label('α', fontsize=11)
+    ax1.set_xlabel('Along chord  (fraction of ‖e₁−e₀‖)', fontsize=11)
+    ax1.set_ylabel('Perp. deviation  (fraction of ‖e₁−e₀‖)', fontsize=11)
+    ax1.set_title('Chord-plane projection', fontsize=12, fontweight='bold', pad=8)
+    ax1.legend(fontsize=9, loc='upper left')
+    ax1.tick_params(labelsize=10)
+    sns.despine(ax=ax1)
+
+    # ── Panel 2: embedding norm vs α ────────────────────────────────────
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.scatter(alphas, norms, c=alphas, cmap='viridis', s=25, alpha=0.85,
+                edgecolors='none', zorder=2)
+    ax2.plot(alphas, norms, color='grey', linewidth=0.8, alpha=0.4, zorder=1)
+    ax2.axhline(norms[0], color='royalblue', linewidth=1, linestyle=':', alpha=0.6,
+                label=f'‖e₀‖ = {norms[0]:.3f}')
+    ax2.axhline(norms[-1], color='crimson', linewidth=1, linestyle=':', alpha=0.6,
+                label=f'‖e₁‖ = {norms[-1]:.3f}')
+    ax2.set_xlabel('α  (interpolation step)', fontsize=11)
+    ax2.set_ylabel('Mean-pooled embedding norm', fontsize=11)
+    ax2.set_title('Embedding norm vs α', fontsize=12, fontweight='bold', pad=8)
+    ax2.legend(fontsize=9)
+    ax2.tick_params(labelsize=10)
+    sns.despine(ax=ax2)
+
+    # ── Panel 3: prediction vs α ─────────────────────────────────────────
+    if with_pred:
+        ax3 = fig.add_subplot(gs[0, 2])
+        ax3.scatter(alphas, predictions, c=alphas, cmap='viridis', s=25,
+                    alpha=0.85, edgecolors='none', zorder=2)
+        ax3.plot(alphas, predictions, color='grey', linewidth=0.8, alpha=0.4, zorder=1)
+        ax3.axhline(predictions[0], color='royalblue', linewidth=1, linestyle=':',
+                    alpha=0.6, label=f'{baseline_name}  ({predictions[0]:.3f})')
+        ax3.axhline(predictions[-1], color='crimson', linewidth=1, linestyle=':',
+                    alpha=0.6, label=f'{sequence_name}  ({predictions[-1]:.3f})')
+        ax3.set_xlabel('α  (interpolation step)', fontsize=11)
+        ax3.set_ylabel('Model prediction (original scale)', fontsize=11)
+        ax3.set_title('Prediction vs α', fontsize=12, fontweight='bold', pad=8)
+        ax3.legend(fontsize=9)
+        ax3.tick_params(labelsize=10)
+        sns.despine(ax=ax3)
+
+    fig.text(0.5, 0.98, f'Interpolation path  [{interpolation_method}]',
+             ha='center', va='top', fontsize=14, fontweight='bold')
+    fig.text(0.5, 0.92, f'{baseline_name} → {sequence_name}',
+             ha='center', va='top', fontsize=12)
+    fig.subplots_adjust(top=0.83, bottom=0.12, left=0.08, right=0.96, wspace=0.45)
+
+    if save_path:
+        plt.savefig(save_path, dpi=150)
+        print(f"Interpolation path figure saved to {save_path}")
+    plt.close()

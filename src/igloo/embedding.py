@@ -1,13 +1,29 @@
 import os
 from pathlib import Path
 
-import esm
 import torch
 from safetensors.torch import load_file, save_file
 
-# Determine script directory and set paths relative to it
+_DEFAULT_ESM_MODEL = 'esmc_300m'
 
-def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA', subdir=None):
+
+def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA', subdir=None,
+                   esm_backend=None, esm_model_name=_DEFAULT_ESM_MODEL):
+    """
+    Return ESM embeddings for *sequences*, using a disk cache under data/embeddings/.
+
+    Parameters
+    ----------
+    esm_backend : ESM2Backend | ESMCBackend, optional
+        A pre-loaded backend from :mod:`src.igloo.esm_adapter`.  When provided and
+        a cache miss occurs, this backend is used directly — avoiding loading a
+        second ESM model.  If *None*, a temporary backend is constructed from
+        *esm_model_name* on the first cache miss.
+    esm_model_name : str
+        Model identifier used **only** when *esm_backend* is not supplied and at
+        least one batch file is missing from disk.  Defaults to
+        ``'esm2_t33_650M_UR50D'``.
+    """
     # Always compute project_root as the top-level project directory (containing 'data')
     import inspect
     caller_frame = inspect.stack()[1]
@@ -53,12 +69,8 @@ def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA', subd
         else:
             return torch.empty(0).numpy()
 
-    # Only load ESM model if needed
-    print("Loading ESM model...")
-    esm_model_name = 'esm2_t33_650M_UR50D'
-    esm_model, alphabet = esm.pretrained.load_model_and_alphabet(esm_model_name)
-    esm_model.eval()
-    batch_converter = alphabet.get_batch_converter()
+    # Only initialise a backend if needed (cache miss present and none supplied)
+    _backend = None
 
     for i in range(0, n, batch_size):
         start = i
@@ -68,13 +80,19 @@ def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA', subd
             emb = load_file(str(batch_file))["embedding"]
             embeddings.append(emb)
             continue
-        batch = [(str(j), sequences[j]) for j in range(start, end)]
-        _, _, tokens = batch_converter(batch)
-        with torch.no_grad():
-            out = esm_model(tokens, repr_layers=[layer], return_contacts=False)
-        reps = out['representations'][layer].cpu()  # (batch, L+2, D)
-        Lp2 = reps.shape[1]
-        emb = reps[:, 1:Lp2-1, :].contiguous()  # (batch, L, D)
+
+        # --- Cache miss: compute this batch ---
+        if _backend is None:
+            if esm_backend is not None:
+                _backend = esm_backend
+            else:
+                from .esm_adapter import load_esm_backend  # lazy import
+                _backend = load_esm_backend(esm_model_name, torch.device('cpu'))
+
+        batch_seqs = sequences[start:end]
+        emb_np = _backend.get_sequence_embeddings(batch_seqs, layer=layer,
+                                                   batch_size=len(batch_seqs))
+        emb = torch.from_numpy(emb_np)  # (batch, L, D)
         save_file({"embedding": emb}, str(batch_file))
         embeddings.append(emb)
 

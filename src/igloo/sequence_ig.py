@@ -9,7 +9,7 @@ of which amino acids at which positions contribute to predictions.
 import hashlib
 from typing import Optional
 
-import esm
+import esm  # kept for ESMBasedPredictor / token-level IG internals (ESM-2 only)
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -23,17 +23,22 @@ from .data_processing import CustomDataset, batch_pad_and_normalize
 from .embedding import get_embeddings
 
 
-def load_esm_model(model_name: str = 'esm2_t33_650M_UR50D', device: torch.device = None):
-    """Load ESM model and alphabet."""
+def load_esm_model(model_name: str = 'esmc_300m', device: torch.device = None):
+    """Load an ESM model and return ``(raw_model, alphabet)``.
+
+    Delegates to :func:`~src.igloo.esm_adapter.load_esm_backend`.  For ESM-2
+    the return is the classic ``(model, alphabet)`` pair.  For ESM-C the
+    alphabet position returns the backend object (``alphabet=None`` is set
+    inside the backend, so callers should not attempt to use it for
+    tokenisation — token-level IG is ESM-2 only).
+    """
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    print(f"Loading ESM model {model_name}...")
-    esm_model, alphabet = esm.pretrained.load_model_and_alphabet(model_name)
-    esm_model = esm_model.to(device)
-    esm_model.eval()
-
-    return esm_model, alphabet
+    from .esm_adapter import load_esm_backend
+    backend = load_esm_backend(model_name, device)
+    # Return the raw model + alphabet (None for ESM-C) for backward compat
+    return backend.model, backend.alphabet
 
 
 def sequence_to_tokens(sequence: str, alphabet) -> torch.Tensor:
@@ -813,6 +818,200 @@ def export_sequence_analysis_results(
     print(f"Analysis results exported to {output_dir}")
 
 
+# ---------------------------------------------------------------------------
+# Interpolation path helpers
+# ---------------------------------------------------------------------------
+
+def interpolate_embeddings(
+    baseline: torch.Tensor,
+    sequence: torch.Tensor,
+    alpha: float,
+    method: str = 'linear',
+) -> torch.Tensor:
+    """
+    Interpolate between baseline and sequence embeddings at a given alpha.
+
+    Parameters
+    ----------
+    baseline : Tensor of shape (..., embed_dim)
+        Starting point; alpha=0 returns baseline, alpha=1 returns sequence.
+    sequence : Tensor of the same shape as baseline.
+    alpha    : Scalar in [0, 1].
+    method   : Interpolation strategy:
+        'linear'           — straight-line path (standard IG).
+        'slerp'            — spherical linear interpolation applied
+                             independently to each embedding vector
+                             (preserves L2 norm along the path); falls
+                             back to linear when vectors are nearly
+                             parallel (omega ≈ 0).
+        'nearest_neighbor' — discrete staircase path: positions switch
+                             from baseline to sequence one at a time as
+                             alpha increases (ordered by position index).
+                             Position i activates when alpha >= i / L,
+                             where L = number of positions. Produces a
+                             piecewise-constant path through embedding
+                             space; useful for probing position-order
+                             sensitivity of attributions.
+
+    Returns
+    -------
+    Tensor of same shape as inputs.
+    """
+    if method == 'linear':
+        return baseline + alpha * (sequence - baseline)
+
+    elif method == 'slerp':
+        eps = 1e-8
+        v0 = baseline.float()
+        v1 = sequence.float()
+
+        v0_norm = torch.nn.functional.normalize(v0, dim=-1)
+        v1_norm = torch.nn.functional.normalize(v1, dim=-1)
+
+        # Angle between the two unit vectors at each position
+        dot = torch.clamp((v0_norm * v1_norm).sum(dim=-1, keepdim=True), -1.0, 1.0)
+        omega = torch.acos(dot)         # (..., 1)
+        sin_omega = torch.sin(omega)    # (..., 1)
+
+        slerp = (
+            (torch.sin((1.0 - alpha) * omega) / (sin_omega + eps)) * v0
+            + (torch.sin(alpha * omega) / (sin_omega + eps)) * v1
+        )
+        linear = v0 + alpha * (v1 - v0)
+
+        # Fall back to linear wherever sin_omega is too small
+        return torch.where(sin_omega > eps, slerp, linear)
+
+    elif method == 'nearest_neighbor':
+        # Discrete staircase: position i switches from baseline to sequence
+        # embedding when alpha >= i / seq_len. For alpha=0 every position
+        # uses baseline; for alpha=1 every position uses sequence (since
+        # i/L < 1 for all i in [0, L-1]).
+        seq_len = baseline.shape[-2]
+        thresholds = torch.arange(seq_len, dtype=torch.float32, device=baseline.device) / seq_len
+        switched = (thresholds <= alpha).to(baseline.dtype)  # (seq_len,)
+
+        # Reshape for broadcasting against (..., seq_len, embed_dim):
+        #   2-D input (seq_len, embed_dim)      → switched: (seq_len, 1)
+        #   3-D input (batch, seq_len, embed_dim) → switched: (1, seq_len, 1)
+        shape = [1] * (baseline.dim() - 2) + [seq_len, 1]
+        switched = switched.view(*shape)
+        return baseline + switched * (sequence - baseline)
+
+    else:
+        raise ValueError(
+            f"Unknown interpolation method '{method}'. "
+            f"Choose from: 'linear', 'slerp', 'nearest_neighbor'. "
+            f"(note: 'guided_ig' is pre-built by build_guided_ig_path() and does not use this function)"
+        )
+
+
+# ── Guided IG helpers ──────────────────────────────────────────────────────
+
+def _guided_ig_model_forward(
+    emb: "torch.Tensor",
+    predictor_model,
+    pooling_method: str,
+    y_log_mean: float,
+    y_log_std: float,
+) -> "torch.Tensor":
+    """Normalise *emb* exactly as the training pipeline does, then run the predictor.
+
+    Returns the rescaled scalar output (or batch of outputs).
+    """
+    from .data_processing import _global_scaler_mean, _global_scaler_scale  # noqa: PLC0415
+    device = emb.device
+    b, L, D = emb.shape
+    flat = emb.reshape(b, -1)
+    if _global_scaler_mean is not None and _global_scaler_scale is not None:
+        flat_norm = (flat - _global_scaler_mean) / _global_scaler_scale
+    else:
+        mu = flat.mean(dim=1, keepdim=True)
+        sigma = flat.std(dim=1, keepdim=True)
+        flat_norm = (flat - mu) / (sigma + 1e-8)
+    norm_emb = flat_norm.reshape(b, L, D)
+    if pooling_method == 'esm_attention':
+        mask = torch.ones(b, L, device=device)
+        out = predictor_model(norm_emb, mask)
+    else:
+        out = predictor_model(norm_emb)
+    return out * y_log_std + y_log_mean
+
+
+def build_guided_ig_path(
+    baseline_emb: "torch.Tensor",
+    seq_emb: "torch.Tensor",
+    predictor_model,
+    pooling_method: str,
+    y_log_mean: float,
+    y_log_std: float,
+    device: "torch.device",
+    steps: int,
+) -> list:
+    """Build a Guided IG interpolation path (Kapishnikov et al., 2021).
+
+    Constructs a position-level gradient-reordered staircase path:
+
+    1. Compute the gradient \u2207F at the linear midpoint between baseline and sequence.
+    2. For each sequence position *p*, compute relevance::
+
+           r_p = \u2016\u2207F_p\u2016\u2082  \u00d7  \u2016e\u2081_p \u2212 e\u2080_p\u2016\u2082
+
+    3. Sort positions in *ascending* relevance order so that low-importance
+       positions activate first (small \u03b1) and high-importance positions activate
+       last (\u03b1 \u2192 1).  This concentrates attribution mass near the sequence
+       endpoint where the model is most sensitive.
+
+    The result is a staircase identical in structure to *nearest_neighbor* but with
+    steps occurring in gradient-priority order rather than positional order.
+
+    Parameters
+    ----------
+    baseline_emb, seq_emb:
+        Tensors of shape ``(1, L, D)`` (a single sequence).
+    steps:
+        Number of integration steps (same as the IG ``steps`` argument).
+
+    Returns
+    -------
+    list of ``(1, L, D)`` tensors, one per \u03b1 value in
+    ``torch.linspace(0, 1, steps + 1)``.
+    """
+    predictor_model.eval()
+    baseline_emb = baseline_emb.to(device).float()
+    seq_emb = seq_emb.to(device).float()
+    L = baseline_emb.shape[-2]
+
+    # ── Gradient at the linear midpoint ────────────────────────────────────
+    midpoint = (baseline_emb + seq_emb) / 2.0
+    x_mid = midpoint.clone().requires_grad_(True)
+    out_mid = _guided_ig_model_forward(x_mid, predictor_model, pooling_method, y_log_mean, y_log_std)
+    grad = torch.autograd.grad(out_mid.sum(), x_mid)[0].detach()  # (1, L, D)
+
+    # ── Per-position relevance: ||grad_p||\u2082 \u00d7 ||displacement_p||\u2082 ─────────┤
+    displacement = seq_emb - baseline_emb  # (1, L, D)
+    relevance = (
+        grad.norm(dim=-1) * displacement.norm(dim=-1)
+    ).squeeze(0)  # (L,)
+
+    # Ascending sort: low relevance \u2192 activates early (small \u03b1)
+    sorted_positions = torch.argsort(relevance)  # (L,)
+
+    # ── Build staircase path ────────────────────────────────────────────────
+    alphas = torch.linspace(0, 1, steps + 1)
+    path: list = []
+    for alpha in alphas:
+        n_activated = min(int(alpha.item() * L), L)
+        x_step = baseline_emb.clone()
+        if n_activated > 0:
+            active_pos = sorted_positions[:n_activated]  # (n_activated,)
+            x_step[0, active_pos, :] = seq_emb[0, active_pos, :]
+        path.append(x_step.detach())
+    return path
+
+
+# ── End Guided IG helpers ───────────────────────────────────────────────────
+
 
 def analyze_sequence_with_integrated_gradients(
     sequence: str,
@@ -826,15 +1025,19 @@ def analyze_sequence_with_integrated_gradients(
     batch_size: int = 10,
     method: str = 'embedding',  # 'embedding' or 'gumbel'
     attribution_method: str = 'signed',  # 'magnitude' (L2 norm) or 'signed' (dot product)
-    actual_activity: Optional[float] = None,
-    baseline_actual_activity: Optional[float] = None,
+    actual_activity: float | None = None,
+    baseline_actual_activity: float | None = None,
     plot_predictions: bool = False,
     sequence_name: str = "Sequence",
     baseline_name: str = "Baseline",
-    save_plot_path: Optional[str] = None,
-    clip_min: Optional[float] = None,
-    clip_max: Optional[float] = None,
-    embeddings_subdir: Optional[str] = None
+    save_plot_path: str | None = None,
+    clip_min: float | None = None,
+    clip_max: float | None = None,
+    embeddings_subdir: str | None = None,
+    interpolation_path: str = 'linear',
+    plot_interpolation_umap: bool = False,
+    interpolation_umap_save_path: str | None = None,
+    _esm_backend=None,
 ) -> dict:
     """
     Analyze a sequence using integrated gradients.
@@ -843,6 +1046,11 @@ def analyze_sequence_with_integrated_gradients(
         sequence: Input protein sequence
         baseline_sequence: Baseline sequence (usually wild-type)
         model: Combined ESM + predictor model (ESMBasedPredictor or ESMBasedPredictorGumbel)
+        _esm_backend: Optional pre-loaded ESM backend
+            (:class:`~src.igloo.esm_adapter.ESM2Backend` or
+            :class:`~src.igloo.esm_adapter.ESMCBackend`) to pass to
+            :func:`~src.igloo.embedding.get_embeddings` so the ESM model is
+            not loaded a second time for cache-miss sequences.
         alphabet: ESM alphabet
         device: PyTorch device
         y_log_mean: Mean for denormalization (default 0.0 for no denormalization)
@@ -875,11 +1083,13 @@ def analyze_sequence_with_integrated_gradients(
 
     seq_embedding = get_embeddings(
         [sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_seq_{seq_hash}',
-        subdir=embeddings_subdir
+        subdir=embeddings_subdir,
+        esm_backend=_esm_backend,
     )
     baseline_embedding = get_embeddings(
         [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_baseline_{baseline_hash}',
-        subdir=embeddings_subdir
+        subdir=embeddings_subdir,
+        esm_backend=_esm_backend,
     )
 
     # Get predictions using DataLoader approach (exactly like training/evaluation)
@@ -964,18 +1174,66 @@ def analyze_sequence_with_integrated_gradients(
     # Generate interpolated embeddings between baseline and sequence
     alphas = torch.linspace(0, 1, steps + 1, device=device)
     all_gradients = []
+    umap_trajectory: list = []
+    umap_alphas: list = []
+    path_predictions: list = []  # model output at each interpolation step
 
     # Convert to torch tensors for interpolation
     seq_emb_torch = torch.from_numpy(seq_embedding).to(device).float()
     baseline_emb_torch = torch.from_numpy(baseline_embedding).to(device).float()
 
+    # Quick sanity-check: print mean embedding norm at 3 alpha checkpoints.
+    # slerp  → norms stay constant  (all three values ≈ equal)
+    # linear → norm dips at midpoint (middle value < endpoints)
+    # guided_ig → path is built later; skip this check
+    if interpolation_path == 'guided_ig':
+        print(f"  Interpolation path check [guided_ig] — path built adaptively from gradients")
+    else:
+        with torch.no_grad():
+            _ref_alphas = [0.0, 0.5, 1.0]
+            _ref_norms = [
+                interpolate_embeddings(baseline_emb_torch, seq_emb_torch, a, method=interpolation_path)
+                .squeeze(0).norm(dim=-1).mean().item()
+                for a in _ref_alphas
+            ]
+        print(
+            f"  Interpolation path check [{interpolation_path}]  "
+            f"norm(α=0)={_ref_norms[0]:.4f}  "
+            f"norm(α=0.5)={_ref_norms[1]:.4f}  "
+            f"norm(α=1)={_ref_norms[2]:.4f}"
+            + ("  ✓ norms stable (slerp working)" if abs(_ref_norms[1] - _ref_norms[0]) < 0.01 * _ref_norms[0]
+               else "  (midpoint dip expected for linear/nn)")
+        )
+
+    # ── Guided IG: pre-build the complete path before integration ──────────
+    _guided_path: list = []
+    if interpolation_path == 'guided_ig':
+        print("  Building guided IG path (gradient-relevance-ordered staircase)...")
+        _guided_path = build_guided_ig_path(
+            baseline_emb_torch, seq_emb_torch,
+            predictor_model, pooling_method,
+            y_log_mean, y_log_std, device, steps,
+        )
+        print(f"  Guided IG path built: {len(_guided_path)} steps.")
+
+    _global_step = 0  # tracks position in _guided_path across batches
     for i in range(0, len(alphas), batch_size):
         batch_alphas = alphas[i:i + batch_size]
         interpolated_embeddings = []
 
         for alpha in batch_alphas:
-            interpolated = baseline_emb_torch + alpha * (seq_emb_torch - baseline_emb_torch)
+            if interpolation_path == 'guided_ig':
+                interpolated = _guided_path[_global_step]
+            else:
+                interpolated = interpolate_embeddings(
+                    baseline_emb_torch, seq_emb_torch, alpha.item(), method=interpolation_path
+                )
             interpolated_embeddings.append(interpolated)
+            if plot_interpolation_umap:
+                pooled = interpolated.squeeze(0).mean(dim=0).detach().cpu().numpy()
+                umap_trajectory.append(pooled)
+                umap_alphas.append(alpha.item())
+            _global_step += 1
 
         # Stack batch - but DON'T apply DataLoader normalization again
         # The embeddings are already in the right format from ESM
@@ -1012,6 +1270,9 @@ def analyze_sequence_with_integrated_gradients(
         # Note: We do NOT apply clipping here to preserve mathematical correctness of IG
         outputs_rescaled = outputs * y_log_std + y_log_mean
 
+        if plot_interpolation_umap:
+            path_predictions.extend(outputs_rescaled.detach().cpu().numpy().flatten().tolist())
+
         # Compute gradients with respect to the normalized embeddings
         # This is mathematically correct because the model sees normalized embeddings
         gradients = torch.autograd.grad(
@@ -1039,6 +1300,42 @@ def analyze_sequence_with_integrated_gradients(
     # Combine all gradients and average across integration steps
     all_gradients = torch.cat(all_gradients, dim=0)  # (total_steps, seq_len, embed_dim)
     avg_gradients = torch.mean(all_gradients, dim=0)  # (seq_len, embed_dim)
+
+    # Optionally visualise the interpolation path in UMAP-projected embedding space
+    if plot_interpolation_umap and umap_trajectory:
+        # ── Norm diagnostics ──────────────────────────────────────────────
+        # slerp  → norms stay constant throughout (CV ≈ 0, no midpoint dip)
+        # linear → norms decrease toward the midpoint then recover (CV > 0)
+        # nearest_neighbor → norms jump in discrete steps
+        _norms = np.linalg.norm(np.stack(umap_trajectory), axis=1)
+        _mid = len(_norms) // 2
+        _cv = _norms.std() / _norms.mean() if _norms.mean() > 0 else float('nan')
+        print(
+            f"[interpolation diagnostics | method={interpolation_path}]\n"
+            f"  mean-pooled embedding norm:  "
+            f"α=0 → {_norms[0]:.4f}   "
+            f"α≈0.5 → {_norms[_mid]:.4f}   "
+            f"α=1 → {_norms[-1]:.4f}\n"
+            f"  norm CV across path: {_cv:.5f}  "
+            f"(slerp → ~0; linear → >0 with midpoint dip; nn → step changes)"
+        )
+        # ─────────────────────────────────────────────────────────────────
+        from .plot import plot_interpolation_path
+        print(f"Plotting interpolation path figure ({len(umap_trajectory)} steps)...")
+        # Mean-pool the endpoint embeddings for the chord-plane projection
+        _baseline_pooled = baseline_emb_torch.squeeze(0).mean(dim=0).detach().cpu().numpy()
+        _seq_pooled = seq_emb_torch.squeeze(0).mean(dim=0).detach().cpu().numpy()
+        plot_interpolation_path(
+            emb_trajectory=umap_trajectory,
+            alphas=np.array(umap_alphas),
+            baseline_emb=_baseline_pooled,
+            seq_emb=_seq_pooled,
+            sequence_name=sequence_name,
+            baseline_name=baseline_name,
+            interpolation_method=interpolation_path,
+            predictions=np.array(path_predictions) if path_predictions else None,
+            save_path=interpolation_umap_save_path,
+        )
 
     # Compute integrated gradients using the specified attribution method
     # Attribution = (input - baseline) × average_gradient
@@ -1199,6 +1496,11 @@ def analyze_sequence_with_integrated_gradients(
             save_path=save_plot_path
         )
 
+    # Trim gradients to actual sequence length — DataLoader padding may add extra positions
+    seq_len_actual = len(sequence)
+    if len(position_gradients) > seq_len_actual:
+        position_gradients = position_gradients[:seq_len_actual]
+
     return {
         'sequence': sequence,
         'baseline_sequence': baseline_sequence,
@@ -1206,7 +1508,7 @@ def analyze_sequence_with_integrated_gradients(
         'baseline_activity': baseline_pred,
         'effect_vs_baseline': seq_pred - baseline_pred,
         'position_gradients': position_gradients,
-        'positions': list(range(1, len(sequence) + 1)),
+        'positions': list(range(1, seq_len_actual + 1)),
         'amino_acids': list(sequence),
         'actual_activity': actual_activity,
         'baseline_actual_activity': baseline_actual_activity
@@ -1227,22 +1529,25 @@ def analyze_sequence_with_token_level_integrated_gradients(
     steps: int = 50,
     batch_size: int = 10,
     attribution_method: str = 'magnitude',  # 'magnitude' (L2 norm) or 'signed' (dot product)
-    actual_activity: Optional[float] = None,
-    baseline_actual_activity: Optional[float] = None,
+    actual_activity: float | None = None,
+    baseline_actual_activity: float | None = None,
     plot_predictions: bool = False,
     sequence_name: str = "Sequence",
     baseline_name: str = "Baseline",
-    save_plot_path: Optional[str] = None,
-    clip_min: Optional[float] = None,
-    clip_max: Optional[float] = None,
-    embeddings_subdir: Optional[str] = None
+    save_plot_path: str | None = None,
+    clip_min: float | None = None,
+    clip_max: float | None = None,
+    embeddings_subdir: str | None = None,
+    interpolation_path: str = 'linear',
+    _esm_backend=None,
 ) -> dict:
     """
     Analyze a sequence using direct token-level integrated gradients.
 
-    This function computes gradients directly with respect to ESM token embeddings,
-    providing true token-level attributions without needing embedding interpolation
-    or L2 norm projections.
+    .. note::
+        Token-level IG requires direct access to ESM-2 internals (token embedding
+        matrix, transformer layers).  **ESM-C is not supported** for this analysis
+        mode.  Use ``method: embedding`` in your config when using ESM-C.
 
     Args:
         sequence: Input protein sequence
@@ -1276,6 +1581,15 @@ def analyze_sequence_with_token_level_integrated_gradients(
     # Convert sequences to tokens
     seq_tokens = sequence_to_tokens(sequence, alphabet).to(device)
     baseline_tokens = sequence_to_tokens(baseline_sequence, alphabet).to(device)
+
+    # Guard: token-level IG is ESM-2 only
+    if alphabet is None:
+        raise ValueError(
+            "Token-level integrated gradients requires direct access to ESM-2 model "
+            "internals and is not supported with ESM-C.  "
+            "Set 'integrated_gradients.method: embedding' in your config when using "
+            "an ESM-C model."
+        )
 
     print(f"Sequence tokens shape: {seq_tokens.shape}")
     print(f"Baseline tokens shape: {baseline_tokens.shape}")
@@ -1358,11 +1672,13 @@ def analyze_sequence_with_token_level_integrated_gradients(
 
     seq_embedding = get_embeddings(
         [sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_seq_{seq_hash}',
-        subdir=embeddings_subdir
+        subdir=embeddings_subdir,
+        esm_backend=_esm_backend,
     )
     baseline_embedding = get_embeddings(
         [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_baseline_{baseline_hash}',
-        subdir=embeddings_subdir
+        subdir=embeddings_subdir,
+        esm_backend=_esm_backend,
     )
 
     # Use DataLoader approach for predictions (exactly like embedding-level IG)
@@ -1445,8 +1761,10 @@ def analyze_sequence_with_token_level_integrated_gradients(
             baseline_token_embeds = token_embed_matrix[baseline_tokens]  # (1, seq_len+2, embed_dim)
 
             # Interpolate at token embedding level
-            interpolated_embeds = baseline_token_embeds + alpha * (seq_token_embeds - baseline_token_embeds)
-            interpolated_embeds.requires_grad_(True)
+            interpolated_embeds = interpolate_embeddings(
+                baseline_token_embeds, seq_token_embeds, alpha.item(), method=interpolation_path
+            )
+            interpolated_embeds = interpolated_embeds.clone().detach().requires_grad_(True)
 
             # Forward pass to get prediction
             outputs = predict_from_token_embeddings(interpolated_embeds)
