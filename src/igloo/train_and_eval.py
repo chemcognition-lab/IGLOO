@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from scipy.stats import spearmanr
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader
 from tqdm import trange
 
@@ -981,9 +982,17 @@ def train(
 
 def train_or_load_model(config, sequences, y, results_dir, device):
     embeddings_subdir = 'synthetic' if 'synthetic' in config.get('data', {}).get('path', '') else None
-    """Train a new model or load existing one"""
+    """Train a new model or load existing one.
 
-    model_config = config['model']
+    When the config contains a ``training.n_folds > 1`` key the function runs
+    K-fold cross-validation on *sequences* / *y* (which are expected to be the
+    train+val pool, i.e. the held-out test set has already been excluded by the
+    caller).  Otherwise the original single-pass training is used.
+    """
+
+    model_config    = config['model']
+    training_config = config.get('training', {})
+    n_folds         = int(training_config.get('n_folds', 1))
     training_model_path = os.path.join(results_dir, f"{config['data']['name']}_training_model.pth")
 
     # Get embedding dimensions
@@ -1076,45 +1085,432 @@ def train_or_load_model(config, sequences, y, results_dir, device):
     if train_model:
         print("\nTraining model...")
 
-        # Create model
-        model_cfg = {
-            'input_dim': D,
-            'L': L,
-            'hidden_dim1': model_config['hidden_dim1'],
-            'hidden_dim2': model_config['hidden_dim2'],
-            'hidden_dim3': model_config['hidden_dim3'],
-            'hidden_dim4': model_config['hidden_dim4'],
-            'dropout_rate': model_config['dropout_rate'],
-            'final_activation': model_config.get('final_activation'),
-            'pooling_method': model_config['pooling_method']
-        }
-        model = create_model(model_cfg, device)
+        # ── K-fold CV path ────────────────────────────────────────────────
+        if n_folds > 1:
+            final_model, cv_summary, model_cfg, _norm = kfold_cv_and_train(
+                config=config,
+                sequences=sequences,
+                y=y,
+                results_dir=results_dir,
+                device=device,
+                n_folds=n_folds,
+                save_path=training_model_path,
+                embeddings_subdir=embeddings_subdir,
+            )
+            train_metrics = cv_summary
+        else:
+            # ── Original single-pass path ─────────────────────────────────
+            model_cfg = {
+                'input_dim': D,
+                'L': L,
+                'hidden_dim1': model_config['hidden_dim1'],
+                'hidden_dim2': model_config['hidden_dim2'],
+                'hidden_dim3': model_config['hidden_dim3'],
+                'hidden_dim4': model_config['hidden_dim4'],
+                'dropout_rate': model_config['dropout_rate'],
+                'final_activation': model_config.get('final_activation'),
+                'pooling_method': model_config['pooling_method']
+            }
+            model = create_model(model_cfg, device)
 
-        # Train model
-        training_results = train_model_with_embeddings(
-            model=model,
-            train_sequences=sequences,
-            train_targets=y,
-            val_sequences=None,
-            val_targets=None,
-            esm_layer=model_config['esm_layer'],
-            pooling_method=model_config['pooling_method'],
-            batch_size=model_config['batch_size'],
-            learning_rate=model_config['learning_rate'],
-            num_epochs=model_config['epochs'],
-            device=device,
-            dataset_name=f"{config['data']['name']}_integrated_gradients",
-            loss_type=model_config.get('loss_type', 'huber').lower(),
-            results_dir=results_dir,
-            save_path=training_model_path,
-            model_config=model_cfg,
-            embeddings_subdir=embeddings_subdir,
-            esm_model_name=esm_model_name,
-        )
+            training_results = train_model_with_embeddings(
+                model=model,
+                train_sequences=sequences,
+                train_targets=y,
+                val_sequences=None,
+                val_targets=None,
+                esm_layer=model_config['esm_layer'],
+                pooling_method=model_config['pooling_method'],
+                batch_size=model_config['batch_size'],
+                learning_rate=model_config['learning_rate'],
+                num_epochs=model_config['epochs'],
+                device=device,
+                dataset_name=f"{config['data']['name']}_integrated_gradients",
+                loss_type=model_config.get('loss_type', 'huber').lower(),
+                results_dir=results_dir,
+                save_path=training_model_path,
+                model_config=model_cfg,
+                embeddings_subdir=embeddings_subdir,
+                esm_model_name=esm_model_name,
+            )
 
-        final_model = training_results['model']
-        train_metrics = training_results['metrics']
+            final_model   = training_results['model']
+            train_metrics = training_results['metrics']
     else:
         train_metrics = {'note': 'using_pretrained_model'}
 
     return final_model, train_model, train_metrics
+
+
+# ---------------------------------------------------------------------------
+# K-fold cross-validation helpers
+# ---------------------------------------------------------------------------
+
+def _run_fold_training(
+    model,
+    train_emb: np.ndarray,
+    y_train: np.ndarray,
+    val_emb: np.ndarray,
+    y_val: np.ndarray,
+    *,
+    pooling_method: str,
+    batch_size: int,
+    learning_rate: float,
+    num_epochs: int,
+    patience: int,
+    criterion,
+    device,
+) -> tuple[dict, int, list[float], list[float]]:
+    """Train one CV fold on pre-computed embeddings.
+
+    Returns
+    -------
+    (metrics_dict, best_epoch, train_losses, val_losses)
+        ``train_losses`` and ``val_losses`` are per-epoch lists.
+    """
+    model = model.to(device)
+
+    train_dataset = CustomDataset(train_emb, y_train)
+    val_dataset   = CustomDataset(val_emb,   y_val)
+    train_loader  = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                               collate_fn=batch_pad_and_normalize)
+    val_loader    = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False,
+                               collate_fn=batch_pad_and_normalize)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate,
+                                  weight_decay=1e-4, betas=(0.9, 0.999))
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=num_epochs, eta_min=learning_rate * 0.01
+    )
+
+    best_val_loss    = float('inf')
+    patience_counter = 0
+    best_epoch       = num_epochs
+    best_state       = None
+    train_loss_history: list[float] = []
+    val_loss_history:   list[float] = []
+
+    for epoch in range(num_epochs):
+        # ── Training step ──
+        model.train()
+        train_batch_losses: list[float] = []
+        for xb, lengths, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            optimizer.zero_grad()
+            if pooling_method == 'esm_attention':
+                mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                for i, ln in enumerate(lengths):
+                    mask[i, :ln] = 1
+                pred = model(xb, mask)
+            else:
+                pred = model(xb)
+            loss = criterion(pred.squeeze(-1), yb.squeeze(-1))
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+            train_batch_losses.append(loss.item())
+        scheduler.step()
+        train_loss_history.append(float(np.mean(train_batch_losses)))
+
+        # ── Validation step ──
+        model.eval()
+        val_losses = []
+        with torch.no_grad():
+            for xb, lengths, yb in val_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                if pooling_method == 'esm_attention':
+                    mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                    for i, ln in enumerate(lengths):
+                        mask[i, :ln] = 1
+                    out = model(xb, mask)
+                else:
+                    out = model(xb)
+                val_losses.append(criterion(out.squeeze(-1), yb.squeeze(-1)).item())
+        avg_val_loss = float(np.mean(val_losses))
+        val_loss_history.append(avg_val_loss)
+
+        if avg_val_loss < best_val_loss - 1e-4:
+            best_val_loss    = avg_val_loss
+            patience_counter = 0
+            best_epoch       = epoch + 1
+            best_state       = {k: v.clone() for k, v in model.state_dict().items()}
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+
+    # ── Final metrics on val set ──
+    model.eval()
+    preds, actuals = [], []
+    with torch.no_grad():
+        for xb, lengths, yb in val_loader:
+            xb = xb.to(device)
+            if pooling_method == 'esm_attention':
+                mask = torch.zeros(xb.size(0), xb.size(1), device=device)
+                for i, ln in enumerate(lengths):
+                    mask[i, :ln] = 1
+                out = model(xb, mask).squeeze(-1)
+            else:
+                out = model(xb).squeeze(-1)
+            preds.append(out.cpu().numpy())
+            actuals.append(yb.numpy().flatten())
+
+    preds   = np.concatenate(preds)
+    actuals = np.concatenate(actuals)
+
+    val_r2            = float(r2_score(actuals, preds))
+    val_spearman, _   = spearmanr(actuals, preds)
+    val_mae           = float(mean_absolute_error(actuals, preds))
+    val_rmse          = float(np.sqrt(mean_squared_error(actuals, preds)))
+
+    return {
+        'val_r2':           val_r2,
+        'val_spearman_rho': float(val_spearman),
+        'val_mae':          val_mae,
+        'val_rmse':         val_rmse,
+        'val_loss':         best_val_loss,
+        'best_epoch':       best_epoch,
+    }, best_epoch, train_loss_history, val_loss_history
+
+
+def _aggregate_cv_metrics(fold_metrics: list[dict]) -> dict:
+    """Compute mean ± std across CV fold metric dicts."""
+    if not fold_metrics:
+        return {}
+    summary: dict = {'per_fold': fold_metrics}
+    all_keys = {
+        k for fm in fold_metrics
+        for k, v in fm.items()
+        if k != 'fold' and isinstance(v, (int, float))
+    }
+    for key in sorted(all_keys):
+        vals = [fm[key] for fm in fold_metrics if isinstance(fm.get(key), (int, float))]
+        if vals:
+            summary[f'mean_{key}'] = float(np.mean(vals))
+            summary[f'std_{key}']  = float(np.std(vals))
+    return summary
+
+
+def kfold_cv_and_train(
+    config: dict,
+    sequences: list,
+    y: np.ndarray,
+    results_dir: str,
+    device: torch.device,
+    n_folds: int = 5,
+    save_path: Optional[str] = None,
+    embeddings_subdir: Optional[str] = None,
+) -> tuple:
+    """
+    Run K-fold cross-validation on *sequences* / *y*, then train a final model
+    on all of them (using the average best-epoch from CV as the stopping point).
+
+    Parameters
+    ----------
+    config           : full IGLOO config dict
+    sequences        : train+val sequences (held-out test already excluded)
+    y                : normalised targets for sequences
+    results_dir      : where CV metrics CSV and the final model checkpoint are saved
+    device           : torch device
+    n_folds          : number of CV folds (default 5)
+    save_path        : path to save the final model; None → don't save
+    embeddings_subdir: passed through to get_embeddings (e.g. 'synthetic')
+
+    Returns
+    -------
+    (final_model, cv_summary_dict, model_cfg_dict, norm_params_dict)
+    """
+    import pandas as pd
+    from src.igloo.utils import create_model
+
+    model_config   = config['model']
+    dataset_name   = config['data']['name']
+    esm_model_name = model_config.get('esm_model_name', 'esmc_300m')
+    pooling_method = model_config['pooling_method']
+    batch_size     = model_config['batch_size']
+    learning_rate  = model_config['learning_rate']
+    num_epochs     = model_config['epochs']
+    loss_type      = model_config.get('loss_type', 'huber').lower()
+
+    _criterion_map = {
+        'mse':   torch.nn.MSELoss(),
+        'mae':   torch.nn.L1Loss(),
+        'huber': torch.nn.HuberLoss(),
+    }
+    criterion = _criterion_map.get(loss_type, torch.nn.HuberLoss())
+    cv_patience = max(10, model_config.get('patience', 15))
+    min_epochs  = int(model_config.get('min_epochs', 1))  # floor for avg_best_epoch
+
+    # ── Pre-fetch ALL train+val embeddings (uses disk cache) ─────────────
+    print(f"\nPre-fetching embeddings for {len(sequences)} train+val sequences...")
+    all_embeddings = get_embeddings(
+        sequences,
+        layer=model_config['esm_layer'],
+        batch_size=batch_size,
+        dataset_name=f"{dataset_name}_integrated_gradients_train",
+        subdir=embeddings_subdir,
+        esm_model_name=esm_model_name,
+    )
+    L, D = int(all_embeddings.shape[1]), int(all_embeddings.shape[2])
+
+    # ── Compute global normalisation once on all train+val embeddings ────
+    norm_params = compute_global_normalization_params([all_embeddings])
+    set_global_normalization_params(norm_params['mean'], norm_params['scale'])
+    print(f"Global normalisation — mean={norm_params['mean']:.4f}, scale={norm_params['scale']:.4f}")
+
+    model_cfg = {
+        'input_dim':       D,
+        'L':               L,
+        'hidden_dim1':     model_config['hidden_dim1'],
+        'hidden_dim2':     model_config['hidden_dim2'],
+        'hidden_dim3':     model_config['hidden_dim3'],
+        'hidden_dim4':     model_config['hidden_dim4'],
+        'dropout_rate':    model_config['dropout_rate'],
+        'final_activation': model_config.get('final_activation'),
+        'pooling_method':  pooling_method,
+    }
+
+    # ── K-fold CV ─────────────────────────────────────────────────────────
+    kf = KFold(n_splits=n_folds, shuffle=True, random_state=42)
+    indices = np.arange(len(sequences))
+    cv_fold_metrics:    list[dict]        = []
+    best_epochs:        list[int]         = []
+    all_train_histories: list[list[float]] = []
+    all_val_histories:   list[list[float]] = []
+
+    print(f"\n{'='*60}")
+    print(f"Running {n_folds}-fold cross-validation on {len(sequences)} sequences")
+    print(f"{'='*60}")
+
+    for fold_idx, (train_idx, val_idx) in enumerate(kf.split(indices)):
+        n_train, n_val = len(train_idx), len(val_idx)
+        print(f"\n─── Fold {fold_idx+1}/{n_folds}  (train={n_train}, val={n_val}) ───")
+
+        fold_model = create_model(model_cfg, device)
+
+        # Slice pre-computed embeddings — no re-running ESM
+        train_emb = all_embeddings[train_idx]   # (n_train, L, D)
+        val_emb   = all_embeddings[val_idx]     # (n_val,   L, D)
+        y_train_f = y[train_idx]
+        y_val_f   = y[val_idx]
+
+        fold_metrics, best_ep, fold_train_hist, fold_val_hist = _run_fold_training(
+            fold_model, train_emb, y_train_f, val_emb, y_val_f,
+            pooling_method=pooling_method,
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            num_epochs=num_epochs,
+            patience=cv_patience,
+            criterion=criterion,
+            device=device,
+        )
+        fold_metrics['fold'] = fold_idx + 1
+        cv_fold_metrics.append(fold_metrics)
+        best_epochs.append(best_ep)
+        all_train_histories.append(fold_train_hist)
+        all_val_histories.append(fold_val_hist)
+
+        print(f"  Fold {fold_idx+1} — val_r2={fold_metrics['val_r2']:.4f}, "
+              f"val_spearman={fold_metrics['val_spearman_rho']:.4f}, "
+              f"stopped at epoch {best_ep}")
+
+    # ── Aggregate CV results ──────────────────────────────────────────────
+    cv_summary     = _aggregate_cv_metrics(cv_fold_metrics)
+    avg_best_epoch = max(min_epochs, int(round(np.mean(best_epochs))))
+    cv_summary['avg_best_epoch'] = avg_best_epoch
+
+    print(f"\n{'='*60}")
+    print("K-FOLD CV SUMMARY")
+    print(f"{'='*60}")
+    for key in ('mean_val_r2', 'std_val_r2', 'mean_val_spearman_rho', 'std_val_spearman_rho'):
+        if key in cv_summary:
+            print(f"  {key}: {cv_summary[key]:.4f}")
+    print(f"  Average best epoch: {avg_best_epoch}"
+          + (f" (floored from {int(round(np.mean(best_epochs)))} by min_epochs={min_epochs})"
+             if avg_best_epoch == min_epochs and int(round(np.mean(best_epochs))) < min_epochs
+             else ""))
+
+    # Save per-fold metrics CSV and loss-curve figure
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        os.makedirs(results_dir, exist_ok=True)
+        cv_df = pd.DataFrame(cv_fold_metrics)
+        cv_csv = os.path.join(results_dir, f"{dataset_name}_cv_fold_metrics.csv")
+        cv_df.to_csv(cv_csv, index=False)
+        print(f"CV fold metrics → {cv_csv}")
+
+        # ── Loss-curve figure ─────────────────────────────────────────────
+        fig, axes = plt.subplots(
+            1, n_folds, figsize=(4 * n_folds, 4), sharey=True
+        )
+        if n_folds == 1:
+            axes = [axes]
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+        for fold_idx, (t_hist, v_hist) in enumerate(
+            zip(all_train_histories, all_val_histories)
+        ):
+            ax = axes[fold_idx]
+            epochs = range(1, len(t_hist) + 1)
+            c = colors[fold_idx % len(colors)]
+            ax.plot(epochs, t_hist, color=c, linestyle='-',  label='Train')
+            ax.plot(epochs, v_hist, color=c, linestyle='--', label='Val')
+            best_ep = best_epochs[fold_idx]
+            ax.axvline(best_ep, color='gray', linestyle=':', linewidth=1,
+                       label=f'Best epoch {best_ep}')
+            ax.set_title(f'Fold {fold_idx + 1}', fontsize=11)
+            ax.set_xlabel('Epoch')
+            if fold_idx == 0:
+                ax.set_ylabel('Loss')
+            ax.legend(fontsize=8)
+            ax.grid(True, alpha=0.3)
+
+        fig.suptitle(
+            f'{dataset_name} — {n_folds}-fold CV loss curves', fontsize=13
+        )
+        plt.tight_layout()
+        loss_curve_path = os.path.join(
+            results_dir, f"{dataset_name}_cv_loss_curves.png"
+        )
+        fig.savefig(loss_curve_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        print(f"CV loss curves → {loss_curve_path}")
+
+    except Exception as exc:
+        print(f"Warning: could not save CV metrics/figure: {exc}")
+
+    # ── Final model: train on ALL train+val for avg_best_epoch epochs ────
+    print(f"\n--- Final model: {len(sequences)} train+val sequences, "
+          f"{avg_best_epoch} epochs ---")
+
+    final_model = create_model(model_cfg, device)
+    final_results = train_model_with_embeddings(
+        model=final_model,
+        train_sequences=sequences,
+        train_targets=y,
+        val_sequences=None,
+        val_targets=None,
+        esm_layer=model_config['esm_layer'],
+        pooling_method=pooling_method,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        num_epochs=avg_best_epoch,
+        device=device,
+        dataset_name=f"{dataset_name}_integrated_gradients",
+        loss_type=loss_type,
+        results_dir=results_dir,
+        save_path=save_path,
+        model_config=model_cfg,
+        embeddings_subdir=embeddings_subdir,
+        esm_model_name=esm_model_name,
+    )
+    final_model = final_results['model']
+    cv_summary['final_train_metrics'] = final_results['metrics']
+
+    return final_model, cv_summary, model_cfg, norm_params

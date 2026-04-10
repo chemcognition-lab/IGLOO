@@ -1,0 +1,92 @@
+GB1_EPISTATIC INTEGRATED GRADIENTS ANALYSIS SUMMARY
+==================================================
+
+Analysis Configuration:
+  Integration Method: embedding
+  Attribution Method: signed
+  ESM Layer: 33
+  Pooling Method: esm_attention
+  Integration Steps: 50
+
+Model Performance:
+  R² = 0.9201
+  Pearson r = 0.9593
+  Spearman ρ = 0.9498
+
+Sequences Analyzed:
+  WT:
+    Predicted Activity: 0.7938
+    Effect vs Baseline: 0.0000
+    Actual Activity: 1.0000
+
+  Lowest_Activity:
+    Predicted Activity: -1.9801
+    Effect vs Baseline: -2.7739
+    Actual Activity: -2.8667
+
+  Highest_Activity:
+    Predicted Activity: 0.7938
+    Effect vs Baseline: 0.0000
+    Actual Activity: 1.0000
+
+  Median_Activity:
+    Predicted Activity: 0.2029
+    Effect vs Baseline: -0.5909
+    Actual Activity: 0.1818
+
+TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
+ 1. Position 36 (D): importance = 0.4997
+ 2. Position 31 (K): importance = 0.4011
+ 3. Position 35 (N): importance = 0.3157
+ 4. Position 14 (G): importance = 0.2672
+ 5. Position 12 (L): importance = 0.1157
+ 6. Position 8 (N): importance = 0.1144
+ 7. Position 23 (A): importance = 0.1066
+ 8. Position 18 (T): importance = 0.1017
+ 9. Position 3 (Y): importance = 0.0977
+10. Position 44 (T): importance = 0.0969
+
+SIGNED GRADIENT ANALYSIS:
+------------------------------
+
+TOP 10 MOST BENEFICIAL POSITIONS (positive gradients):
+ 1. Position 36 (D): gradient = +0.1569 [from Median_Activity]
+ 2. Position 12 (L): gradient = +0.1507 [from Median_Activity]
+ 3. Position 23 (A): gradient = +0.1009 [from Lowest_Activity]
+ 4. Position 13 (K): gradient = +0.0987 [from Median_Activity]
+ 5. Position 3 (S): gradient = +0.0684 [from Median_Activity]
+ 6. Position 15 (E): gradient = +0.0293 [from Lowest_Activity]
+ 7. Position 7 (L): gradient = +0.0265 [from Lowest_Activity]
+ 8. Position 15 (E): gradient = +0.0248 [from Median_Activity]
+ 9. Position 40 (D): gradient = +0.0190 [from Median_Activity]
+10. Position 24 (A): gradient = +0.0145 [from Lowest_Activity]
+
+TOP 10 MOST DETRIMENTAL POSITIONS (negative gradients):
+ 1. Position 36 (D): gradient = -0.5675 [from Lowest_Activity]
+ 2. Position 31 (K): gradient = -0.5324 [from Lowest_Activity]
+ 3. Position 35 (N): gradient = -0.4008 [from Lowest_Activity]
+ 4. Position 14 (G): gradient = -0.3158 [from Median_Activity]
+ 5. Position 14 (G): gradient = -0.1507 [from Lowest_Activity]
+ 6. Position 8 (N): gradient = -0.1323 [from Lowest_Activity]
+ 7. Position 18 (T): gradient = -0.1246 [from Median_Activity]
+ 8. Position 44 (T): gradient = -0.1239 [from Lowest_Activity]
+ 9. Position 35 (N): gradient = -0.1038 [from Median_Activity]
+10. Position 43 (K): gradient = -0.1001 [from Lowest_Activity]
+
+AMINO ACID TYPE EFFECTS (averaged across all positions):
+Most beneficial amino acid types:
+  1. S: avg effect = +0.0684 (appeared 1 times)
+  2. W: avg effect = +0.0003 (appeared 4 times)
+  3. A: avg effect = +0.0002 (appeared 24 times)
+Most detrimental amino acid types:
+  1. I: avg effect = -0.0180 (appeared 4 times)
+  2. K: avg effect = -0.0257 (appeared 24 times)
+  3. D: avg effect = -0.0265 (appeared 20 times)
+  4. G: avg effect = -0.0356 (appeared 16 times)
+  5. N: avg effect = -0.0598 (appeared 12 times)
+
+SUMMARY STATISTICS:
+  Total positions analyzed: 224
+  Beneficial positions: 32 (14.3%)
+  Detrimental positions: 80 (35.7%)
+  Neutral positions: 112 (50.0%)

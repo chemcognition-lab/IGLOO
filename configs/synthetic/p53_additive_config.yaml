@@ -23,11 +23,14 @@ model:
   epochs: 50
   loss_type: "huber"
   final_activation: null
+  patience: 15          # early-stopping patience (epochs without val improvement)
+  min_epochs: 10        # floor on avg_best_epoch used for the final model
 
 integrated_gradients:
   method: "embedding"
   attribution_method: "signed"
-  interpolation_path: "linear"  # 'linear' | 'slerp' | 'nearest_neighbor'
+  interpolation_path: "linear"  # 'linear' | 'slerp' | 'nearest_neighbor' | 'guided_ig'
+  plot_interpolation_umap: false   # UMAP projection of interpolation path; saved to results_dir
   steps: 50
   batch_size: 10
 
@@ -39,5 +42,10 @@ analysis:
     include_bottom_n: 0
     custom_sequences: []
 
-results_dir: "results/synthetic/p53_additive"
-force_retrain: false
+results_dir: "results/synthetic/p53_additive_LINEAR"
+force_retrain: true
+
+training:
+  n_folds: 5
+  test_fraction: 0.20
+  split_seed: 42

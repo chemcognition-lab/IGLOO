@@ -192,6 +192,16 @@ def main():
         "--log-dir", default="logs/ig_batch_run/synthetic",
         help="Directory for log files (default: logs/ig_batch_run/synthetic)"
     )
+    parser.add_argument(
+        "--evaluate", action="store_true",
+        help="After all IG runs complete, run evaluate_synthetic_ig.py on the "
+             "results directories to compute Spearman/Kendall/AUROC/AUPRC metrics."
+    )
+    parser.add_argument(
+        "--eval-output-dir", default="results/synthetic/evaluation",
+        dest="eval_output_dir",
+        help="Output directory for the evaluation summary (default: results/synthetic/evaluation)"
+    )
     args = parser.parse_args()
 
     combos = get_all_combinations(
@@ -241,7 +251,27 @@ def main():
                 print(f"  ✗ {label}")
     print(f"\nLogs: {args.log_dir}")
     print(f"Completed at {datetime.now()}")
-
+    # ── Optional validation step ──────────────────────────────────────────
+    if args.evaluate and not args.dry_run:
+        succeeded_dirs = [
+            combo["results_dir"]
+            for combo, (label, ok) in zip(combos[: len(results)], results)
+            if ok
+        ]
+        if not succeeded_dirs:
+            print("\n[evaluate] No successful runs to evaluate.")
+        else:
+            print(f"\n{'='*60}")
+            print(f"EVALUATION ({len(succeeded_dirs)} directories)")
+            print(f"{'='*60}")
+            eval_cmd = [
+                sys.executable,
+                "scripts/evaluate_synthetic_ig.py",
+                "--output-dir", args.eval_output_dir,
+                "--per-position-plots",
+            ] + succeeded_dirs
+            print(f"Running: {' '.join(eval_cmd[:5])} ...")
+            subprocess.run(eval_cmd, check=False)
 
 if __name__ == "__main__":
     main()

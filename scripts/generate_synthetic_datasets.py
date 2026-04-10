@@ -41,6 +41,7 @@ from igloo.synthetic_data import (  # noqa: E402
     _FITNESS_MODELS,
     PROTEINS,
     SyntheticDatasetGenerator,
+    split_train_test,
 )
 
 # ---------------------------------------------------------------------------
@@ -82,6 +83,23 @@ def build_parser() -> argparse.ArgumentParser:
             "Number of variant sequences to generate. "
             "Default: per-protein value (GB1=1500, T4Lysozyme=4000, p53=10000)."
         ),
+    )
+    p.add_argument(
+        "--split-test",
+        action="store_true",
+        help=(
+            "After generating each dataset, write two additional files: "
+            "{protein}_{model}_trainval.csv (80%%) and "
+            "{protein}_{model}_test.csv (20%%, stratified by variant type). "
+            "The split fraction can be changed with --test-fraction."
+        ),
+    )
+    p.add_argument(
+        "--test-fraction",
+        type=float,
+        default=0.20,
+        metavar="F",
+        help="Fraction of non-wildtype variants to hold out as test set (default: 0.20).",
     )
     p.add_argument(
         "--output-dir",
@@ -133,6 +151,8 @@ def dry_run_report(
     models: list,
     n_variants_override: int | None,
     output_dir: str,
+    split_test: bool = False,
+    test_fraction: float = 0.20,
 ) -> None:
     print("\n[DRY RUN — no files will be written]\n")
     total_files = 0
@@ -146,6 +166,14 @@ def dry_run_report(
             print(f"  Would write  {fname}  (~{n_rows} rows)")
             total_files += 1
             total_rows  += n_rows
+            if split_test:
+                n_test     = max(1, round(nv * test_fraction))
+                n_trainval = nv + 1 - n_test
+                print(f"  Would write  {Path(output_dir) / f'{protein_name}_{model}_trainval.csv'}"
+                      f"  (~{n_trainval} rows)")
+                print(f"  Would write  {Path(output_dir) / f'{protein_name}_{model}_test.csv'}"
+                      f"  (~{n_test} rows)")
+                total_files += 2
         gt_path = Path(output_dir) / f"{protein_name}_ground_truth_weights.json"
         print(f"  Would write  {gt_path}")
         total_files += 1
@@ -173,6 +201,8 @@ def main() -> int:
             args.models,
             args.n_variants,
             str(out_dir),
+            split_test=args.split_test,
+            test_fraction=args.test_fraction,
         )
         return 0
 
@@ -203,6 +233,18 @@ def main() -> int:
             df.to_csv(fname, index=False)
             print(f"  Saved {fname}  ({len(df):,} rows)")
             saved.append(str(fname))
+
+            if args.split_test:
+                trainval_df, test_df = split_train_test(
+                    df, test_fraction=args.test_fraction, seed=args.seed
+                )
+                tv_fname   = out_dir / f"{protein_name}_{model}_trainval.csv"
+                test_fname = out_dir / f"{protein_name}_{model}_test.csv"
+                trainval_df.to_csv(tv_fname,   index=False)
+                test_df.to_csv(test_fname, index=False)
+                print(f"  Saved {tv_fname}  ({len(trainval_df):,} rows, train+val)")
+                print(f"  Saved {test_fname}  ({len(test_df):,} rows, test)")
+                saved.extend([str(tv_fname), str(test_fname)])
 
         gt_path = out_dir / f"{protein_name}_ground_truth_weights.json"
         gen._save_ground_truth(gt_path)
