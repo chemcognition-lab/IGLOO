@@ -773,6 +773,78 @@ class SyntheticDatasetGenerator:
 # Convenience functions
 # ---------------------------------------------------------------------------
 
+def split_train_test(
+    df: pd.DataFrame,
+    test_fraction: float = 0.20,
+    seed: int = 42,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Split a synthetic fitness DataFrame into train+val and held-out test subsets.
+
+    - WT/wildtype sequence always goes to train+val.
+    - Non-wildtype variants are stratified by *variant_type*
+      ('single', 'double', 'triple') so the test set preserves the
+      same mutation-order composition as the full dataset.
+    - Any remaining variant types are placed entirely in train+val.
+
+    Parameters
+    ----------
+    df            : DataFrame produced by SyntheticDatasetGenerator.generate()
+    test_fraction : fraction of non-wildtype variants to hold out (default 0.20)
+    seed          : random seed for reproducibility
+
+    Returns
+    -------
+    train_val_df, test_df
+        Both DataFrames are reset-indexed.  WT is always in train_val_df.
+    """
+    rng = np.random.default_rng(seed)
+
+    # Wildtype rows always go to train+val
+    wt_col = "is_wildtype" if "is_wildtype" in df.columns else None
+    if wt_col:
+        wt_mask = df[wt_col].astype(bool)
+    else:
+        wt_mask = df.get("variant_type", pd.Series(dtype=str)) == "wildtype"
+
+    wt_df     = df[wt_mask].copy()
+    non_wt_df = df[~wt_mask].copy()
+
+    train_val_parts: list[pd.DataFrame] = [wt_df]
+    test_parts:      list[pd.DataFrame] = []
+
+    # Stratify over known mutation-order types
+    for vtype in ("single", "double", "triple"):
+        group = non_wt_df[non_wt_df["variant_type"] == vtype]
+        if group.empty:
+            continue
+        idx = group.index.tolist()
+        shuffled = rng.permutation(idx).tolist()
+        n_test = max(1, round(len(shuffled) * test_fraction))
+        test_parts.append(group.loc[shuffled[:n_test]])
+        train_val_parts.append(group.loc[shuffled[n_test:]])
+
+    # Any other variant types (e.g. 'multi') go entirely to train+val
+    known_types = {"single", "double", "triple"}
+    extra = non_wt_df[~non_wt_df["variant_type"].isin(known_types)]
+    if not extra.empty:
+        train_val_parts.append(extra)
+
+    train_val_df = pd.concat(train_val_parts, ignore_index=True)
+    test_df      = (
+        pd.concat(test_parts, ignore_index=True)
+        if test_parts
+        else pd.DataFrame(columns=df.columns)
+    )
+
+    # Shuffle train+val rows
+    train_val_df = train_val_df.sample(
+        frac=1, random_state=int(rng.integers(0, 2**31))
+    ).reset_index(drop=True)
+
+    return train_val_df, test_df
+
+
 def generate_all_proteins(
     output_dir: str = "data/synthetic",
     n_variants: int | None = None,

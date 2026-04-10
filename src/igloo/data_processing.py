@@ -190,3 +190,52 @@ def prepare_wildtype_sequence(df, config):
     print(f"WT sequence length: {len(wt_seq)}")
 
     return wt_seq, wt_idx
+
+
+def split_dataset(
+    df: pd.DataFrame,
+    test_fraction: float = 0.20,
+    seed: int = 42,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(trainval_idx, test_idx)`` integer index arrays into *df*.
+
+    Auto-detects the dataset type:
+
+    * If a ``variant_type`` column is present (synthetic datasets) the split is
+      **stratified by mutation order** (single / double / triple) and the
+      wildtype sequence is always kept in the train+val pool.
+    * Otherwise a plain **random split** via scikit-learn is used.
+
+    Parameters
+    ----------
+    df            : DataFrame (as returned by :func:`load_and_prepare_data`).
+    test_fraction : Fraction of non-wildtype variants to hold out (default 0.20).
+    seed          : Random seed for reproducibility.
+
+    Returns
+    -------
+    trainval_idx, test_idx
+        1-D integer arrays suitable for indexing *df* or the parallel
+        ``sequences`` / ``y`` arrays.
+    """
+    if 'variant_type' in df.columns:
+        # Synthetic / stratified path — delegate to split_train_test which
+        # handles WT pinning and mutation-order stratification.
+        from igloo.synthetic_data import split_train_test  # local import to avoid circular dep
+        trainval_df, _ = split_train_test(df, test_fraction=test_fraction, seed=seed)
+        trainval_seqs = set(trainval_df['SEQ'].tolist())
+        seqs = df['SEQ'].tolist()
+        trainval_idx = np.array(
+            [i for i, s in enumerate(seqs) if s in trainval_seqs], dtype=int
+        )
+        test_idx = np.array(
+            [i for i, s in enumerate(seqs) if s not in trainval_seqs], dtype=int
+        )
+    else:
+        from sklearn.model_selection import train_test_split
+        idx = np.arange(len(df))
+        trainval_idx, test_idx = train_test_split(
+            idx, test_size=test_fraction, random_state=seed
+        )
+
+    return trainval_idx, test_idx

@@ -23,13 +23,15 @@ model:
   epochs: 50
   loss_type: "huber"
   final_activation: null
+  patience: 15          # early-stopping patience (epochs without val improvement)
+  min_epochs: 10        # floor on avg_best_epoch used for the final model
   # esm_model_name: esm2_t33_650M_UR50D
 
 integrated_gradients:
   method: "embedding"
   attribution_method: "signed"
-  interpolation_path: "guided_ig"  # 'linear' | 'slerp' | 'nearest_neighbor' | 'guided_ig'
-  plot_interpolation_umap: true   # UMAP projection of interpolation path; saved to results_dir
+  interpolation_path: "linear"  # 'linear' | 'slerp' | 'nearest_neighbor' | 'guided_ig'
+  plot_interpolation_umap: false   # UMAP projection of interpolation path; saved to results_dir
   steps: 50
   batch_size: 10
 
@@ -41,5 +43,10 @@ analysis:
     include_bottom_n: 0
     custom_sequences: []
 
-results_dir: "results/synthetic/GB1_additive_GUIDED_IG"
-force_retrain: false
+results_dir: "results/synthetic/GB1_additive_LINEAR"
+force_retrain: true
+
+training:
+  n_folds: 5
+  test_fraction: 0.20
+  split_seed: 42

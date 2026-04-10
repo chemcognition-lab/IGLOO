@@ -20,6 +20,8 @@ import time
 import traceback
 from datetime import datetime
 
+import numpy as np
+
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -39,6 +41,21 @@ from src.igloo.utils import (
     evaluate_model_performance,
     print_completion_summary,
 )
+
+
+class _Tee:
+    """Duplicate writes to both the original stdout and a file."""
+    def __init__(self, original, file_obj):
+        self._orig = original
+        self._file = file_obj
+    def write(self, data):
+        self._orig.write(data)
+        self._file.write(data)
+    def flush(self):
+        self._orig.flush()
+        self._file.flush()
+    def __getattr__(self, name):
+        return getattr(self._orig, name)
 
 
 class IntegratedGradientsRunner:
@@ -63,8 +80,13 @@ class IntegratedGradientsRunner:
         self.final_model = None
         self.model_cfg = None
 
+        # Train+val / test split attributes (None when no split is configured)
+        self.trainval_idx: "np.ndarray | None" = None
+        self.test_idx:     "np.ndarray | None" = None
+
     def load_and_prepare_data(self):
         """Load and prepare the dataset."""
+        import numpy as np
         # Construct data path
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
@@ -74,12 +96,68 @@ class IntegratedGradientsRunner:
         result = load_and_prepare_data(self.config, data_path)
         self.df, self.sequences, self.y_raw, self.y, self.y_log_mean, self.y_log_std = result
 
+    def split_data(self):
+        """Split the loaded dataset into train+val and held-out test sets.
+
+        Reads ``training.test_fraction`` from the config.  If absent or 0 the
+        method is a no-op and all sequences are used for training (existing
+        behaviour).
+
+        For datasets that have a ``variant_type`` column (synthetic data) a
+        stratified split per mutation order (single / double / triple) is used
+        and the wildtype sequence is always kept in train+val.  For all other
+        datasets a simple random split is used.
+        """
+        import numpy as np
+
+        training_cfg  = self.config.get('training', {})
+        test_fraction = float(training_cfg.get('test_fraction', 0.0))
+
+        if test_fraction <= 0.0:
+            # No split — use all sequences for training (backward compatible)
+            self.trainval_idx = np.arange(len(self.sequences))
+            self.test_idx     = np.array([], dtype=int)
+            return
+
+        split_seed = int(training_cfg.get('split_seed', 42))
+
+        from igloo.data_processing import split_dataset
+        self.trainval_idx, self.test_idx = split_dataset(
+            self.df, test_fraction=test_fraction, seed=split_seed
+        )
+
+        n_tv   = len(self.trainval_idx)
+        n_test = len(self.test_idx)
+        print(f"\nData split: {n_tv} train+val ({(1-test_fraction)*100:.0f}%), "
+              f"{n_test} held-out test ({test_fraction*100:.0f}%)")
+
+        if 'variant_type' in self.df.columns and n_test > 0:
+            test_df_view = self.df.iloc[self.test_idx]
+            vc = test_df_view['variant_type'].value_counts()
+            for vtype, cnt in vc.items():
+                print(f"  Test set — {vtype}: {cnt}")
+
+    def _trainval_sequences(self):
+        """Return the train+val sequence list (or all sequences if no split)."""
+        import numpy as np
+        if self.trainval_idx is None:
+            return self.sequences
+        return [self.sequences[i] for i in self.trainval_idx]
+
+    def _trainval_y(self):
+        """Return the train+val normalised targets (or all targets if no split)."""
+        import numpy as np
+        if self.trainval_idx is None:
+            return self.y
+        return self.y[self.trainval_idx]
+
     def prepare_wildtype_sequence(self):
         """Prepare the wildtype sequence for analysis."""
         self.wt_seq, self.wt_idx = prepare_wildtype_sequence(self.df, self.config)
 
     def train_or_load_model(self):
         """Train a new model or load an existing one."""
+        import numpy as np
         # Construct results directory path
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
@@ -91,71 +169,141 @@ class IntegratedGradientsRunner:
 
         print(f"Results directory: {results_dir}")
 
+        # Save a snapshot of the full config to the results directory
+        import yaml
+        config_snapshot_path = os.path.join(
+            results_dir,
+            f"{self.config['data']['name']}_config_snapshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml"
+        )
+        with open(config_snapshot_path, 'w') as _f:
+            yaml.dump(self.config, _f, default_flow_style=False, sort_keys=False)
+        print(f"Config snapshot saved to: {config_snapshot_path}")
+
+        # Use only the train+val pool (test set is held out)
+        tv_sequences = self._trainval_sequences()
+        tv_y         = self._trainval_y()
+
         # train_or_load_model returns a tuple: (final_model, train_model, train_metrics)
         self.final_model, train_model, train_metrics = train_or_load_model(
-            self.config, self.sequences, self.y, results_dir, self.device
+            self.config, tv_sequences, tv_y, results_dir, self.device
         )
         self.model_cfg = self.config['model']  # Use the model config from the configuration
 
         # Print model status
         if train_model:
             print("✓ Model training completed successfully")
-            if 'train_r2' in train_metrics:
+            # CV summary
+            if 'mean_val_r2' in train_metrics:
+                n_folds = self.config.get('training', {}).get('n_folds', 5)
+                print(f"  {n_folds}-fold CV — mean val R² = {train_metrics['mean_val_r2']:.4f} "
+                      f"(±{train_metrics.get('std_val_r2', 0):.4f})")
+            elif 'train_r2' in train_metrics:
                 print(f"  Training R² = {train_metrics['train_r2']:.4f}")
         else:
             print("✓ Pre-trained model loaded successfully")
 
     def evaluate_model_performance(self):
-        """Evaluate the trained model's performance."""
+        """Evaluate the trained model's performance on the held-out test set.
+
+        If no test split is configured, falls back to evaluating on all data
+        (existing behaviour).
+        """
+        import numpy as np
         # Construct results directory path
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
         default_results_dir = f"results/{self.config['data']['name']}_ig"
         results_dir = os.path.join(project_root, self.config.get('results_dir', default_results_dir))
 
-        return evaluate_model_performance(
-            self.final_model, self.sequences, self.y, self.y_raw,
-            self.y_log_mean, self.y_log_std, self.config, results_dir, self.device
-        )
+        has_test = self.test_idx is not None and len(self.test_idx) > 0
+
+        if has_test:
+            # Evaluate on held-out test set
+            test_sequences = [self.sequences[i] for i in self.test_idx]
+            test_y         = self.y[self.test_idx]
+            test_y_raw     = self.y_raw[self.test_idx]
+
+            print(f"\nTest-set evaluation ({len(test_sequences)} sequences):")
+            test_eval = evaluate_model_performance(
+                self.final_model, test_sequences, test_y, test_y_raw,
+                self.y_log_mean, self.y_log_std,
+                self.config, results_dir, self.device,
+                split_name='test',
+            )
+            return test_eval
+        else:
+            # No test split — evaluate on all sequences (backward compatible)
+            return evaluate_model_performance(
+                self.final_model, self.sequences, self.y, self.y_raw,
+                self.y_log_mean, self.y_log_std, self.config, results_dir, self.device,
+                split_name='train',
+            )
 
     def run_integrated_gradients_analysis(self, eval_results=None):
-        """Run the integrated gradients analysis."""
+        """Run the integrated gradients analysis on all sequences (train+val and test).
+
+        Sequences are selected from the full dataset; each selected sequence is
+        labelled with ``[test]`` or ``[trainval]`` so results can be differentiated.
+        The wildtype, lowest/highest/median activity sequences are still tagged as
+        such (with their split appended).
+        """
+        import numpy as np
+
         # Construct results directory path
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
         default_results_dir = f"results/{self.config['data']['name']}_ig"
         results_dir = os.path.join(project_root, self.config.get('results_dir', default_results_dir))
 
-        # Get sequences to analyze based on configuration
+        has_split = (self.test_idx is not None and len(self.test_idx) > 0)
+
+        # Build a fast lookup: sequence string → split label
+        if has_split:
+            test_seqs  = {self.sequences[i] for i in self.test_idx}
+            def _split_label(seq: str) -> str:
+                return "test" if seq in test_seqs else "trainval"
+        else:
+            def _split_label(seq: str) -> str:  # noqa: F811
+                return "all"
+
+        # Get sequences to analyze based on configuration (from full dataset)
         selection_config = self.config.get('sequence_selection', {
-            'include_extremes': True,  # Include lowest and highest activity sequences
-            'include_median': True,    # Include median activity sequence
-            'include_top_n': 0,        # Number of additional top sequences (beyond highest)
-            'include_bottom_n': 0,     # Number of additional bottom sequences (beyond lowest)
-            'custom_sequences': [],    # Custom sequences to include
-            'max_error_percent': 10.0  # Maximum prediction error for top_n/bottom_n filtering
+            'include_extremes': True,
+            'include_median': True,
+            'include_top_n': 0,
+            'include_bottom_n': 0,
+            'custom_sequences': [],
+            'max_error_percent': 10.0,
         })
 
-        # Extract predictions from eval_results if available for error filtering
-        y_pred = None
-        if eval_results is not None:
-            # eval_results is a tuple: (r2, pearson_r, spearman_rho, y_pred_denorm)
-            y_pred = eval_results[3]  # Get the denormalized predictions
-
+        # y_pred is not available over the full dataset here (eval was on test only),
+        # so pass None to avoid misleading error-filtering.
         sequences_to_analyze = select_sequences_for_analysis(
             self.df, self.y_raw, self.wt_seq, selection_config,
-            model=self.final_model, sequences=self.sequences, y_pred=y_pred
+            model=self.final_model, sequences=self.sequences, y_pred=None
         )
 
-        print(f"\nSelected {len(sequences_to_analyze)} sequences for integrated gradients analysis:")
+        # Annotate each sequence name with its split label
+        if has_split:
+            annotated = []
+            for name, seq, baseline in sequences_to_analyze:
+                label = _split_label(seq)
+                annotated.append((f"{name}[{label}]", seq, baseline))
+            sequences_to_analyze = annotated
+
+        # Always append the poly-alanine special case
+        poly_ala = 'A' * len(self.wt_seq)
+        sequences_to_analyze.append(('PolyAlanine', poly_ala, self.wt_seq))
+
+        print(f"\nSelected {len(sequences_to_analyze)} sequences for integrated gradients "
+              f"analysis (from {'train+val and test' if has_split else 'full dataset'}):")
         for name, seq, _baseline in sequences_to_analyze:
-            # Find the activity value for this sequence
             try:
                 seq_idx = self.sequences.index(seq)
                 activity = self.y_raw[seq_idx]
                 print(f"  {name}: activity = {activity:.4f}")
             except ValueError:
-                print(f"  {name}: custom sequence (not in training data)")
+                print(f"  {name}: custom sequence (not in dataset)")
 
         return run_integrated_gradients_analysis(
             sequences_to_analyze, self.config, self.y_raw, self.sequences,
@@ -243,6 +391,23 @@ class IntegratedGradientsRunner:
 
     def run_complete_analysis(self):
         """Run the complete integrated gradients analysis pipeline."""
+        # Set up results dir and log file before anything else
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
+        results_dir = os.path.join(
+            project_root,
+            self.config.get('results_dir', f"results/{self.config['data']['name']}_ig")
+        )
+        os.makedirs(results_dir, exist_ok=True)
+        _run_ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_path = os.path.join(
+            results_dir,
+            f"{self.config['data']['name']}_run_log_{_run_ts}.txt"
+        )
+        _log_file = open(log_path, 'w')
+        _orig_stdout = sys.stdout
+        sys.stdout = _Tee(_orig_stdout, _log_file)
+
         timing: dict = {}
         pipeline_start = time.perf_counter()
         timing['start_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -260,23 +425,26 @@ class IntegratedGradientsRunner:
             self.load_and_prepare_data()
             timing['data_loading'] = time.perf_counter() - _t
 
-            # Step 2: Prepare wildtype sequence
+            # Step 2: Split into train+val and held-out test (if configured)
+            self.split_data()
+
+            # Step 3: Prepare wildtype sequence
             _t = time.perf_counter()
             self.prepare_wildtype_sequence()
             timing['wildtype_prep'] = time.perf_counter() - _t
 
-            # Step 3: Train or load model
+            # Step 4: Train or load model
             _t = time.perf_counter()
             self.train_or_load_model()
             timing['model_train_load'] = time.perf_counter() - _t
             timing['embedding_retrieval'] = 0.0
 
-            # Step 4: Evaluate model performance
+            # Step 5: Evaluate model performance (on test set if split is configured)
             _t = time.perf_counter()
             eval_results = self.evaluate_model_performance()
             timing['model_evaluation'] = time.perf_counter() - _t
 
-            # Step 5: Run integrated gradients analysis
+            # Step 6: Run integrated gradients analysis
             _t = time.perf_counter()
             ig_results = self.run_integrated_gradients_analysis(eval_results)
             timing['integrated_gradients'] = time.perf_counter() - _t
@@ -285,7 +453,7 @@ class IntegratedGradientsRunner:
                 1 for k in (ig_results or {}) if not k.startswith('_')
             )
 
-            # Step 6: Create visualizations and exports
+            # Step 7: Create visualizations and exports
             _t = time.perf_counter()
             if ig_results:
                 self.create_visualizations_and_exports(ig_results, eval_results)
@@ -294,13 +462,15 @@ class IntegratedGradientsRunner:
             timing['end_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             timing['total'] = time.perf_counter() - pipeline_start
 
-            # Step 7: Print completion summary
+            # Step 8: Print completion summary
             r2, pearson_r, spearman_rho, _ = eval_results
             eval_results_dict = {
                 'r2': r2,
                 'pearson_r': pearson_r,
                 'spearman_rho': spearman_rho
             }
+            split_label = "test" if (self.test_idx is not None and len(self.test_idx) > 0) else "train"
+            print(f"\n(Metrics above are on the held-out {split_label} set)")
 
             print_completion_summary(
                 len(self.sequences),
@@ -310,7 +480,7 @@ class IntegratedGradientsRunner:
                 self.config['data']['name']
             )
 
-            # Step 8: Write timing report
+            # Step 9: Write timing report
             script_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
             results_dir = os.path.join(
@@ -329,6 +499,10 @@ class IntegratedGradientsRunner:
             print(f"Error during analysis: {e}")
             traceback.print_exc()
             raise
+        finally:
+            sys.stdout = _orig_stdout
+            _log_file.close()
+            print(f"Run log saved to {log_path}")
 
 
 def main():

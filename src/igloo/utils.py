@@ -269,17 +269,38 @@ def create_model(config, device):
             target_min=None, target_max=None
         )
     elif pooling_method == 'esm_attention':
-        model = ESMAttention1d(max_length=L, d_embedding=input_dim)
+        model = ESMAttention1d(
+            max_length=L,
+            d_embedding=input_dim,
+            hidden_dim1=config['hidden_dim1'],
+            hidden_dim2=config['hidden_dim2'],
+            hidden_dim3=config['hidden_dim3'],
+            hidden_dim4=config['hidden_dim4'],
+            dropout_rate=config['dropout_rate'],
+            final_activation=config['final_activation'],
+        )
     else:
         raise ValueError(f"Unknown pooling method: {pooling_method}")
 
     return model.to(device)
 
 
-def evaluate_model_performance(model, sequences, y, y_raw, y_log_mean, y_log_std, config, results_dir, device):
-    """Evaluate the trained model"""
+def evaluate_model_performance(
+    model, sequences, y, y_raw, y_log_mean, y_log_std,
+    config, results_dir, device,
+    split_name: str = 'train',
+):
+    """Evaluate the trained model on *sequences*.
 
-    print("\nEvaluating model performance...")
+    Parameters
+    ----------
+    split_name : str
+        Label used for the embedding cache filename and the output plot.
+        Use ``'train'`` for the training/full set (default, backward-compatible)
+        and ``'test'`` for the held-out test set.
+    """
+
+    print(f"\nEvaluating model performance ({split_name} set)...")
     model.eval()
 
     model_config = config['model']
@@ -288,7 +309,7 @@ def evaluate_model_performance(model, sequences, y, y_raw, y_log_mean, y_log_std
     print("Getting embeddings for evaluation...")
     embeddings_subdir = 'synthetic' if 'synthetic' in config.get('data', {}).get('path', '') else None
     esm_model_name = model_config.get('esm_model_name', 'esmc_300m')
-    embedding_cache_name = f"{config['data']['name']}_integrated_gradients_train"
+    embedding_cache_name = f"{config['data']['name']}_integrated_gradients_{split_name}"
     all_embeddings = get_embeddings(
         sequences,
         layer=model_config['esm_layer'],
@@ -343,11 +364,11 @@ def evaluate_model_performance(model, sequences, y, y_raw, y_log_mean, y_log_std
     print("Creating predicted vs actual plot...")
     pred_vs_actual_path = os.path.join(
         results_dir,
-        f"{config['data']['name']}_predicted_vs_actual.png"
+        f"{config['data']['name']}_predicted_vs_actual_{split_name}.png"
     )
     plot_predicted_vs_actual(
         y_raw, y_pred_denorm, pred_vs_actual_path,
-        title=f"{config['data']['name']} Model: Predicted vs Actual {config['data']['target_column']} Values",
+        title=f"{config['data']['name']} ({split_name}): Predicted vs Actual {config['data']['target_column']}",
         r2=r2, pearson_r=pearson_r, spearman_rho=spearman_rho
     )
 

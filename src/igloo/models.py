@@ -220,19 +220,46 @@ class Attention1d(nn.Module):
     
 
 class ESMAttention1d(nn.Module):
-    """Outputs of the ESM model with the attention1d"""
-    def __init__(self, max_length, d_embedding): # [batch x sequence(751) x embedding (1280)] --> [batch x embedding] --> [batch x 1]
+    """Attention pooling over per-residue ESM embeddings followed by a configurable MLP."""
+    def __init__(self, max_length, d_embedding, hidden_dim1=256, hidden_dim2=128,
+                 hidden_dim3=64, hidden_dim4=32, dropout_rate=0.3,
+                 final_activation=None):
         super(ESMAttention1d, self).__init__()
-        self.attention1d = Attention1d(in_dim=d_embedding) # ???
-        self.linear = nn.Linear(d_embedding, d_embedding)
-        self.relu = nn.ReLU()
-        self.final = nn.Linear(d_embedding, 1)
-    
+        self.attention1d = Attention1d(in_dim=d_embedding)
+        self.layernorm = nn.LayerNorm(d_embedding)
+        self.fc1 = nn.Linear(d_embedding, hidden_dim1)
+        self.gelu1 = nn.GELU()
+        self.drop1 = nn.Dropout(dropout_rate)
+        self.fc2 = nn.Linear(hidden_dim1, hidden_dim2)
+        self.gelu2 = nn.GELU()
+        self.drop2 = nn.Dropout(dropout_rate)
+        self.fc3 = nn.Linear(hidden_dim2, hidden_dim3)
+        self.gelu3 = nn.GELU()
+        self.drop3 = nn.Dropout(dropout_rate)
+        self.fc4 = nn.Linear(hidden_dim3, hidden_dim4)
+        self.gelu4 = nn.GELU()
+        self.drop4 = nn.Dropout(dropout_rate)
+        self.final = nn.Linear(hidden_dim4, 1)
+        if hidden_dim1 != hidden_dim4:
+            self.res_proj = nn.Linear(hidden_dim1, hidden_dim4)
+        else:
+            self.res_proj = nn.Identity()
+        if final_activation == 'tanh':
+            self.final_act = nn.Tanh()
+        elif final_activation == 'sigmoid':
+            self.final_act = nn.Sigmoid()
+        else:
+            self.final_act = nn.Identity()
+
     def forward(self, x, input_mask):
         x = self.attention1d(x, input_mask=input_mask.unsqueeze(-1))
-        x = self.relu(self.linear(x))
-        x = self.final(x)
-        return x
+        x = self.layernorm(x)
+        out1 = self.drop1(self.gelu1(self.fc1(x)))
+        out2 = self.drop2(self.gelu2(self.fc2(out1)))
+        out3 = self.drop3(self.gelu3(self.fc3(out2)))
+        out4 = self.drop4(self.gelu4(self.fc4(out3)))
+        out4 = out4 + self.res_proj(out1)
+        return self.final_act(self.final(out4))
 
 class ESMAttention1dMean(nn.Module):
     """Attention1d removed, leaving a basic linear model"""
