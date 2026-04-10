@@ -205,16 +205,16 @@ def _rel(path: Path) -> str:
 
 
 def _hyperlink(ws, row, col, path: Path, display: str = None):
-    """Write a file hyperlink into a cell."""
+    """Write a file hyperlink into a cell (hyperlink and display use paths relative to PROJECT_ROOT)."""
     cell = ws.cell(row=row, column=col)
     if path and path.exists():
-        uri = path.resolve().as_uri()
-        cell.hyperlink = uri
-        cell.value = display or path.name
+        rel = _rel(path)
+        cell.hyperlink = rel
+        cell.value = display or rel
         from openpyxl.styles import Font
         cell.font = Font(color="0563C1", underline="single")
     else:
-        cell.value = display or (str(path) if path else "")
+        cell.value = display or (_rel(path) if path else "")
 
 
 def _parse_cv_metrics(results_dir: Path, dataset_name: str):
@@ -396,7 +396,7 @@ def add_run(results_dir_str: str, command: str, config_input: str, notes: str):
     _write("Timestamp",      timestamp)
     _write("Dataset",        dataset_name)
     _write("Command",        command or "")
-    _write("Config (input)", config_input or "")
+    _write("Config (input)", _rel(Path(config_input)) if config_input else "")
     _write("pooling_method", params.get("pooling_method", ""))
     _write("hidden_dims",    params.get("hidden_dims", ""))
     _write("dropout_rate",   params.get("dropout_rate", ""))
@@ -419,18 +419,16 @@ def add_run(results_dir_str: str, command: str, config_input: str, notes: str):
     _write("Results dir",    _rel(results_dir))
 
     # --- Hyperlink cells ---
-    _hyperlink(ws, next_row, _col_idx("Config snapshot"),
-               snap_path, snap_path.name if snap_path else None)
-    _hyperlink(ws, next_row, _col_idx("Run log"),
-               run_log, run_log.name if run_log else None)
+    _hyperlink(ws, next_row, _col_idx("Config snapshot"), snap_path)
+    _hyperlink(ws, next_row, _col_idx("Run log"), run_log)
     _hyperlink(ws, next_row, _col_idx("CV loss curves"),
-               results_dir / f"{dataset_name}_cv_loss_curves.png", "cv_loss_curves.png")
+               results_dir / f"{dataset_name}_cv_loss_curves.png")
     _hyperlink(ws, next_row, _col_idx("Test pred vs actual"),
-               results_dir / f"{dataset_name}_predicted_vs_actual_test.png", "pred_vs_actual_test.png")
+               results_dir / f"{dataset_name}_predicted_vs_actual_test.png")
     _hyperlink(ws, next_row, _col_idx("IG heatmap"),
-               results_dir / f"{dataset_name}_integrated_gradients_heatmap.png", "ig_heatmap.png")
+               results_dir / f"{dataset_name}_integrated_gradients_heatmap.png")
     _hyperlink(ws, next_row, _col_idx("IG analysis"),
-               results_dir / f"{dataset_name}_integrated_gradients_analysis.png", "ig_analysis.png")
+               results_dir / f"{dataset_name}_integrated_gradients_analysis.png")
 
     # --- Conditional colour on metric cells ---
     for col_name in METRIC_COLS:
