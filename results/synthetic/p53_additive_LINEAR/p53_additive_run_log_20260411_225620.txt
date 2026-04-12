@@ -1,5 +1,3 @@
-Configuration file 'configs/synthetic/p53_additive_config.yaml' is valid!
-Using device: cuda
 ============================================================
 INTEGRATED GRADIENTS ANALYSIS PIPELINE
 ============================================================
@@ -20,12 +18,10 @@ Using provided WT sequence
 WT sequence: MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDI...
 WT sequence length: 393
 Results directory: /project/6111759/shared/IGLOO/results/synthetic/p53_additive_LINEAR
-Config snapshot saved to: /project/6111759/shared/IGLOO/results/synthetic/p53_additive_LINEAR/p53_additive_config_snapshot_20260411_091941.yaml
+Config snapshot saved to: /project/6111759/shared/IGLOO/results/synthetic/p53_additive_LINEAR/p53_additive_config_snapshot_20260411_225620.yaml
 Getting embedding dimensions...
 
 Training model...
 
 Pre-fetching embeddings for 8099 train+val sequences...
 Loading ESM-C model esmc_300m...
-Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files: 100%|██████████| 4/4 [00:00<00:00, 2169.56it/s]
-slurmstepd: error: *** JOB 3073005 ON kn065 CANCELLED AT 2026-04-11T13:19:33 DUE TO TIME LIMIT ***
