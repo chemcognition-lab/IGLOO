@@ -1,0 +1,28 @@
+============================================================
+INTEGRATED GRADIENTS ANALYSIS PIPELINE
+============================================================
+Config file: Unknown
+Device: cuda
+
+Loading data from /nfs/homes/bargho16/IGLOO/data/synthetic/T4Lysozyme_additive.csv
+Dataset 't4lysozyme_additive' - skipping wildtype normalization
+Dataset size: 4001 sequences
+Target range: -4.0750 to 1.0000
+Using raw target values without normalization...
+
+Data split: 3228 train+val (80%), 773 held-out test (20%)
+  Test set — single: 534
+  Test set — double: 157
+  Test set — triple: 82
+Using provided WT sequence
+WT sequence: MNIFEMLRIDEGLRLKIYKDTEGYYHIGIGHLLTKSPSLNAAKSELDKAI...
+WT sequence length: 164
+Results directory: /nfs/homes/bargho16/IGLOO/results/synthetic/T4Lysozyme_additive_LINEAR
+Config snapshot saved to: /nfs/homes/bargho16/IGLOO/results/synthetic/T4Lysozyme_additive_LINEAR/T4Lysozyme_additive_config_snapshot_20260414_170231.yaml
+Getting embedding dimensions...
+
+Training model...
+
+Pre-fetching embeddings for 3228 train+val sequences...
+Loading ESM-C model esmc_300m...
+Error during analysis: Sizes of tensors must match except in dimension 0. Expected size 1280 but got size 960 for tensor number 25 in the list.
