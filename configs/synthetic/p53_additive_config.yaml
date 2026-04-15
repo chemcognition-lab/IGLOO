@@ -13,18 +13,18 @@ data:
 model:
   esm_layer: 33
   pooling_method: "esm_attention"
-  hidden_dim1: 1024
-  hidden_dim2: 512
-  hidden_dim3: 256
-  hidden_dim4: 128
+  hidden_dim1: 2056
+  hidden_dim2: 1024
+  hidden_dim3: 512
+  hidden_dim4: 256
   dropout_rate: 0.5
   learning_rate: 0.0005
   batch_size: 256
   epochs: 50
   loss_type: "huber"
   final_activation: null
-  patience: 15          # early-stopping patience (epochs without val improvement)
-  min_epochs: 10        # floor on avg_best_epoch used for the final model
+  patience: 30          # early-stopping patience (epochs without val improvement)
+  min_epochs: 15        # floor on avg_best_epoch used for the final model
 
 integrated_gradients:
   method: "embedding"

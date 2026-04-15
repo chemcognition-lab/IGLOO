@@ -448,6 +448,12 @@
     0.05
   ],
   "annotated_positions": {
+    "metal_binding": [
+      175,
+      178,
+      237,
+      241
+    ],
     "binding_site": [
       18,
       21,
@@ -467,11 +473,9 @@
       276,
       279
     ],
-    "metal_binding": [
-      175,
-      178,
-      237,
-      241
+    "structural": [
+      333,
+      336
     ],
     "signalling": [
       315,
@@ -494,10 +498,6 @@
       381,
       382,
       383
-    ],
-    "structural": [
-      333,
-      336
     ]
   }
 }
