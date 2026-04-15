@@ -1,0 +1,66 @@
+# W&B Hyperparameter Sweep Configuration for IGLOO
+#
+# Usage:
+#   python scripts/sweep_hyperparams.py \
+#       configs/sweep_config.yaml \
+#       configs/synthetic/T4Lysozyme_additive_config.yaml
+#
+# See: https://docs.wandb.ai/guides/sweeps/define-sweep-configuration
+
+# ── Sweep strategy ────────────────────────────────────────────────────────────
+# Options: bayes | random | grid
+# "bayes" is recommended when budget is limited (≤100 runs).
+method: bayes
+
+# ── Optimisation objective ────────────────────────────────────────────────────
+metric:
+  name: mean_val_r2     # logged by sweep_hyperparams.py from K-fold CV summary
+  goal: maximize
+
+# ── W&B project (can also be passed via --project CLI flag) ───────────────────
+# project: igloo-sweep
+
+# ── Hyperparameter search space ───────────────────────────────────────────────
+parameters:
+
+  # --- Architecture ---
+  hidden_dim1:
+    values: [256, 512, 1024]
+
+  hidden_dim2:
+    values: [128, 256, 512]
+
+  hidden_dim3:
+    values: [64, 128, 256]
+
+  hidden_dim4:
+    values: [32, 64, 128]
+
+  # --- Regularisation ---
+  dropout_rate:
+    distribution: uniform
+    min: 0.1
+    max: 0.5
+
+  # --- Optimisation ---
+  learning_rate:
+    distribution: log_uniform_values
+    min: 0.00005
+    max: 0.005
+
+  batch_size:
+    values: [64, 128, 256]
+
+  loss_type:
+    values: [huber, mse, mae]
+
+  # --- Training schedule ---
+  epochs:
+    value: 100          # fixed; early stopping (patience) controls effective length
+
+  patience:
+    values: [10, 15, 20]
+
+  # --- Pooling ---
+  pooling_method:
+    values: [esm_attention, linear]
