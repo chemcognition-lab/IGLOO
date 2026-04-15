@@ -2,19 +2,19 @@
 PIPELINE TIMING REPORT
 ============================================================
 Dataset      : p53_additive
-Started at   : 2026-04-12 14:03:26
-Finished at  : 2026-04-12 15:35:49
+Started at   : 2026-04-14 11:32:26
+Finished at  : 2026-04-14 13:13:34
 Device       : cuda
 ------------------------------------------------------------
 Step                                       Duration
 ------------------------------------------------------------
-  Data loading & preparation                   0.1s
+  Data loading & preparation                   0.0s
   Wildtype sequence preparation                0.0s
   Embedding retrieval (if needed)              0.0s
-  Model training / loading               1h 31m 57s
-  Model evaluation                             6.9s
-  Integrated gradients (5 sequence(s))         7.9s
-  Visualizations & exports                    10.4s
+  Model training / loading               1h 40m 45s
+  Model evaluation                             5.6s
+  Integrated gradients (5 sequence(s))         5.6s
+  Visualizations & exports                    10.9s
 ------------------------------------------------------------
-  TOTAL                                  1h 32m 23s
+  TOTAL                                  1h 41m 08s
 ============================================================
