@@ -1,0 +1,546 @@
+============================================================
+INTEGRATED GRADIENTS ANALYSIS PIPELINE
+============================================================
+Config file: Unknown
+Device: cuda
+
+Loading data from /scratch/uoftshen/IGLOO/data/synthetic/T4Lysozyme_epistatic.csv
+Dataset 't4lysozyme_epistatic' - skipping wildtype normalization
+Dataset size: 4001 sequences
+Target range: -4.0816 to 1.0000
+Using raw target values without normalization...
+
+Data split: 3228 train+val (80%), 773 held-out test (20%)
+  Test set — single: 534
+  Test set — double: 157
+  Test set — triple: 82
+Using provided WT sequence
+WT sequence: MNIFEMLRIDEGLRLKIYKDTEGYYHIGIGHLLTKSPSLNAAKSELDKAI...
+WT sequence length: 164
+Results directory: /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2
+Config snapshot saved to: /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_config_snapshot_20260415_194130.yaml
+Getting embedding dimensions...
+
+Training model...
+
+Pre-fetching embeddings for 3228 train+val sequences...
+Loading ESM-C model esmc_300m...
+Global normalisation — mean=0.0004, scale=0.0419
+
+============================================================
+Running 5-fold cross-validation on 3228 sequences
+============================================================
+
+─── Fold 1/5  (train=2582, val=646) ───
+  Fold 1 — val_r2=0.9207, val_spearman=0.4133, stopped at epoch 67
+
+─── Fold 2/5  (train=2582, val=646) ───
+  Fold 2 — val_r2=0.9750, val_spearman=0.4039, stopped at epoch 65
+
+─── Fold 3/5  (train=2582, val=646) ───
+  Fold 3 — val_r2=0.9769, val_spearman=0.4152, stopped at epoch 60
+
+─── Fold 4/5  (train=2583, val=645) ───
+  Fold 4 — val_r2=0.9600, val_spearman=0.4004, stopped at epoch 55
+
+─── Fold 5/5  (train=2583, val=645) ───
+  Fold 5 — val_r2=0.9175, val_spearman=0.3270, stopped at epoch 42
+
+============================================================
+K-FOLD CV SUMMARY
+============================================================
+  mean_val_r2: 0.9500
+  std_val_r2: 0.0259
+  mean_val_spearman_rho: 0.3920
+  std_val_spearman_rho: 0.0329
+  Average best epoch: 58
+CV fold metrics → /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_cv_fold_metrics.csv
+CV loss curves → /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_cv_loss_curves.png
+
+--- Final model: 3228 train+val sequences, 58 epochs ---
+Getting ESM embeddings for 3228 training sequences...
+Computed global normalization for IG: mean=0.0004, scale=0.0419
+Set global normalization for training: mean=0.0004, scale=0.0419
+Starting training for 58 epochs with huber loss...
+Model parameters: 700,290 trainable / 700,290 total
+Epoch 1/58 - Train Loss: 0.147405, LR: 1.54e-04
+Epoch 2/58 - Train Loss: 0.070651, LR: 2.53e-04
+Epoch 3/58 - Train Loss: 0.066961, LR: 3.52e-04
+Epoch 4/58 - Train Loss: 0.058468, LR: 4.51e-04
+Epoch 5/58 - Train Loss: 0.022711, LR: 5.50e-04
+    Saved plot: epoch_005_b7c2bdc7_pred_vs_actual.png (Train R²=0.823)
+Epoch 6/58 - Train Loss: 0.018911, LR: 5.50e-04
+Epoch 7/58 - Train Loss: 0.013845, LR: 5.48e-04
+Epoch 8/58 - Train Loss: 0.010211, LR: 5.46e-04
+Epoch 9/58 - Train Loss: 0.009511, LR: 5.44e-04
+Epoch 10/58 - Train Loss: 0.007375, LR: 5.40e-04
+  Debug - Pred mean: 0.8595, std: 0.2157 | Target mean: 0.8925, std: 0.2246
+    Saved plot: epoch_010_80593bb5_pred_vs_actual.png (Train R²=0.953)
+Epoch 11/58 - Train Loss: 0.007328, LR: 5.36e-04
+Epoch 12/58 - Train Loss: 0.007570, LR: 5.31e-04
+Epoch 13/58 - Train Loss: 0.006894, LR: 5.25e-04
+Epoch 14/58 - Train Loss: 0.006114, LR: 5.18e-04
+Epoch 15/58 - Train Loss: 0.006072, LR: 5.11e-04
+    Saved plot: epoch_015_1df34f24_pred_vs_actual.png (Train R²=0.969)
+Epoch 16/58 - Train Loss: 0.004250, LR: 5.03e-04
+Epoch 17/58 - Train Loss: 0.003817, LR: 4.94e-04
+Epoch 18/58 - Train Loss: 0.003385, LR: 4.85e-04
+Epoch 19/58 - Train Loss: 0.003241, LR: 4.75e-04
+Epoch 20/58 - Train Loss: 0.003323, LR: 4.65e-04
+  Debug - Pred mean: 0.8552, std: 0.5239 | Target mean: 0.8741, std: 0.5227
+    Saved plot: epoch_020_38751a09_pred_vs_actual.png (Train R²=0.990)
+Epoch 21/58 - Train Loss: 0.004251, LR: 4.54e-04
+Epoch 22/58 - Train Loss: 0.003566, LR: 4.43e-04
+Epoch 23/58 - Train Loss: 0.003036, LR: 4.31e-04
+Epoch 24/58 - Train Loss: 0.003081, LR: 4.18e-04
+Epoch 25/58 - Train Loss: 0.003494, LR: 4.05e-04
+    Saved plot: epoch_025_459f6e65_pred_vs_actual.png (Train R²=0.985)
+Epoch 26/58 - Train Loss: 0.002707, LR: 3.92e-04
+Epoch 27/58 - Train Loss: 0.002419, LR: 3.79e-04
+Epoch 28/58 - Train Loss: 0.002606, LR: 3.65e-04
+Epoch 29/58 - Train Loss: 0.002104, LR: 3.51e-04
+Epoch 30/58 - Train Loss: 0.002345, LR: 3.36e-04
+  Debug - Pred mean: 0.8343, std: 0.6079 | Target mean: 0.8432, std: 0.6428
+    Saved plot: epoch_030_ad3343e8_pred_vs_actual.png (Train R²=0.993)
+Epoch 31/58 - Train Loss: 0.002147, LR: 3.22e-04
+Epoch 32/58 - Train Loss: 0.002416, LR: 3.07e-04
+Epoch 33/58 - Train Loss: 0.002019, LR: 2.92e-04
+Epoch 34/58 - Train Loss: 0.001859, LR: 2.78e-04
+Epoch 35/58 - Train Loss: 0.001963, LR: 2.63e-04
+    Saved plot: epoch_035_af5462ef_pred_vs_actual.png (Train R²=0.994)
+Epoch 36/58 - Train Loss: 0.001982, LR: 2.48e-04
+Epoch 37/58 - Train Loss: 0.002261, LR: 2.34e-04
+Epoch 38/58 - Train Loss: 0.001948, LR: 2.19e-04
+Epoch 39/58 - Train Loss: 0.001770, LR: 2.05e-04
+Epoch 40/58 - Train Loss: 0.002007, LR: 1.91e-04
+  Debug - Pred mean: 0.8673, std: 0.3934 | Target mean: 0.8596, std: 0.3977
+    Saved plot: epoch_040_0592edd8_pred_vs_actual.png (Train R²=0.992)
+Epoch 41/58 - Train Loss: 0.001863, LR: 1.77e-04
+Epoch 42/58 - Train Loss: 0.001805, LR: 1.63e-04
+Epoch 43/58 - Train Loss: 0.001832, LR: 1.50e-04
+Epoch 44/58 - Train Loss: 0.001831, LR: 1.37e-04
+Epoch 45/58 - Train Loss: 0.001805, LR: 1.25e-04
+    Saved plot: epoch_045_cd1f86da_pred_vs_actual.png (Train R²=0.995)
+Epoch 46/58 - Train Loss: 0.001666, LR: 1.13e-04
+Epoch 47/58 - Train Loss: 0.001554, LR: 1.01e-04
+Epoch 48/58 - Train Loss: 0.001636, LR: 9.05e-05
+Epoch 49/58 - Train Loss: 0.001449, LR: 8.01e-05
+Epoch 50/58 - Train Loss: 0.001618, LR: 7.03e-05
+  Debug - Pred mean: 0.8322, std: 0.5766 | Target mean: 0.8340, std: 0.5928
+    Saved plot: epoch_050_604e75e8_pred_vs_actual.png (Train R²=0.996)
+Epoch 51/58 - Train Loss: 0.001322, LR: 6.10e-05
+Epoch 52/58 - Train Loss: 0.001414, LR: 5.24e-05
+Epoch 53/58 - Train Loss: 0.001411, LR: 4.45e-05
+Epoch 54/58 - Train Loss: 0.001323, LR: 3.72e-05
+Epoch 55/58 - Train Loss: 0.001435, LR: 3.07e-05
+    Saved plot: epoch_055_65434f36_pred_vs_actual.png (Train R²=0.996)
+Epoch 56/58 - Train Loss: 0.001361, LR: 2.48e-05
+Epoch 57/58 - Train Loss: 0.001290, LR: 1.98e-05
+Epoch 58/58 - Train Loss: 0.001197, LR: 1.54e-05
+No validation set used - keeping final model from last epoch
+
+Training completed!
+Loss vs epoch plot saved to: /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_integrated_gradients_loss_vs_epoch.png
+Final model (epoch 58) saved to /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_training_model.pth
+Final Training Metrics:
+  R² = 0.9966
+  MAE = 0.0179
+  RMSE = 0.0295
+✓ Model training completed successfully
+  5-fold CV — mean val R² = 0.9500 (±0.0259)
+
+Test-set evaluation (773 sequences):
+
+Evaluating model performance (test set)...
+Getting embeddings for evaluation...
+Loading ESM-C model esmc_300m...
+Model Performance:
+  R² = 0.9859
+  Pearson r = 0.9930
+  Spearman ρ = 0.6027
+
+Prediction Diagnostics:
+  Raw target range: [-4.0000, 0.9937]
+  Raw target mean: 0.8672, std: 0.4571
+  Predicted range: [-3.9301, 0.9924]
+  Predicted mean: 0.8685, std: 0.4569
+  Prediction std ratio (predicted/actual): 1.000
+
+Extreme Value Performance:
+5 Lowest actual values vs predictions:
+  #1: actual=-4.0000, predicted=-3.9301, error=0.0699
+  #2: actual=-3.5222, predicted=-3.5353, error=0.0130
+  #3: actual=-3.5000, predicted=-3.1898, error=0.3102
+  #4: actual=-2.9556, predicted=-2.9702, error=0.0146
+  #5: actual=-2.8889, predicted=-3.0105, error=0.1216
+5 Highest actual values vs predictions:
+  #1: actual=0.9937, predicted=0.9700, error=0.0238
+  #2: actual=0.9937, predicted=0.9735, error=0.0203
+  #3: actual=0.9937, predicted=0.9742, error=0.0196
+  #4: actual=0.9937, predicted=0.9691, error=0.0247
+  #5: actual=0.9937, predicted=0.9620, error=0.0317
+Creating predicted vs actual plot...
+Predicted vs Actual plot saved to: /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_predicted_vs_actual_test.png
+
+Selected 5 sequences for integrated gradients analysis (from train+val and test):
+  WT[trainval]: activity = 1.0000
+  Lowest_Activity[trainval]: activity = -4.0816
+  Highest_Activity[trainval]: activity = 1.0000
+  Median_Activity[trainval]: activity = 0.9563
+  PolyAlanine: custom sequence (not in dataset)
+
+============================================================
+PERFORMING INTEGRATED GRADIENTS ANALYSIS
+============================================================
+Loading ESM model for integrated gradients (esmc_300m)...
+Loading ESM-C model esmc_300m...
+Creating combined model for embedding-level integrated gradients...
+
+🔍 VALIDATING COMPLETENESS AXIOM (threshold ≤ 0.1)
+============================================================
+Validating WT[trainval]... Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Sequence prediction (DataLoader method): 0.9750
+Baseline prediction (DataLoader method): 0.9750
+Computing integrated gradients using embedding interpolation (steps=25)...
+  Interpolation path check [linear]  norm(α=0)=1.2968  norm(α=0.5)=1.2968  norm(α=1)=1.2968  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: 0.000000
+Predicted difference (sequence - baseline): 0.000000
+Completeness axiom error: 0.000000
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: 0.000000
+Theoretical completeness error: 0.000000
+✅ Completeness axiom satisfied for unclipped predictions!
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=0.974958, Baseline=0.974958, Diff=0.000000
+Method 2 (Direct): Sequence=0.974958, Baseline=0.974958, Diff=0.000000
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+✅ Passed (error=0.0000)
+Validating Lowest_Activity[trainval]... Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Sequence prediction (DataLoader method): -4.0248
+Baseline prediction (DataLoader method): 0.9750
+Computing integrated gradients using embedding interpolation (steps=25)...
+  Interpolation path check [linear]  norm(α=0)=1.2968  norm(α=0.5)=1.2894  norm(α=1)=1.2939  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: -4.849556
+Predicted difference (sequence - baseline): -4.999743
+Completeness axiom error: 0.150187
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: -4.999743
+Theoretical completeness error: 0.150187
+❌ Significant completeness axiom violation
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=-4.024786, Baseline=0.974958, Diff=-4.999743
+Method 2 (Direct): Sequence=-4.024786, Baseline=0.974958, Diff=-4.999744
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+❌ Failed (error=0.1506 > 0.1)
+Validating Highest_Activity[trainval]... Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Sequence prediction (DataLoader method): 0.9750
+Baseline prediction (DataLoader method): 0.9750
+Computing integrated gradients using embedding interpolation (steps=25)...
+  Interpolation path check [linear]  norm(α=0)=1.2968  norm(α=0.5)=1.2968  norm(α=1)=1.2968  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: 0.000000
+Predicted difference (sequence - baseline): 0.000000
+Completeness axiom error: 0.000000
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: 0.000000
+Theoretical completeness error: 0.000000
+✅ Completeness axiom satisfied for unclipped predictions!
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=0.974958, Baseline=0.974958, Diff=0.000000
+Method 2 (Direct): Sequence=0.974958, Baseline=0.974958, Diff=0.000000
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+✅ Passed (error=0.0000)
+Validating Median_Activity[trainval]... Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Sequence prediction (DataLoader method): 0.9881
+Baseline prediction (DataLoader method): 0.9750
+Computing integrated gradients using embedding interpolation (steps=25)...
+  Interpolation path check [linear]  norm(α=0)=1.2968  norm(α=0.5)=1.2952  norm(α=1)=1.2961  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: 0.013147
+Predicted difference (sequence - baseline): 0.013122
+Completeness axiom error: 0.000025
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: 0.013122
+Theoretical completeness error: 0.000025
+✅ Completeness axiom satisfied for unclipped predictions!
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=0.988080, Baseline=0.974958, Diff=0.013122
+Method 2 (Direct): Sequence=0.988080, Baseline=0.974958, Diff=0.013122
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+✅ Passed (error=0.0001)
+Validating PolyAlanine... Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Sequence prediction (DataLoader method): -0.1243
+Baseline prediction (DataLoader method): 0.9750
+Computing integrated gradients using embedding interpolation (steps=25)...
+  Interpolation path check [linear]  norm(α=0)=1.2968  norm(α=0.5)=1.0384  norm(α=1)=1.5865  (midpoint dip expected for linear/nn)
+Using attribution method: signed
+Sum of attributions: -1.081920
+Predicted difference (sequence - baseline): -1.099301
+Completeness axiom error: 0.017381
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: -1.099301
+Theoretical completeness error: 0.017381
+⚠️ Minor completeness axiom violation (< 0.1)
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=-0.124343, Baseline=0.974958, Diff=-1.099301
+Method 2 (Direct): Sequence=-0.124343, Baseline=0.974958, Diff=-1.099301
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+✅ Passed (error=0.0213)
+
+📊 COMPLETENESS VALIDATION SUMMARY:
+  Total sequences validated: 5
+  ✅ Passed validation: 4
+  ❌ Failed validation: 1
+  📋 Selected for analysis: 4
+
+⚠️  FAILED SEQUENCES:
+    Lowest_Activity[trainval]: error=0.1506
+============================================================
+
+Analyzing WT[trainval] (embedding-level)...
+Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Applying prediction clipping: min=-4.0815629959106445, max=1.0
+Sequence prediction (DataLoader method): 0.9750
+Baseline prediction (DataLoader method): 0.9750
+Computing integrated gradients using embedding interpolation (steps=50)...
+  Interpolation path check [linear]  norm(α=0)=1.2968  norm(α=0.5)=1.2968  norm(α=1)=1.2968  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: 0.000000
+Predicted difference (sequence - baseline): 0.000000
+Completeness axiom error: 0.000000
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: 0.000000
+Theoretical completeness error: 0.000000
+✅ Completeness axiom satisfied for unclipped predictions!
+Clipping effect on difference: 0.000000
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=0.974958, Baseline=0.974958, Diff=0.000000
+Method 2 (Direct): Sequence=0.974958, Baseline=0.974958, Diff=0.000000
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+Creating predicted vs actual activity plot...
+Predicted vs actual plot saved to /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_WT[trainval]_predicted_vs_actual.png
+  Actual activity: 1.0
+  IG method prediction: 0.9750
+  Baseline activity: 0.9750
+  Effect vs baseline: 0.0000
+  Top 5 gradient positions: [  1 164 163 162  16]
+
+Analyzing Highest_Activity[trainval] (embedding-level)...
+Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Applying prediction clipping: min=-4.0815629959106445, max=1.0
+Sequence prediction (DataLoader method): 0.9750
+Baseline prediction (DataLoader method): 0.9750
+Computing integrated gradients using embedding interpolation (steps=50)...
+  Interpolation path check [linear]  norm(α=0)=1.2968  norm(α=0.5)=1.2968  norm(α=1)=1.2968  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: 0.000000
+Predicted difference (sequence - baseline): 0.000000
+Completeness axiom error: 0.000000
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: 0.000000
+Theoretical completeness error: 0.000000
+✅ Completeness axiom satisfied for unclipped predictions!
+Clipping effect on difference: 0.000000
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=0.974958, Baseline=0.974958, Diff=0.000000
+Method 2 (Direct): Sequence=0.974958, Baseline=0.974958, Diff=0.000000
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+Creating predicted vs actual activity plot...
+Predicted vs actual plot saved to /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_Highest_Activity[trainval]_predicted_vs_actual.png
+  Actual activity: 1.0
+  IG method prediction: 0.9750
+  Baseline activity: 0.9750
+  Effect vs baseline: 0.0000
+  Top 5 gradient positions: [  1 164 163 162  16]
+
+Analyzing Median_Activity[trainval] (embedding-level)...
+Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Applying prediction clipping: min=-4.0815629959106445, max=1.0
+Sequence prediction (DataLoader method): 0.9881
+Baseline prediction (DataLoader method): 0.9750
+Computing integrated gradients using embedding interpolation (steps=50)...
+  Interpolation path check [linear]  norm(α=0)=1.2968  norm(α=0.5)=1.2952  norm(α=1)=1.2961  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: 0.013134
+Predicted difference (sequence - baseline): 0.013122
+Completeness axiom error: 0.000012
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: 0.013122
+Theoretical completeness error: 0.000012
+✅ Completeness axiom satisfied for unclipped predictions!
+Clipping effect on difference: 0.000000
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=0.988080, Baseline=0.974958, Diff=0.013122
+Method 2 (Direct): Sequence=0.988080, Baseline=0.974958, Diff=0.013122
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+Creating predicted vs actual activity plot...
+Predicted vs actual plot saved to /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_Median_Activity[trainval]_predicted_vs_actual.png
+  Actual activity: 0.956250011920929
+  IG method prediction: 0.9881
+  Baseline activity: 0.9750
+  Effect vs baseline: 0.0131
+  Top 5 gradient positions: [ 27  76  32 118  89]
+
+Analyzing PolyAlanine (embedding-level)...
+Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Applying prediction clipping: min=-4.0815629959106445, max=1.0
+Sequence prediction (DataLoader method): -0.1243
+Baseline prediction (DataLoader method): 0.9750
+Computing integrated gradients using embedding interpolation (steps=50)...
+  Interpolation path check [linear]  norm(α=0)=1.2968  norm(α=0.5)=1.0384  norm(α=1)=1.5865  (midpoint dip expected for linear/nn)
+Using attribution method: signed
+Sum of attributions: -1.090532
+Predicted difference (sequence - baseline): -1.099301
+Completeness axiom error: 0.008769
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: -1.099301
+Theoretical completeness error: 0.008769
+✅ Completeness axiom satisfied for unclipped predictions!
+Clipping effect on difference: 0.000000
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=-0.124343, Baseline=0.974958, Diff=-1.099301
+Method 2 (Direct): Sequence=-0.124343, Baseline=0.974958, Diff=-1.099301
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+  Actual activity: None
+  IG method prediction: -0.1243
+  Baseline activity: 0.9750
+  Effect vs baseline: -1.0993
+  Top 5 gradient positions: [118  27  21  12 154]
+
+Creating visualizations...
+Integrated gradients plot saved to /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_integrated_gradients_analysis.png
+
+Exporting results...
+Creating signed gradient analysis for beneficial/detrimental amino acids...
+Detailed amino acid effects saved to: /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_amino_acid_effects_detailed.csv
+Top beneficial positions saved to: /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_top_beneficial_positions.csv
+Top detrimental positions saved to: /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_top_detrimental_positions.csv
+Position-wise signed analysis saved to: /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_position_signed_analysis.csv
+Amino acid type analysis saved to: /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_amino_acid_type_analysis.csv
+Creating gradient heatmap...
+Gradient heatmap saved to /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_integrated_gradients_heatmap.png
+Creating comparison plots...
+Variants vs WT gradients plot saved to /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_variants_vs_WT_gradients.png
+Creating signed gradient effects plots...
+Signed gradient effects plot saved to /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_signed_gradient_effects.png
+Averaged gradient effects comparison plot saved to /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_top_vs_bottom_effects.png
+
+============================================================
+ANALYSIS COMPLETE
+============================================================
+Dataset: T4Lysozyme_epistatic
+Total sequences: 5
+Sequences analyzed: 5
+Results saved to: /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2
+
+Model Performance:
+  R² = 0.9859
+  Pearson r = 0.9930
+  Spearman ρ = 0.6027
+
+Files generated:
+  - Model performance plots
+  - Attribution heatmaps
+  - Integrated gradients plots
+  - Summary CSV files
+============================================================
+
+(Metrics above are on the held-out test set)
+
+============================================================
+ANALYSIS COMPLETE
+============================================================
+Dataset: T4Lysozyme_epistatic
+Total sequences: 4001
+Sequences analyzed: 5
+Results saved to: results/synthetic/T4Lysozyme_epistatic_LINEAR_E2
+
+Model Performance:
+  R² = 0.9859
+  Pearson r = 0.9930
+  Spearman ρ = 0.6027
+
+Files generated:
+  - Model performance plots
+  - Attribution heatmaps
+  - Integrated gradients plots
+  - Summary CSV files
+============================================================
+============================================================
+PIPELINE TIMING REPORT
+============================================================
+Dataset      : T4Lysozyme_epistatic
+Started at   : 2026-04-15 19:41:30
+Finished at  : 2026-04-15 21:18:30
+Device       : cuda
+------------------------------------------------------------
+Step                                       Duration
+------------------------------------------------------------
+  Data loading & preparation                   0.0s
+  Wildtype sequence preparation                0.0s
+  Embedding retrieval (if needed)              0.0s
+  Model training / loading               1h 26m 40s
+  Model evaluation                           9m 50s
+  Integrated gradients (4 sequence(s))         2.4s
+  Visualizations & exports                    25.9s
+------------------------------------------------------------
+  TOTAL                                  1h 36m 59s
+============================================================
+
+Timing report saved to /scratch/uoftshen/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR_E2/T4Lysozyme_epistatic_timing_report.txt

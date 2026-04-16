@@ -9,79 +9,86 @@ Analysis Configuration:
   Integration Steps: 50
 
 Model Performance:
-  R² = 0.9371
-  Pearson r = 0.9684
-  Spearman ρ = 0.4195
+  R² = 0.8976
+  Pearson r = 0.9477
+  Spearman ρ = 0.4264
 
 Sequences Analyzed:
   WT[trainval]:
-    Predicted Activity: 0.9640
+    Predicted Activity: 0.9552
     Effect vs Baseline: 0.0000
     Actual Activity: 1.0000
 
+  Lowest_Activity[trainval]:
+    Predicted Activity: -3.6869
+    Effect vs Baseline: -4.6421
+    Actual Activity: -4.0816
+
   Highest_Activity[trainval]:
-    Predicted Activity: 0.9640
+    Predicted Activity: 0.9552
     Effect vs Baseline: 0.0000
     Actual Activity: 1.0000
 
   Median_Activity[trainval]:
-    Predicted Activity: 0.9578
-    Effect vs Baseline: -0.0062
+    Predicted Activity: 0.9714
+    Effect vs Baseline: 0.0161
     Actual Activity: 0.9563
 
   PolyAlanine:
-    Predicted Activity: -0.2080
-    Effect vs Baseline: -1.1720
+    Predicted Activity: -0.8883
+    Effect vs Baseline: -1.8436
 
 TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
- 1. Position 12 (G): importance = 0.5818
- 2. Position 115 (T): importance = 0.1219
- 3. Position 117 (S): importance = 0.1038
- 4. Position 13 (L): importance = 0.0741
- 5. Position 71 (V): importance = 0.0583
- 6. Position 22 (E): importance = 0.0548
- 7. Position 31 (H): importance = 0.0543
- 8. Position 137 (R): importance = 0.0434
- 9. Position 146 (A): importance = 0.0359
-10. Position 27 (I): importance = 0.0338
+ 1. Position 23 (G): importance = 1.6077
+ 2. Position 27 (I): importance = 1.5460
+ 3. Position 19 (K): importance = 0.3706
+ 4. Position 11 (E): importance = 0.2903
+ 5. Position 25 (Y): importance = 0.1423
+ 6. Position 146 (A): importance = 0.0409
+ 7. Position 15 (L): importance = 0.0382
+ 8. Position 12 (G): importance = 0.0366
+ 9. Position 140 (N): importance = 0.0299
+10. Position 22 (E): importance = 0.0257
 
 SIGNED GRADIENT ANALYSIS:
 ------------------------------
 
 TOP 10 MOST BENEFICIAL POSITIONS (positive gradients):
- 1. Position 115 (A): gradient = +0.1625 [from PolyAlanine]
- 2. Position 117 (A): gradient = +0.1365 [from PolyAlanine]
- 3. Position 31 (A): gradient = +0.0721 [from PolyAlanine]
- 4. Position 137 (A): gradient = +0.0578 [from PolyAlanine]
- 5. Position 146 (A): gradient = +0.0477 [from PolyAlanine]
- 6. Position 27 (A): gradient = +0.0449 [from PolyAlanine]
- 7. Position 68 (A): gradient = +0.0424 [from PolyAlanine]
- 8. Position 139 (A): gradient = +0.0382 [from PolyAlanine]
- 9. Position 19 (A): gradient = +0.0311 [from PolyAlanine]
-10. Position 32 (A): gradient = +0.0262 [from PolyAlanine]
+ 1. Position 11 (A): gradient = +0.3936 [from PolyAlanine]
+ 2. Position 23 (A): gradient = +0.1894 [from PolyAlanine]
+ 3. Position 146 (A): gradient = +0.0602 [from PolyAlanine]
+ 4. Position 12 (A): gradient = +0.0523 [from PolyAlanine]
+ 5. Position 140 (A): gradient = +0.0443 [from PolyAlanine]
+ 6. Position 90 (A): gradient = +0.0310 [from PolyAlanine]
+ 7. Position 139 (A): gradient = +0.0256 [from PolyAlanine]
+ 8. Position 46 (A): gradient = +0.0234 [from PolyAlanine]
+ 9. Position 145 (A): gradient = +0.0172 [from PolyAlanine]
+10. Position 144 (A): gradient = +0.0147 [from PolyAlanine]
 
 TOP 10 MOST DETRIMENTAL POSITIONS (negative gradients):
- 1. Position 12 (A): gradient = -0.7753 [from PolyAlanine]
- 2. Position 13 (A): gradient = -0.0989 [from PolyAlanine]
- 3. Position 71 (A): gradient = -0.0772 [from PolyAlanine]
- 4. Position 22 (A): gradient = -0.0729 [from PolyAlanine]
- 5. Position 21 (A): gradient = -0.0380 [from PolyAlanine]
- 6. Position 14 (A): gradient = -0.0282 [from PolyAlanine]
- 7. Position 116 (A): gradient = -0.0277 [from PolyAlanine]
- 8. Position 109 (A): gradient = -0.0267 [from PolyAlanine]
- 9. Position 46 (A): gradient = -0.0221 [from PolyAlanine]
-10. Position 63 (A): gradient = -0.0217 [from PolyAlanine]
+ 1. Position 23 (G): gradient = -2.3871 [from Lowest_Activity[trainval]]
+ 2. Position 27 (A): gradient = -1.8656 [from PolyAlanine]
+ 3. Position 27 (Q): gradient = -1.3588 [from Lowest_Activity[trainval]]
+ 4. Position 19 (K): gradient = -0.4284 [from Lowest_Activity[trainval]]
+ 5. Position 19 (A): gradient = -0.3489 [from PolyAlanine]
+ 6. Position 25 (Y): gradient = -0.2071 [from Lowest_Activity[trainval]]
+ 7. Position 11 (E): gradient = -0.0969 [from Lowest_Activity[trainval]]
+ 8. Position 15 (A): gradient = -0.0567 [from PolyAlanine]
+ 9. Position 25 (A): gradient = -0.0540 [from PolyAlanine]
+10. Position 137 (A): gradient = -0.0370 [from PolyAlanine]
 
 AMINO ACID TYPE EFFECTS (averaged across all positions):
 Most beneficial amino acid types:
-  1. H: avg effect = +0.0002 (appeared 6 times)
+  1. S: avg effect = +0.0001 (appeared 24 times)
 Most detrimental amino acid types:
-  1. G: avg effect = -0.0001 (appeared 33 times)
-  2. V: avg effect = -0.0001 (appeared 27 times)
-  3. A: avg effect = -0.0055 (appeared 209 times)
+  1. A: avg effect = -0.0080 (appeared 224 times)
+  2. K: avg effect = -0.0083 (appeared 52 times)
+  3. Y: avg effect = -0.0086 (appeared 25 times)
+  4. G: avg effect = -0.0544 (appeared 44 times)
+  5. Q: avg effect = -0.0647 (appeared 21 times)
 
 SUMMARY STATISTICS:
-  Total positions analyzed: 656
-  Beneficial positions: 106 (16.2%)
-  Detrimental positions: 222 (33.8%)
-  Neutral positions: 328 (50.0%)
+  Total positions analyzed: 820
+  Beneficial positions: 204 (24.9%)
+  Detrimental positions: 288 (35.1%)
+  Neutral positions: 328 (40.0%)

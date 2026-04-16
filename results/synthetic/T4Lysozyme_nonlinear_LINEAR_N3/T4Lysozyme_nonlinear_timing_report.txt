@@ -1,0 +1,20 @@
+============================================================
+PIPELINE TIMING REPORT
+============================================================
+Dataset      : T4Lysozyme_nonlinear
+Started at   : 2026-04-15 20:01:10
+Finished at  : 2026-04-15 21:42:32
+Device       : cuda
+------------------------------------------------------------
+Step                                       Duration
+------------------------------------------------------------
+  Data loading & preparation                   0.0s
+  Wildtype sequence preparation                0.0s
+  Embedding retrieval (if needed)              0.0s
+  Model training / loading               1h 25m 14s
+  Model evaluation                          15m 44s
+  Integrated gradients (4 sequence(s))         2.4s
+  Visualizations & exports                    20.4s
+------------------------------------------------------------
+  TOTAL                                  1h 41m 21s
+============================================================
