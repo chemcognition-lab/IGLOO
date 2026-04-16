@@ -2,8 +2,8 @@
 PIPELINE TIMING REPORT
 ============================================================
 Dataset      : p53_epistatic
-Started at   : 2026-04-14 11:36:02
-Finished at  : 2026-04-14 13:14:08
+Started at   : 2026-04-16 11:04:36
+Finished at  : 2026-04-16 12:43:50
 Device       : cuda
 ------------------------------------------------------------
 Step                                       Duration
@@ -11,10 +11,10 @@ Step                                       Duration
   Data loading & preparation                   0.1s
   Wildtype sequence preparation                0.0s
   Embedding retrieval (if needed)              0.0s
-  Model training / loading               1h 37m 45s
-  Model evaluation                             8.0s
-  Integrated gradients (4 sequence(s))         3.0s
-  Visualizations & exports                     8.6s
+  Model training / loading               1h 38m 51s
+  Model evaluation                             5.5s
+  Integrated gradients (4 sequence(s))         7.9s
+  Visualizations & exports                     8.9s
 ------------------------------------------------------------
-  TOTAL                                  1h 38m 05s
+  TOTAL                                  1h 39m 14s
 ============================================================
