@@ -1,0 +1,568 @@
+============================================================
+INTEGRATED GRADIENTS ANALYSIS PIPELINE
+============================================================
+Config file: Unknown
+Device: cuda
+
+Loading data from /project/6111759/IGLOO/data/synthetic/GB1_nonlinear.csv
+Dataset 'gb1_nonlinear' - skipping wildtype normalization
+Dataset size: 1501 sequences
+Target range: -2.7333 to 1.0000
+Using raw target values without normalization...
+
+Data split: 1212 train+val (80%), 289 held-out test (20%)
+  Test set — single: 198
+  Test set — double: 60
+  Test set — triple: 31
+Using provided WT sequence
+WT sequence: MTYKLILNGKTLKGETTTEAVDAATAEKVFKQYANDNGVDGEWTYDDATK...
+WT sequence length: 56
+Results directory: /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR
+Config snapshot saved to: /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_config_snapshot_20260417_135241.yaml
+Getting embedding dimensions...
+
+Training model...
+
+Pre-fetching embeddings for 1212 train+val sequences...
+Global normalisation — mean=0.0010, scale=0.0438
+
+============================================================
+Running 5-fold cross-validation on 1212 sequences
+============================================================
+
+─── Fold 1/5  (train=969, val=243) ───
+  Fold 1 — val_r2=0.7502, val_spearman=0.8918, stopped at epoch 50
+
+─── Fold 2/5  (train=969, val=243) ───
+  Fold 2 — val_r2=0.7537, val_spearman=0.8763, stopped at epoch 50
+
+─── Fold 3/5  (train=970, val=242) ───
+  Fold 3 — val_r2=0.7175, val_spearman=0.8524, stopped at epoch 49
+
+─── Fold 4/5  (train=970, val=242) ───
+  Fold 4 — val_r2=0.7740, val_spearman=0.8753, stopped at epoch 45
+
+─── Fold 5/5  (train=970, val=242) ───
+  Fold 5 — val_r2=0.7214, val_spearman=0.8780, stopped at epoch 44
+
+============================================================
+K-FOLD CV SUMMARY
+============================================================
+  mean_val_r2: 0.7433
+  std_val_r2: 0.0212
+  mean_val_spearman_rho: 0.8748
+  std_val_spearman_rho: 0.0127
+  Average best epoch: 48
+CV fold metrics → /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_cv_fold_metrics.csv
+CV loss curves → /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_cv_loss_curves.png
+
+--- Final model: 1212 train+val sequences, 48 epochs ---
+Getting ESM embeddings for 1212 training sequences...
+Computed global normalization for IG: mean=0.0010, scale=0.0438
+Set global normalization for training: mean=0.0010, scale=0.0438
+Starting training for 48 epochs with huber loss...
+Model parameters: 700,290 trainable / 700,290 total
+Epoch 1/48 - Train Loss: 0.203954, LR: 1.63e-04
+Epoch 2/48 - Train Loss: 0.200932, LR: 2.75e-04
+Epoch 3/48 - Train Loss: 0.182992, LR: 3.88e-04
+Epoch 4/48 - Train Loss: 0.177522, LR: 5.00e-04
+Epoch 5/48 - Train Loss: 0.163807, LR: 4.99e-04
+    Saved plot: epoch_005_4faf1251_pred_vs_actual.png (Train R²=0.395)
+Epoch 6/48 - Train Loss: 0.145799, LR: 4.98e-04
+Epoch 7/48 - Train Loss: 0.167540, LR: 4.95e-04
+Epoch 8/48 - Train Loss: 0.147443, LR: 4.92e-04
+Epoch 9/48 - Train Loss: 0.117554, LR: 4.87e-04
+Epoch 10/48 - Train Loss: 0.101447, LR: 4.81e-04
+  Debug - Pred mean: 0.0076, std: 0.4491 | Target mean: 0.2500, std: 0.6224
+    Saved plot: epoch_010_4a9f962c_pred_vs_actual.png (Train R²=0.574)
+Epoch 11/48 - Train Loss: 0.103940, LR: 4.74e-04
+Epoch 12/48 - Train Loss: 0.135975, LR: 4.67e-04
+Epoch 13/48 - Train Loss: 0.116059, LR: 4.58e-04
+Epoch 14/48 - Train Loss: 0.103203, LR: 4.49e-04
+Epoch 15/48 - Train Loss: 0.088002, LR: 4.39e-04
+    Saved plot: epoch_015_fd10ce18_pred_vs_actual.png (Train R²=0.489)
+Epoch 16/48 - Train Loss: 0.080184, LR: 4.28e-04
+Epoch 17/48 - Train Loss: 0.071875, LR: 4.16e-04
+Epoch 18/48 - Train Loss: 0.065417, LR: 4.03e-04
+Epoch 19/48 - Train Loss: 0.056861, LR: 3.90e-04
+Epoch 20/48 - Train Loss: 0.083081, LR: 3.76e-04
+  Debug - Pred mean: -0.2083, std: 0.5304 | Target mean: 0.0366, std: 0.6093
+    Saved plot: epoch_020_8109bd8a_pred_vs_actual.png (Train R²=0.633)
+Epoch 21/48 - Train Loss: 0.074372, LR: 3.62e-04
+Epoch 22/48 - Train Loss: 0.070640, LR: 3.47e-04
+Epoch 23/48 - Train Loss: 0.061692, LR: 3.32e-04
+Epoch 24/48 - Train Loss: 0.048398, LR: 3.17e-04
+Epoch 25/48 - Train Loss: 0.045684, LR: 3.01e-04
+    Saved plot: epoch_025_fa3b9c2d_pred_vs_actual.png (Train R²=0.826)
+Epoch 26/48 - Train Loss: 0.044208, LR: 2.85e-04
+Epoch 27/48 - Train Loss: 0.046751, LR: 2.69e-04
+Epoch 28/48 - Train Loss: 0.039790, LR: 2.52e-04
+Epoch 29/48 - Train Loss: 0.041026, LR: 2.36e-04
+Epoch 30/48 - Train Loss: 0.045057, LR: 2.20e-04
+  Debug - Pred mean: 0.1361, std: 0.5241 | Target mean: 0.2987, std: 0.5220
+    Saved plot: epoch_030_b36ccf17_pred_vs_actual.png (Train R²=0.814)
+Epoch 31/48 - Train Loss: 0.040111, LR: 2.04e-04
+Epoch 32/48 - Train Loss: 0.036012, LR: 1.88e-04
+Epoch 33/48 - Train Loss: 0.033334, LR: 1.73e-04
+Epoch 34/48 - Train Loss: 0.033556, LR: 1.58e-04
+Epoch 35/48 - Train Loss: 0.031179, LR: 1.43e-04
+    Saved plot: epoch_035_bfaead74_pred_vs_actual.png (Train R²=0.873)
+Epoch 36/48 - Train Loss: 0.031414, LR: 1.29e-04
+Epoch 37/48 - Train Loss: 0.034107, LR: 1.15e-04
+Epoch 38/48 - Train Loss: 0.028667, LR: 1.02e-04
+Epoch 39/48 - Train Loss: 0.029890, LR: 8.93e-05
+Epoch 40/48 - Train Loss: 0.028284, LR: 7.75e-05
+  Debug - Pred mean: 0.2307, std: 0.5480 | Target mean: 0.2561, std: 0.5991
+    Saved plot: epoch_040_944d1166_pred_vs_actual.png (Train R²=0.882)
+Epoch 41/48 - Train Loss: 0.027380, LR: 6.64e-05
+Epoch 42/48 - Train Loss: 0.028247, LR: 5.61e-05
+Epoch 43/48 - Train Loss: 0.030443, LR: 4.67e-05
+Epoch 44/48 - Train Loss: 0.029555, LR: 3.82e-05
+Epoch 45/48 - Train Loss: 0.028133, LR: 3.05e-05
+    Saved plot: epoch_045_f489d83b_pred_vs_actual.png (Train R²=0.877)
+Epoch 46/48 - Train Loss: 0.026648, LR: 2.38e-05
+Epoch 47/48 - Train Loss: 0.026313, LR: 1.81e-05
+Epoch 48/48 - Train Loss: 0.025665, LR: 1.34e-05
+No validation set used - keeping final model from last epoch
+
+Training completed!
+Loss vs epoch plot saved to: /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_integrated_gradients_loss_vs_epoch.png
+Final model (epoch 48) saved to /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_training_model.pth
+Final Training Metrics:
+  R² = 0.8886
+  MAE = 0.1725
+  RMSE = 0.2226
+✓ Model training completed successfully
+  5-fold CV — mean val R² = 0.7433 (±0.0212)
+
+Test-set evaluation (289 sequences):
+
+Evaluating model performance (test set)...
+Getting embeddings for evaluation...
+Model Performance:
+  R² = 0.8115
+  Pearson r = 0.9012
+  Spearman ρ = 0.8848
+
+Prediction Clipping Applied:
+  Clipped 0 predictions below -2.5667
+  Clipped 9 predictions above 0.9812
+  Total clipped: 9/289 (3.1%)
+
+Prediction Diagnostics:
+  Raw target range: [-2.5667, 0.9812]
+  Raw target mean: 0.1540, std: 0.6814
+  Predicted range: [-2.1549, 0.9812]
+  Predicted mean: 0.1378, std: 0.6221
+  Prediction std ratio (predicted/actual): 0.913
+
+Extreme Value Performance:
+5 Lowest actual values vs predictions:
+  #1: actual=-2.5667, predicted=-2.1549, error=0.4118
+  #2: actual=-2.2667, predicted=-1.9575, error=0.3091
+  #3: actual=-2.1333, predicted=-1.2218, error=0.9115
+  #4: actual=-1.8750, predicted=-1.4005, error=0.4745
+  #5: actual=-1.8333, predicted=-1.0475, error=0.7858
+5 Highest actual values vs predictions:
+  #1: actual=0.9750, predicted=0.7988, error=0.1762
+  #2: actual=0.9778, predicted=0.8296, error=0.1481
+  #3: actual=0.9778, predicted=0.9812, error=0.0035
+  #4: actual=0.9778, predicted=0.8641, error=0.1136
+  #5: actual=0.9812, predicted=0.8723, error=0.1090
+Creating predicted vs actual plot...
+Predicted vs Actual plot saved to: /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_predicted_vs_actual_test.png
+
+Selected 5 sequences for integrated gradients analysis (from train+val and test):
+  WT[trainval]: activity = 1.0000
+  Lowest_Activity[trainval]: activity = -2.7333
+  Highest_Activity[trainval]: activity = 1.0000
+  Median_Activity[trainval]: activity = 0.1818
+  PolyAlanine: custom sequence (not in dataset)
+
+============================================================
+PERFORMING INTEGRATED GRADIENTS ANALYSIS
+============================================================
+Loading ESM model for integrated gradients (esmc_300m)...
+Loading ESM-C model esmc_300m...
+Creating combined model for embedding-level integrated gradients...
+
+🔍 VALIDATING COMPLETENESS AXIOM (threshold ≤ 0.1)
+============================================================
+Validating WT[trainval]... Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Sequence prediction (DataLoader method): 0.7879
+Baseline prediction (DataLoader method): 0.7879
+Computing integrated gradients using embedding interpolation (steps=25)...
+  Interpolation path check [linear]  norm(α=0)=1.3457  norm(α=0.5)=1.3457  norm(α=1)=1.3457  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: 0.000000
+Predicted difference (sequence - baseline): 0.000000
+Completeness axiom error: 0.000000
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: 0.000000
+Theoretical completeness error: 0.000000
+✅ Completeness axiom satisfied for unclipped predictions!
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=0.787943, Baseline=0.787943, Diff=0.000000
+Method 2 (Direct): Sequence=0.787942, Baseline=0.787942, Diff=0.000000
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+✅ Passed (error=0.0000)
+Validating Lowest_Activity[trainval]... Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Sequence prediction (DataLoader method): -2.2437
+Baseline prediction (DataLoader method): 0.7879
+Computing integrated gradients using embedding interpolation (steps=25)...
+  Interpolation path check [linear]  norm(α=0)=1.3457  norm(α=0.5)=1.3334  norm(α=1)=1.3553  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: -3.034241
+Predicted difference (sequence - baseline): -3.031623
+Completeness axiom error: 0.002619
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: -3.031623
+Theoretical completeness error: 0.002619
+✅ Completeness axiom satisfied for unclipped predictions!
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=-2.243680, Baseline=0.787943, Diff=-3.031623
+Method 2 (Direct): Sequence=-2.243680, Baseline=0.787942, Diff=-3.031622
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000001
+✓ Normalization appears consistent between methods.
+=============================================
+✅ Passed (error=0.0557)
+Validating Highest_Activity[trainval]... Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Sequence prediction (DataLoader method): 0.7879
+Baseline prediction (DataLoader method): 0.7879
+Computing integrated gradients using embedding interpolation (steps=25)...
+  Interpolation path check [linear]  norm(α=0)=1.3457  norm(α=0.5)=1.3457  norm(α=1)=1.3457  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: 0.000000
+Predicted difference (sequence - baseline): 0.000000
+Completeness axiom error: 0.000000
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: 0.000000
+Theoretical completeness error: 0.000000
+✅ Completeness axiom satisfied for unclipped predictions!
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=0.787943, Baseline=0.787943, Diff=0.000000
+Method 2 (Direct): Sequence=0.787942, Baseline=0.787942, Diff=0.000000
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+✅ Passed (error=0.0000)
+Validating Median_Activity[trainval]... Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Sequence prediction (DataLoader method): 0.0403
+Baseline prediction (DataLoader method): 0.7879
+Computing integrated gradients using embedding interpolation (steps=25)...
+  Interpolation path check [linear]  norm(α=0)=1.3457  norm(α=0.5)=1.3515  norm(α=1)=1.3807  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: -0.748450
+Predicted difference (sequence - baseline): -0.747679
+Completeness axiom error: 0.000770
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: -0.747679
+Theoretical completeness error: 0.000770
+✅ Completeness axiom satisfied for unclipped predictions!
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=0.040263, Baseline=0.787943, Diff=-0.747679
+Method 2 (Direct): Sequence=0.040263, Baseline=0.787942, Diff=-0.747679
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+✅ Passed (error=0.0234)
+Validating PolyAlanine... Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Sequence prediction (DataLoader method): -2.7547
+Baseline prediction (DataLoader method): 0.7879
+Computing integrated gradients using embedding interpolation (steps=25)...
+  Interpolation path check [linear]  norm(α=0)=1.3457  norm(α=0.5)=1.0876  norm(α=1)=1.5251  (midpoint dip expected for linear/nn)
+Using attribution method: signed
+Sum of attributions: -3.481476
+Predicted difference (sequence - baseline): -3.542615
+Completeness axiom error: 0.061140
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: -3.542615
+Theoretical completeness error: 0.061140
+⚠️ Minor completeness axiom violation (< 0.1)
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=-2.754673, Baseline=0.787943, Diff=-3.542615
+Method 2 (Direct): Sequence=-2.754673, Baseline=0.787942, Diff=-3.542615
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+✅ Passed (error=0.0955)
+
+📊 COMPLETENESS VALIDATION SUMMARY:
+  Total sequences validated: 5
+  ✅ Passed validation: 5
+  ❌ Failed validation: 0
+  📋 Selected for analysis: 5
+============================================================
+
+Analyzing WT[trainval] (embedding-level)...
+Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Applying prediction clipping: min=-2.733333110809326, max=1.0
+Sequence prediction (DataLoader method): 0.7879
+Baseline prediction (DataLoader method): 0.7879
+Computing integrated gradients using embedding interpolation (steps=50)...
+  Interpolation path check [linear]  norm(α=0)=1.3457  norm(α=0.5)=1.3457  norm(α=1)=1.3457  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: 0.000000
+Predicted difference (sequence - baseline): 0.000000
+Completeness axiom error: 0.000000
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: 0.000000
+Theoretical completeness error: 0.000000
+✅ Completeness axiom satisfied for unclipped predictions!
+Clipping effect on difference: 0.000000
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=0.787943, Baseline=0.787943, Diff=0.000000
+Method 2 (Direct): Sequence=0.787942, Baseline=0.787942, Diff=0.000000
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+Creating predicted vs actual activity plot...
+Predicted vs actual plot saved to /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_WT[trainval]_predicted_vs_actual.png
+  Actual activity: 1.0
+  IG method prediction: 0.7879
+  Baseline activity: 0.7879
+  Effect vs baseline: 0.0000
+  Top 5 gradient positions: [56 55 54 53 52]
+
+Analyzing Lowest_Activity[trainval] (embedding-level)...
+Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Applying prediction clipping: min=-2.733333110809326, max=1.0
+Sequence prediction (DataLoader method): -2.2437
+Baseline prediction (DataLoader method): 0.7879
+Computing integrated gradients using embedding interpolation (steps=50)...
+  Interpolation path check [linear]  norm(α=0)=1.3457  norm(α=0.5)=1.3334  norm(α=1)=1.3553  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: -3.032942
+Predicted difference (sequence - baseline): -3.031623
+Completeness axiom error: 0.001319
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: -3.031623
+Theoretical completeness error: 0.001319
+✅ Completeness axiom satisfied for unclipped predictions!
+Clipping effect on difference: 0.000000
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=-2.243680, Baseline=0.787943, Diff=-3.031623
+Method 2 (Direct): Sequence=-2.243680, Baseline=0.787942, Diff=-3.031622
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000001
+✓ Normalization appears consistent between methods.
+=============================================
+Creating predicted vs actual activity plot...
+Predicted vs actual plot saved to /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_Lowest_Activity[trainval]_predicted_vs_actual.png
+  Actual activity: -2.733333110809326
+  IG method prediction: -2.2437
+  Baseline activity: 0.7879
+  Effect vs baseline: -3.0316
+  Top 5 gradient positions: [36 41 55 16 42]
+
+Analyzing Highest_Activity[trainval] (embedding-level)...
+Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Applying prediction clipping: min=-2.733333110809326, max=1.0
+Sequence prediction (DataLoader method): 0.7879
+Baseline prediction (DataLoader method): 0.7879
+Computing integrated gradients using embedding interpolation (steps=50)...
+  Interpolation path check [linear]  norm(α=0)=1.3457  norm(α=0.5)=1.3457  norm(α=1)=1.3457  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: 0.000000
+Predicted difference (sequence - baseline): 0.000000
+Completeness axiom error: 0.000000
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: 0.000000
+Theoretical completeness error: 0.000000
+✅ Completeness axiom satisfied for unclipped predictions!
+Clipping effect on difference: 0.000000
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=0.787943, Baseline=0.787943, Diff=0.000000
+Method 2 (Direct): Sequence=0.787942, Baseline=0.787942, Diff=0.000000
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+Creating predicted vs actual activity plot...
+Predicted vs actual plot saved to /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_Highest_Activity[trainval]_predicted_vs_actual.png
+  Actual activity: 1.0
+  IG method prediction: 0.7879
+  Baseline activity: 0.7879
+  Effect vs baseline: 0.0000
+  Top 5 gradient positions: [56 55 54 53 52]
+
+Analyzing Median_Activity[trainval] (embedding-level)...
+Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Applying prediction clipping: min=-2.733333110809326, max=1.0
+Sequence prediction (DataLoader method): 0.0403
+Baseline prediction (DataLoader method): 0.7879
+Computing integrated gradients using embedding interpolation (steps=50)...
+  Interpolation path check [linear]  norm(α=0)=1.3457  norm(α=0.5)=1.3515  norm(α=1)=1.3807  ✓ norms stable (slerp working)
+Using attribution method: signed
+Sum of attributions: -0.748065
+Predicted difference (sequence - baseline): -0.747679
+Completeness axiom error: 0.000385
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: -0.747679
+Theoretical completeness error: 0.000385
+✅ Completeness axiom satisfied for unclipped predictions!
+Clipping effect on difference: 0.000000
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=0.040263, Baseline=0.787943, Diff=-0.747679
+Method 2 (Direct): Sequence=0.040263, Baseline=0.787942, Diff=-0.747679
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+Creating predicted vs actual activity plot...
+Predicted vs actual plot saved to /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_Median_Activity[trainval]_predicted_vs_actual.png
+  Actual activity: 0.18181799352169037
+  IG method prediction: 0.0403
+  Baseline activity: 0.7879
+  Effect vs baseline: -0.7477
+  Top 5 gradient positions: [15 36  4 23 16]
+
+Analyzing PolyAlanine (embedding-level)...
+Getting ESM embeddings for sequence and baseline...
+Computing predictions using DataLoader method...
+Applying prediction clipping: min=-2.733333110809326, max=1.0
+Sequence prediction (DataLoader method): -2.7333
+Baseline prediction (DataLoader method): 0.7879
+Computing integrated gradients using embedding interpolation (steps=50)...
+  Interpolation path check [linear]  norm(α=0)=1.3457  norm(α=0.5)=1.0876  norm(α=1)=1.5251  (midpoint dip expected for linear/nn)
+Using attribution method: signed
+Sum of attributions: -3.511902
+Predicted difference (sequence - baseline): -3.521276
+Completeness axiom error: 0.009373
+
+=== COMPLETENESS AXIOM VALIDATION ===
+Theoretical (unclipped) difference: -3.542615
+Theoretical completeness error: 0.030713
+⚠️ Minor completeness axiom violation (< 0.1)
+Clipping effect on difference: 0.021340
+📝 Note: Large clipping effect may explain apparent completeness violation
+==================================================
+
+=== NORMALIZATION CONSISTENCY CHECK ===
+Method 1 (DataLoader): Sequence=-2.733333, Baseline=0.787943, Diff=-3.521276
+Method 2 (Direct): Sequence=-2.733333, Baseline=0.787942, Diff=-3.521275
+Consistency: Seq_error=0.000000, Baseline_error=0.000000, Diff_error=0.000000
+✓ Normalization appears consistent between methods.
+=============================================
+  Actual activity: None
+  IG method prediction: -2.7333
+  Baseline activity: 0.7879
+  Effect vs baseline: -3.5213
+  Top 5 gradient positions: [36 41 15 23 48]
+
+Creating visualizations...
+Integrated gradients plot saved to /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_integrated_gradients_analysis.png
+
+Exporting results...
+Creating signed gradient analysis for beneficial/detrimental amino acids...
+Detailed amino acid effects saved to: /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_amino_acid_effects_detailed.csv
+Top beneficial positions saved to: /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_top_beneficial_positions.csv
+Top detrimental positions saved to: /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_top_detrimental_positions.csv
+Position-wise signed analysis saved to: /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_position_signed_analysis.csv
+Amino acid type analysis saved to: /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_amino_acid_type_analysis.csv
+Creating gradient heatmap...
+Gradient heatmap saved to /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_integrated_gradients_heatmap.png
+Creating comparison plots...
+Variants vs WT gradients plot saved to /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_variants_vs_WT_gradients.png
+Creating signed gradient effects plots...
+Signed gradient effects plot saved to /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_signed_gradient_effects.png
+Averaged gradient effects comparison plot saved to /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_top_vs_bottom_effects.png
+
+============================================================
+ANALYSIS COMPLETE
+============================================================
+Dataset: GB1_nonlinear
+Total sequences: 6
+Sequences analyzed: 6
+Results saved to: /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR
+
+Model Performance:
+  R² = 0.8115
+  Pearson r = 0.9012
+  Spearman ρ = 0.8848
+
+Files generated:
+  - Model performance plots
+  - Attribution heatmaps
+  - Integrated gradients plots
+  - Summary CSV files
+============================================================
+
+(Metrics above are on the held-out test set)
+
+============================================================
+ANALYSIS COMPLETE
+============================================================
+Dataset: GB1_nonlinear
+Total sequences: 1501
+Sequences analyzed: 6
+Results saved to: results/synthetic/GB1_nonlinear_LINEAR
+
+Model Performance:
+  R² = 0.8115
+  Pearson r = 0.9012
+  Spearman ρ = 0.8848
+
+Files generated:
+  - Model performance plots
+  - Attribution heatmaps
+  - Integrated gradients plots
+  - Summary CSV files
+============================================================
+============================================================
+PIPELINE TIMING REPORT
+============================================================
+Dataset      : GB1_nonlinear
+Started at   : 2026-04-17 13:52:41
+Finished at  : 2026-04-17 13:55:20
+Device       : cuda
+------------------------------------------------------------
+Step                                       Duration
+------------------------------------------------------------
+  Data loading & preparation                   0.0s
+  Wildtype sequence preparation                0.0s
+  Embedding retrieval (if needed)              0.0s
+  Model training / loading                   2m 20s
+  Model evaluation                             1.0s
+  Integrated gradients (5 sequence(s))         8.8s
+  Visualizations & exports                     8.5s
+------------------------------------------------------------
+  TOTAL                                      2m 38s
+============================================================
+
+Timing report saved to /project/6111759/IGLOO/results/synthetic/GB1_nonlinear_LINEAR/GB1_nonlinear_timing_report.txt
