@@ -334,6 +334,7 @@ def collect_path_embeddings(sequences: list[str], wt_seq: str,
                              y_log_mean: float = 0.0,
                              y_log_std: float = 1.0,
                              device: torch.device | None = None,
+                             train_pooled_embs: np.ndarray | None = None,
                              ) -> tuple[np.ndarray, list[np.ndarray], list[str]]:
     """
     Sample embeddings from interpolation paths.
@@ -423,7 +424,31 @@ def collect_path_embeddings(sequences: list[str], wt_seq: str,
                 # Exclude endpoints (idx 0 = WT, idx -1 = variant)
                 if 0 < k < steps:
                     all_path_pooled.append(pooled)
-        else:
+        elif interpolation_method == 'nearest_neighbor':
+            # Training-data-grounded path: at each α find the closest real
+            # training embedding (in mean-pooled space) to the linearly
+            # interpolated reference, mirroring _compute_path_integral.
+            if train_pooled_embs is None:
+                raise ValueError(
+                    "interpolation_method='nearest_neighbor' requires "
+                    "train_pooled_embs to be passed to collect_path_embeddings."
+                )
+            train_pt = torch.tensor(train_pooled_embs, dtype=torch.float32)  # (N, D)
+            wt_pooled   = wt_emb_pad.mean(dim=0)    # (D,)
+            seq_pooled  = seq_emb_pad.mean(dim=0)   # (D,)
+
+            # γ_0 = baseline endpoint
+            pair_points.append(wt_pooled.numpy())
+            for alpha in alphas[1:-1]:
+                ref_pooled = wt_pooled + float(alpha) * (seq_pooled - wt_pooled)  # (D,)
+                dists  = torch.norm(train_pt - ref_pooled.unsqueeze(0), dim=-1)  # (N,)
+                nn_idx = int(dists.argmin().item())
+                nn_pooled = train_pt[nn_idx].numpy()  # (D,)
+                pair_points.append(nn_pooled)
+                all_path_pooled.append(nn_pooled)
+            # γ_K = sequence endpoint
+            pair_points.append(seq_pooled.numpy())
+        else:  # linear, slerp
             for alpha in alphas:
                 interp = interpolate_embeddings(wt_emb_pad, seq_emb_pad,
                                                 float(alpha), method=interpolation_method)
@@ -1236,6 +1261,7 @@ def main():
             y_log_mean=y_log_mean,
             y_log_std=y_log_std,
             device=device,
+            train_pooled_embs=pooled_embs,
         )
         fed_val = compute_and_plot_fed(pooled_embs, path_embs,
                                        dataset_name, output_dir, method)

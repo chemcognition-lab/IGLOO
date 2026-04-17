@@ -7,7 +7,10 @@ on protein sequences using both embedding-level and token-level methods.
 
 import os
 
+import torch
+
 from .completeness_validation import filter_sequences_by_completeness, validate_completeness_axiom_token_level
+from .embedding import get_embeddings
 from .esm_adapter import load_esm_backend
 from .sequence_ig import (
     analyze_sequence_with_integrated_gradients,
@@ -45,6 +48,24 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
     attribution_method = ig_config.get('attribution_method', 'magnitude')
     interpolation_path = ig_config.get('interpolation_path', 'linear')  # 'linear' | 'slerp' | 'nearest_neighbor' | 'guided_ig'
     plot_umap = ig_config.get('plot_interpolation_umap', False)
+
+    # For nearest_neighbor paths, pre-load all training embeddings so
+    # _compute_path_integral can ground each integration step in real data.
+    training_embeddings: torch.Tensor | None = None
+    if interpolation_path == 'nearest_neighbor':
+        print("Loading training embeddings for nearest-neighbor interpolation path...")
+        esm_layer = model_config['esm_layer']
+        train_emb_np = get_embeddings(
+            sequences,
+            layer=esm_layer,
+            batch_size=ig_config.get('batch_size', 10),
+            dataset_name=config['data']['name'],
+            subdir=embeddings_subdir,
+            esm_backend=esm_backend,
+        )  # (N, L, D) numpy array
+        training_embeddings = torch.from_numpy(train_emb_np).float()
+        print(f"  Loaded {training_embeddings.shape[0]} training embeddings "
+              f"(shape {tuple(training_embeddings.shape)})")
 
     # Check if completeness validation is enabled
     completeness_config = ig_config.get('completeness_validation', {})
@@ -128,6 +149,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                     os.path.join(results_dir, f"{name}_interpolation_umap.png")
                     if plot_umap else None
                 ),
+                training_embeddings=training_embeddings,
                 _esm_backend=esm_backend,
             )
             ig_results[name] = result

@@ -267,14 +267,20 @@ class IntegratedGradientsRunner:
                 return "all"
 
         # Get sequences to analyze based on configuration (from full dataset)
-        selection_config = self.config.get('sequence_selection', {
+        # Config can store sequence_selection either at the top level or under 'analysis'.
+        _default_sel = {
             'include_extremes': True,
             'include_median': True,
             'include_top_n': 0,
             'include_bottom_n': 0,
             'custom_sequences': [],
             'max_error_percent': 10.0,
-        })
+        }
+        selection_config = (
+            self.config.get('analysis', {}).get('sequence_selection')
+            or self.config.get('sequence_selection')
+            or _default_sel
+        )
 
         # y_pred is not available over the full dataset here (eval was on test only),
         # so pass None to avoid misleading error-filtering.
