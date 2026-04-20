@@ -13,14 +13,14 @@ data:
 model:
   esm_layer: 33
   pooling_method: "esm_attention"
-  hidden_dim1: 512
-  hidden_dim2: 256
-  hidden_dim3: 128
-  hidden_dim4: 64
-  dropout_rate: 0.4
+  hidden_dim1: 384
+  hidden_dim2: 192
+  hidden_dim3: 96
+  hidden_dim4: 48
+  dropout_rate: 0.35
   learning_rate: 0.0008
-  batch_size: 128
-  epochs: 50
+  batch_size: 96
+  epochs: 60
   loss_type: "huber"
   final_activation: null
   patience: 15          # early-stopping patience (epochs without val improvement)
@@ -31,7 +31,7 @@ integrated_gradients:
   attribution_method: "signed"
   interpolation_path: "linear"  # 'linear' | 'slerp' | 'nearest_neighbor' | 'guided_ig'
   plot_interpolation_umap: false   # UMAP projection of interpolation path; saved to results_dir
-  steps: 50
+  steps: 500
   batch_size: 10
 
 analysis:
@@ -50,3 +50,7 @@ training:
   n_folds: 5
   test_fraction: 0.20
   split_seed: 42
+  noise:
+    label_noise_std: 0.0    # σ in raw target units; 0 = no noise
+    label_noise_seed: 0     # RNG seed for reproducibility
+    input_noise_std: 0.0    # σ for per-batch embedding augmentation; 0 = off

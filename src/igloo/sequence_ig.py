@@ -1179,16 +1179,9 @@ def _compute_path_integral(
         norm_emb = _normalize(emb_req)                     # differentiable
         out = _forward(norm_emb)
         grad_norm = torch.autograd.grad(out.sum(), emb_req, create_graph=False)[0]
-        # Chain rule: grad_orig = grad_norm / scale (global) or / std (per-sample)
-        b, l, d = grad_norm.shape
-        if _global_scaler_mean is not None and _global_scaler_scale is not None:
-            grad_orig = grad_norm / _global_scaler_scale
-        else:
-            flat_g = grad_norm.reshape(b, -1)
-            flat_e = emb_orig.reshape(b, -1)
-            std = flat_e.std(dim=1, keepdim=True)
-            grad_orig = (flat_g / (std + 1e-8)).reshape(b, l, d)
-        return grad_orig.detach(), out.detach().cpu().numpy().flatten()
+        # autograd already computes the full chain rule through _normalize,
+        # so grad_norm = ∂F/∂emb_orig directly — no further correction needed.
+        return grad_norm.detach(), out.detach().cpu().numpy().flatten()
 
     # ══════════════════════════════════════════════════════════════════════
     # Branch A: linear and slerp — trapezoidal rule

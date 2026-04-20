@@ -96,6 +96,37 @@ class IntegratedGradientsRunner:
         result = load_and_prepare_data(self.config, data_path)
         self.df, self.sequences, self.y_raw, self.y, self.y_log_mean, self.y_log_std = result
 
+    def inject_label_noise(self):
+        """Optionally corrupt all labels with Gaussian noise before the train/test split.
+
+        Reads ``training.noise.label_noise_std`` from the config (in raw target
+        units).  The same noise realisation is applied to both ``y_raw`` and
+        the (possibly normalised) ``y``, so model training, evaluation, and IG
+        analysis all see consistently noisy labels.
+
+        A fixed ``label_noise_seed`` (default 0) is used so runs are
+        reproducible; set it to different values to sample different noise
+        realisations.
+        """
+        import numpy as np
+
+        noise_cfg  = self.config.get('training', {}).get('noise', {})
+        noise_std  = float(noise_cfg.get('label_noise_std', 0.0))
+        if noise_std <= 0.0:
+            return
+
+        seed = int(noise_cfg.get('label_noise_seed', 0))
+        rng  = np.random.default_rng(seed)
+        epsilon = rng.standard_normal(len(self.y_raw)).astype(np.float32) * noise_std
+
+        self.y_raw = self.y_raw + epsilon
+        # y may be z-score normalised: y = (y_raw - mean) / std
+        # so the noise in normalised space is epsilon / y_log_std
+        self.y = self.y + (epsilon / self.y_log_std)
+
+        print(f"Label noise injected — std={noise_std:.4f} (seed={seed}), "
+              f"applied to all {len(self.y_raw)} sequences before train/test split")
+
     def split_data(self):
         """Split the loaded dataset into train+val and held-out test sets.
 
@@ -430,6 +461,9 @@ class IntegratedGradientsRunner:
             _t = time.perf_counter()
             self.load_and_prepare_data()
             timing['data_loading'] = time.perf_counter() - _t
+
+            # Step 1b: Inject label noise (if configured) — before any split
+            self.inject_label_noise()
 
             # Step 2: Split into train+val and held-out test (if configured)
             self.split_data()

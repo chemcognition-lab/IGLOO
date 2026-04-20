@@ -107,6 +107,13 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
                 'custom_sequences': []
             }
         },
+        'training': {
+            'noise': {
+                'label_noise_std': 0.0,   # σ in raw target units; 0 = no noise
+                'label_noise_seed': 0,    # RNG seed for reproducibility
+                'input_noise_std': 0.0,   # σ for per-batch embedding augmentation; 0 = off
+            }
+        },
         'force_retrain': False
     }
 
