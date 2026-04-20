@@ -74,6 +74,10 @@ def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Opti
     """
     Create a heatmap of gradients across sequences.
 
+    Y-axis (sequences) labels are suppressed when there are more than 50
+    sequences — showing thousands of tiny labels makes the axis unreadable.
+    Figure height is capped so the file stays manageable.
+
     Args:
         results_df: DataFrame with columns ['sequence_name', 'position', 'integrated_gradient']
         title: Title for the heatmap
@@ -81,36 +85,40 @@ def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Opti
     """
     pivot_data = results_df.pivot(index='sequence_name', columns='position', values='integrated_gradient')
 
-    # Calculate dynamic width based on number of positions
     num_positions = len(pivot_data.columns)
-    # Use at least 0.1 inches per position, with a minimum of 30 inches
-    width = max(30, num_positions * 0.1)
+    num_sequences = len(pivot_data)
 
-    plt.figure(figsize=(width, 8))
+    # Width scales with positions; height capped to keep file sizes sane
+    width = max(20, num_positions * 0.12)
+    height = min(max(6, num_sequences * 0.12), 30)
 
-    # Show every 10th position label to reduce crowding
-    x_tick_frequency = max(1, num_positions // 50)  # Show ~50 labels max
+    # Show y-labels only when there are few enough sequences to be legible
+    show_ylabels = num_sequences <= 50
+    y_fontsize = max(4, min(9, 400 // num_sequences)) if show_ylabels else 0
+
+    x_tick_frequency = max(1, num_positions // 60)
     x_tick_labels = [str(pos) if i % x_tick_frequency == 0 else ''
                      for i, pos in enumerate(pivot_data.columns)]
 
+    plt.figure(figsize=(width, height))
     sns.heatmap(
         pivot_data,
         cmap='RdBu_r',
         center=0,
         cbar_kws={'label': 'Integrated Gradient'},
         xticklabels=x_tick_labels,
-        yticklabels=True
+        yticklabels=show_ylabels,
     )
     plt.title(title)
     plt.xlabel('Position')
     plt.ylabel('Sequence')
-
-    # Rotate x-axis labels for better readability
     plt.xticks(rotation=90, fontsize=8)
-    plt.tight_layout()
+    if show_ylabels:
+        plt.yticks(fontsize=y_fontsize)
 
+    plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Gradient heatmap saved to {save_path}")
     plt.close()
 
@@ -570,118 +578,106 @@ def plot_signed_gradient_effects(
     figsize: tuple[int, int] = (15, 8)
 ) -> None:
     """
-    Create a scatter plot showing signed gradient effects by position, similar to a mutation effect plot.
+    Create a scatter plot showing signed gradient effects by position.
 
-    This function creates a visualization with:
-    - Red/orange points for beneficial effects (positive gradients)
-    - Blue points for detrimental effects (negative gradients)
-    - Points scattered by position with some vertical jitter for clarity
-    - Top N most significant effects labeled
+    - Red/orange points: beneficial effects (positive gradients)
+    - Blue points: detrimental effects (negative gradients)
+    - Small position-space jitter for visibility; scales with data range
+    - Top N most significant position-level effects labelled with short arrows
+
     Args:
         results_dict: Dictionary containing analysis results for each sequence
         save_path: Optional path to save the plot
         top_n: Number of top effects to label (default: 10)
         figsize: Figure size as tuple (width, height)
     """
-    # Filter out special validation results keys that don't have sequence analysis data
     analysis_results = {name: result for name, result in results_dict.items()
-                       if not name.startswith('_') and 'positions' in result}
+                        if not name.startswith('_') and 'positions' in result}
 
     if len(analysis_results) == 0:
         print("No valid sequences found for signed gradient effects plotting.")
         return
 
-    # Collect all gradient data
     all_effects = []
-
     for name, result in analysis_results.items():
-        positions = result['positions']
-        gradients = result['position_gradients']
-        amino_acids = result['amino_acids']
-
-        for pos, grad, aa in zip(positions, gradients, amino_acids):
+        for pos, grad, aa in zip(result['positions'],
+                                  result['position_gradients'],
+                                  result['amino_acids']):
             all_effects.append({
                 'sequence_name': name,
-                'position': pos,
+                'position': int(pos),
                 'amino_acid': aa,
-                'effect': grad,
-                'abs_effect': abs(grad)
+                'effect': float(grad),
+                'abs_effect': abs(float(grad))
             })
 
     effects_df = pd.DataFrame(all_effects)
 
-    # Separate beneficial and detrimental effects
+    y_min, y_max = effects_df['effect'].min(), effects_df['effect'].max()
+    y_range = max(y_max - y_min, 1e-6)
+
+    # Jitter scaled to ~1 % of the data range so points stay within the plot
+    jitter_scale = 0.01 * y_range
+    # Reduce alpha and point size for dense datasets
+    n_points = len(effects_df)
+    alpha = max(0.08, min(0.5, 500 / n_points))
+    point_size = max(4, min(20, 2000 / n_points))
+
     beneficial = effects_df[effects_df['effect'] > 0].copy()
     detrimental = effects_df[effects_df['effect'] < 0].copy()
 
     fig, ax = plt.subplots(1, 1, figsize=figsize)
+    np.random.seed(42)
 
-    # Add some vertical jitter for better visibility
-    np.random.seed(42)  # For reproducible jitter
-
-    # Plot beneficial effects (positive gradients) in red/orange
     if len(beneficial) > 0:
-        beneficial_jitter = np.random.normal(0, 5, len(beneficial))  # Small jitter
-        ax.scatter(
-            beneficial['position'],
-            beneficial['effect'] + beneficial_jitter,
-            c='coral',
-            alpha=0.6,
-            s=30,
-            label=f'Beneficial ({len(beneficial)} positions)'
-        )
+        jitter = np.random.normal(0, jitter_scale, len(beneficial))
+        ax.scatter(beneficial['position'], beneficial['effect'] + jitter,
+                   c='coral', alpha=alpha, s=point_size, linewidths=0,
+                   label=f'Beneficial ({len(beneficial):,} pos-sequence pairs)')
 
-    # Plot detrimental effects (negative gradients) in blue
     if len(detrimental) > 0:
-        detrimental_jitter = np.random.normal(0, 5, len(detrimental))  # Small jitter
-        ax.scatter(
-            detrimental['position'],
-            detrimental['effect'] + detrimental_jitter,
-            c='steelblue',
-            alpha=0.6,
-            s=30,
-            label=f'Detrimental ({len(detrimental)} positions)'
-        )
+        jitter = np.random.normal(0, jitter_scale, len(detrimental))
+        ax.scatter(detrimental['position'], detrimental['effect'] + jitter,
+                   c='steelblue', alpha=alpha, s=point_size, linewidths=0,
+                   label=f'Detrimental ({len(detrimental):,} pos-sequence pairs)')
 
-    # Add horizontal line at zero
     ax.axhline(y=0, color='gray', linestyle='--', alpha=0.7, linewidth=1)
 
-    # Label top N most significant effects
-    top_effects = effects_df.nlargest(top_n, 'abs_effect')
+    # Label the top-N most extreme position-level mean effects
+    # (average across sequences to get one representative point per position)
+    pos_mean = (effects_df.groupby('position')
+                .agg(mean_effect=('effect', 'mean'),
+                     abs_mean=('abs_effect', 'mean'),
+                     amino_acid=('amino_acid', 'first'))
+                .reset_index()
+                .nlargest(top_n, 'abs_mean'))
 
-    for _, row in top_effects.iterrows():
-        # Add small random jitter for label positioning
-        jitter_y = np.random.normal(0, 2)
-
+    for _, row in pos_mean.iterrows():
+        sign = 1 if row['mean_effect'] >= 0 else -1
         ax.annotate(
             f"{row['amino_acid']}{int(row['position'])}",
-            xy=(row['position'], row['effect']),
-            xytext=(row['position'], row['effect'] + jitter_y + np.sign(row['effect']) * 10),
+            xy=(row['position'], row['mean_effect']),
+            xytext=(0, sign * 18),          # 18 pt offset in display space
+            textcoords='offset points',
             fontsize=8,
             ha='center',
-            va='bottom' if row['effect'] > 0 else 'top',
-            bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7, edgecolor='none'),
+            va='bottom' if sign > 0 else 'top',
+            bbox=dict(boxstyle='round,pad=0.2', facecolor='white',
+                      alpha=0.85, edgecolor='none'),
             arrowprops=dict(arrowstyle='->', color='black', alpha=0.5, lw=0.5)
         )
 
-    # Formatting
     ax.set_xlabel('Position', fontsize=12)
     ax.set_ylabel('Signed Gradient Effect', fontsize=12)
     ax.set_title('Signed Gradient Effects by Position', fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3)
-    ax.legend(loc='upper right')
-
-    # Set y-axis limits with some padding
-    y_min, y_max = effects_df['effect'].min(), effects_df['effect'].max()
-    y_range = y_max - y_min
-    ax.set_ylim(y_min - 0.1 * y_range, y_max + 0.1 * y_range)
+    ax.legend(loc='upper right', fontsize=9)
+    ax.set_ylim(y_min - 0.08 * y_range, y_max + 0.08 * y_range)
 
     plt.tight_layout()
-
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Signed gradient effects plot saved to {save_path}")
-
     plt.close()
 
 
