@@ -8,7 +8,7 @@
 #SBATCH --output=jobs/logs/slurm-%j.out
 
 # Change to project root (script lives in jobs/)
-cd "$(dirname "$0")/.." || exit 1
+cd /project/aip-bensl/ranaab/IGLOO || exit 1
 
 # 1. Load modules
 module load python/3.12 cuda/12.2

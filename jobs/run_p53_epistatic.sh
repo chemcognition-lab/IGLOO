@@ -3,12 +3,12 @@
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=128G
-#SBATCH --time=6:00:00
+#SBATCH --time=12:00:00
 #SBATCH --job-name=p53_epistatic
 #SBATCH --output=jobs/logs/slurm-%j.out
 
 # Change to project root (script lives in jobs/)
-cd "$(dirname "$0")/.." || exit 1
+cd /project/aip-bensl/ranaab/IGLOO || exit 1
 
 # 1. Load modules
 module load python/3.12 cuda/12.2
