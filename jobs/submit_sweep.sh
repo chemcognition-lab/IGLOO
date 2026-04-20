@@ -51,6 +51,7 @@ for PROTEIN in "${PROTEINS[@]}"; do
                 SBATCH_CMD=(
                     sbatch
                     --job-name="${JOB_NAME}"
+                    --output="jobs/logs/${JOB_NAME}_%j.out"
                     --gres="gpu:${GPU_TYPE[$PROTEIN]}:1"
                     --mem="${MEM[$PROTEIN]}"
                     --time="${TIME[$PROTEIN]}"

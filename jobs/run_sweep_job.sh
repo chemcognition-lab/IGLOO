@@ -12,7 +12,7 @@
 
 #SBATCH --account=aip-bensl
 #SBATCH --cpus-per-task=4
-#SBATCH --output=jobs/logs/slurm-%j.out
+# --output is set by submit_sweep.sh on the sbatch command line
 
 cd /project/aip-bensl/ranaab/IGLOO || exit 1
 
