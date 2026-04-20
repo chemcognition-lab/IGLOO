@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --account=aip-bensl
-#SBATCH --gres=gpu:l40s:1
+#SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=128G
+#SBATCH --mem=512G
 #SBATCH --time=12:00:00
 #SBATCH --job-name=p53_nonlinear
 #SBATCH --output=jobs/logs/slurm-%j.out
