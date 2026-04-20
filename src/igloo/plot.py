@@ -103,7 +103,7 @@ def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Opti
     plt.figure(figsize=(width, height))
     sns.heatmap(
         pivot_data,
-        cmap='RdBu_r',
+        cmap='RdBu',
         center=0,
         cbar_kws={'label': 'Integrated Gradient'},
         xticklabels=x_tick_labels,
@@ -632,13 +632,13 @@ def plot_signed_gradient_effects(
     if len(beneficial) > 0:
         jitter = np.random.normal(0, jitter_scale, len(beneficial))
         ax.scatter(beneficial['position'], beneficial['effect'] + jitter,
-                   c='coral', alpha=alpha, s=point_size, linewidths=0,
+                   c='steelblue', alpha=alpha, s=point_size, linewidths=0,
                    label=f'Beneficial ({len(beneficial):,} pos-sequence pairs)')
 
     if len(detrimental) > 0:
         jitter = np.random.normal(0, jitter_scale, len(detrimental))
         ax.scatter(detrimental['position'], detrimental['effect'] + jitter,
-                   c='steelblue', alpha=alpha, s=point_size, linewidths=0,
+                   c='coral', alpha=alpha, s=point_size, linewidths=0,
                    label=f'Detrimental ({len(detrimental):,} pos-sequence pairs)')
 
     ax.axhline(y=0, color='gray', linestyle='--', alpha=0.7, linewidth=1)
