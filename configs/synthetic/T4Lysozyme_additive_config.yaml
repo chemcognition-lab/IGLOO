@@ -44,7 +44,7 @@ analysis:
     custom_sequences: []
 
 results_dir: "results/synthetic/T4Lysozyme_additive_LINEAR"
-force_retrain: true
+force_retrain: false
 
 training:
   n_folds: 5
