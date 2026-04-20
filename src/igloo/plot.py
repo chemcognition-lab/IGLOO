@@ -115,15 +115,22 @@ def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Opti
     plt.close()
 
 
-def plot_variants_vs_wt_gradients(ig_results: dict[str, Any], save_path: Optional[str] = None) -> None:
+def plot_variants_vs_wt_gradients(ig_results: dict[str, Any], save_path: Optional[str] = None,
+                                   max_variants: int = 9) -> None:
     """
-    Plot gradient differences between variants and wild-type.
+    Plot gradient differences between a representative set of variants and wild-type.
+
+    When many sequences are present (e.g. include_all=True), selects up to
+    ``max_variants`` informative variants: the lowest-activity, highest-activity,
+    and median-activity sequences, plus those with the largest L2 gradient
+    deviation from WT.  This keeps the figure legible regardless of dataset size.
 
     Args:
         ig_results: Dictionary containing integrated gradients results
         save_path: Optional path to save the plot
+        max_variants: Maximum number of variant subplots to show (default 9)
     """
-    # Filter out special validation results keys that don't have sequence analysis data
+    # Filter out special/validation keys
     analysis_results = {name: result for name, result in ig_results.items()
                        if not name.startswith('_') and 'positions' in result}
 
@@ -131,52 +138,88 @@ def plot_variants_vs_wt_gradients(ig_results: dict[str, Any], save_path: Optiona
         print("No valid sequences found for variant comparison plotting.")
         return
 
-    # Find wildtype result - try common keys
+    # Find wildtype result
     wt_key = None
     for key in ['WT', 'Wildtype', 'wildtype', 'wt']:
         if key in analysis_results:
             wt_key = key
             break
-
     if wt_key is None:
-        # If no wildtype found, use the first result as reference
         wt_key = list(analysis_results.keys())[0]
 
     wt_result = analysis_results[wt_key]
     wt_gradients = wt_result['position_gradients']
 
-    # Check if we have any variants to compare (more than just wildtype)
-    variant_count = len([name for name in analysis_results.keys() if name != wt_key])
+    variants = {name: res for name, res in analysis_results.items() if name != wt_key}
 
-    if variant_count == 0:
+    if len(variants) == 0:
         print("Only wildtype sequence found, skipping variant comparison plot.")
         return
 
-    plt.figure(figsize=(15, 10))
-    plot_idx = 0
+    # --- Select a representative subset ---
+    if len(variants) <= max_variants:
+        selected = list(variants.keys())
+    else:
+        activities = {name: res['predicted_activity'] for name, res in variants.items()}
+        sorted_by_act = sorted(activities, key=activities.get)
 
-    for _i, (name, result) in enumerate(analysis_results.items()):
-        if name == wt_key:
-            continue
+        n_extreme = max(1, max_variants // 3)
+        # low / high activity extremes
+        bottom = sorted_by_act[:n_extreme]
+        top = sorted_by_act[-n_extreme:]
+        # median-ish
+        mid_idx = len(sorted_by_act) // 2
+        mid_half = n_extreme // 2
+        median = sorted_by_act[max(0, mid_idx - mid_half): mid_idx + mid_half + 1]
 
-        plot_idx += 1
-        plt.subplot(variant_count, 1, plot_idx)
+        # largest gradient deviation from WT
+        l2_dev = {name: float(np.linalg.norm(res['position_gradients'] - wt_gradients))
+                  for name, res in variants.items()}
+        sorted_by_dev = sorted(l2_dev, key=l2_dev.get, reverse=True)
+        top_dev = sorted_by_dev[:n_extreme]
+
+        seen = set()
+        selected = []
+        for name in bottom + top + median + top_dev:
+            if name not in seen:
+                seen.add(name)
+                selected.append(name)
+            if len(selected) >= max_variants:
+                break
+
+    n_plots = len(selected)
+    ncols = min(3, n_plots)
+    nrows = (n_plots + ncols - 1) // ncols
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 4 * nrows), squeeze=False)
+
+    for idx, name in enumerate(selected):
+        row, col = divmod(idx, ncols)
+        ax = axes[row][col]
+        result = variants[name]
         positions = result['positions']
         gradient_diff = result['position_gradients'] - wt_gradients
 
-        colors = ['red' if g < 0 else 'blue' for g in gradient_diff]
-        plt.bar(positions, gradient_diff, color=colors, alpha=0.7)
+        colors = ['red' if g < 0 else 'steelblue' for g in gradient_diff]
+        ax.bar(positions, gradient_diff, color=colors, alpha=0.75, width=0.8)
+        ax.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.6)
+        ax.set_xlabel('Position', fontsize=9)
+        ax.set_ylabel('ΔGradient (variant − WT)', fontsize=9)
+        act_v = result['predicted_activity']
+        act_wt = wt_result['predicted_activity']
+        ax.set_title(f'{name}\nact={act_v:.2f}  WT={act_wt:.2f}', fontsize=9)
+        ax.grid(True, alpha=0.2)
+        ax.tick_params(labelsize=8)
 
-        plt.xlabel('Position')
-        plt.ylabel('Gradient Difference from WT')
-        plt.title(f'{name} - WT (Activity: {result["predicted_activity"]:.1f} '
-                  f'vs {wt_result["predicted_activity"]:.1f})')
-        plt.grid(True, alpha=0.3)
-        plt.axhline(y=0, color='black', linestyle='-', alpha=0.5)
+    # Hide unused axes
+    for idx in range(n_plots, nrows * ncols):
+        row, col = divmod(idx, ncols)
+        axes[row][col].set_visible(False)
 
+    fig.suptitle('Gradient Difference from WT\n(representative variants)', fontsize=11)
     plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Variants vs WT gradients plot saved to {save_path}")
     plt.close()
 
