@@ -109,12 +109,15 @@ def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Opti
         xticklabels=x_tick_labels,
         yticklabels=show_ylabels,
     )
+    ax = plt.gca()
     plt.title(title)
     plt.xlabel('Position')
     plt.ylabel('Sequence')
     plt.xticks(rotation=90, fontsize=8)
     if show_ylabels:
         plt.yticks(fontsize=y_fontsize)
+    else:
+        ax.set_yticks([])
 
     plt.tight_layout()
     if save_path:
@@ -618,10 +621,7 @@ def plot_signed_gradient_effects(
 
     # Jitter scaled to ~1 % of the data range so points stay within the plot
     jitter_scale = 0.01 * y_range
-    # Reduce alpha and point size for dense datasets
     n_points = len(effects_df)
-    alpha = max(0.08, min(0.5, 500 / n_points))
-    point_size = max(4, min(20, 2000 / n_points))
 
     beneficial = effects_df[effects_df['effect'] > 0].copy()
     detrimental = effects_df[effects_df['effect'] < 0].copy()
@@ -629,15 +629,28 @@ def plot_signed_gradient_effects(
     fig, ax = plt.subplots(1, 1, figsize=figsize)
     np.random.seed(42)
 
-    if len(beneficial) > 0:
-        jitter = np.random.normal(0, jitter_scale, len(beneficial))
-        ax.scatter(beneficial['position'], beneficial['effect'] + jitter,
+    # For large datasets, downsample to avoid a saturated solid-colour blob
+    _SCATTER_MAX = 10_000
+    if n_points > _SCATTER_MAX:
+        sample_frac = _SCATTER_MAX / n_points
+        ben_plot = beneficial.sample(frac=sample_frac, random_state=42) if len(beneficial) > 0 else beneficial
+        det_plot = detrimental.sample(frac=sample_frac, random_state=42) if len(detrimental) > 0 else detrimental
+    else:
+        ben_plot = beneficial
+        det_plot = detrimental
+
+    alpha = 0.3
+    point_size = 8
+
+    if len(ben_plot) > 0:
+        jitter = np.random.normal(0, jitter_scale, len(ben_plot))
+        ax.scatter(ben_plot['position'], ben_plot['effect'] + jitter,
                    c='steelblue', alpha=alpha, s=point_size, linewidths=0,
                    label=f'Beneficial ({len(beneficial):,} pos-sequence pairs)')
 
-    if len(detrimental) > 0:
-        jitter = np.random.normal(0, jitter_scale, len(detrimental))
-        ax.scatter(detrimental['position'], detrimental['effect'] + jitter,
+    if len(det_plot) > 0:
+        jitter = np.random.normal(0, jitter_scale, len(det_plot))
+        ax.scatter(det_plot['position'], det_plot['effect'] + jitter,
                    c='coral', alpha=alpha, s=point_size, linewidths=0,
                    label=f'Detrimental ({len(detrimental):,} pos-sequence pairs)')
 
@@ -662,6 +675,7 @@ def plot_signed_gradient_effects(
             fontsize=8,
             ha='center',
             va='bottom' if sign > 0 else 'top',
+            annotation_clip=True,
             bbox=dict(boxstyle='round,pad=0.2', facecolor='white',
                       alpha=0.85, edgecolor='none'),
             arrowprops=dict(arrowstyle='->', color='black', alpha=0.5, lw=0.5)
