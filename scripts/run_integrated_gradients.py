@@ -58,12 +58,48 @@ class _Tee:
         return getattr(self._orig, name)
 
 
+def _apply_overrides(cfg: dict, overrides: list[str]) -> None:
+    """Merge dot-path key=value strings into cfg in-place.
+
+    Supports nested keys separated by dots, e.g.::
+
+        ig.interpolation_path=slerp
+        training.noise.label_noise_std=0.1
+        results_dir=results/myjob
+    """
+    def _cast(v: str):
+        if v.lower() in ('true', 'false'):
+            return v.lower() == 'true'
+        try:
+            return int(v)
+        except ValueError:
+            pass
+        try:
+            return float(v)
+        except ValueError:
+            pass
+        return v
+
+    for item in overrides:
+        if '=' not in item:
+            print(f"Warning: ignoring malformed override (no '='): {item}")
+            continue
+        dotpath, _, raw_val = item.partition('=')
+        keys = dotpath.split('.')
+        node = cfg
+        for k in keys[:-1]:
+            node = node.setdefault(k, {})
+        node[keys[-1]] = _cast(raw_val)
+
+
 class IntegratedGradientsRunner:
     """Unified runner for integrated gradients analysis with config support."""
 
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, overrides: list[str] | None = None):
         """Initialize the runner with a configuration file."""
         self.config = load_config(config_path)
+        if overrides:
+            _apply_overrides(self.config, overrides)
         validate_config(self.config)
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -570,6 +606,15 @@ Examples:
         help='Only validate the configuration file without running analysis'
     )
 
+    parser.add_argument(
+        'overrides',
+        nargs='*',
+        metavar='key.subkey=value',
+        help='Optional dot-path overrides applied on top of the config, e.g. '
+             'ig.interpolation_path=slerp  training.noise.label_noise_std=0.1  '
+             'results_dir=results/myjob'
+    )
+
     args = parser.parse_args()
 
     # Check if config file exists
@@ -578,8 +623,10 @@ Examples:
         sys.exit(1)
 
     try:
-        # Load and validate config
+        # Load and validate config (apply any CLI overrides first)
         config = load_config(args.config_path)
+        if args.overrides:
+            _apply_overrides(config, args.overrides)
         validate_config(config)
         print(f"Configuration file '{args.config_path}' is valid!")
 
@@ -588,7 +635,7 @@ Examples:
             return
 
         # Run analysis
-        runner = IntegratedGradientsRunner(args.config_path)
+        runner = IntegratedGradientsRunner(args.config_path, overrides=args.overrides)
         results = runner.run_complete_analysis()
 
         print("\nAnalysis completed successfully!")

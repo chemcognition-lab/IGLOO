@@ -1004,7 +1004,12 @@ def train_or_load_model(config, sequences, y, results_dir, device):
     model_config    = config['model']
     training_config = config.get('training', {})
     n_folds         = int(training_config.get('n_folds', 1))
-    training_model_path = os.path.join(results_dir, f"{config['data']['name']}_training_model.pth")
+    # model_dir defaults to results_dir but can be overridden to share a trained
+    # model across multiple runs (e.g. different interpolation paths at the same
+    # noise level).
+    model_dir = config.get('model_dir', results_dir)
+    os.makedirs(model_dir, exist_ok=True)
+    training_model_path = os.path.join(model_dir, f"{config['data']['name']}_training_model.pth")
 
     # Get embedding dimensions
     print("Getting embedding dimensions...")
