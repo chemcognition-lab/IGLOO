@@ -2,6 +2,8 @@
 #SBATCH --account=aip-bensl
 #SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=4
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=ranamoneim@gmail.com
 #SBATCH --mem=512G
 #SBATCH --time=12:00:00
 #SBATCH --job-name=p53_additive

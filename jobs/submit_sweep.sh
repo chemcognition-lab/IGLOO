@@ -15,9 +15,20 @@
 set -euo pipefail
 
 DRY_RUN=false
-if [[ "${1:-}" == "--dry-run" ]]; then
-    DRY_RUN=true
+EMAIL="ranamoneim@gmail.com"  # override with --email=other@address.com
+
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=true ;;
+        --email=*) EMAIL="${arg#--email=}" ;;
+    esac
+done
+
+if $DRY_RUN; then
     echo "[dry-run] No jobs will actually be submitted."
+fi
+if [[ -n "$EMAIL" ]]; then
+    echo "[notify] Job completion/failure emails will be sent to: ${EMAIL}"
 fi
 
 # ── Sweep axes ────────────────────────────────────────────────────────────────
@@ -56,8 +67,11 @@ for PROTEIN in "${PROTEINS[@]}"; do
                     --mem="${MEM[$PROTEIN]}"
                     --time="${TIME[$PROTEIN]}"
                     --export="PROTEIN=${PROTEIN},DATA_MODEL=${DATA_MODEL},INTERP=${INTERP},NOISE=${NOISE}"
-                    jobs/run_sweep_job.sh
                 )
+                if [[ -n "$EMAIL" ]]; then
+                    SBATCH_CMD+=(--mail-type=END,FAIL --mail-user="${EMAIL}")
+                fi
+                SBATCH_CMD+=(jobs/run_sweep_job.sh)
 
                 if $DRY_RUN; then
                     echo "[dry-run] ${SBATCH_CMD[*]}"
