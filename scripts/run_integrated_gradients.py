@@ -95,12 +95,28 @@ def _apply_overrides(cfg: dict, overrides: list[str]) -> None:
 class IntegratedGradientsRunner:
     """Unified runner for integrated gradients analysis with config support."""
 
+
     def __init__(self, config_path: str, overrides: list[str] | None = None):
         """Initialize the runner with a configuration file."""
+        import random
         self.config = load_config(config_path)
         if overrides:
             _apply_overrides(self.config, overrides)
         validate_config(self.config)
+
+        # Set global random seeds for reproducibility
+        seed = self.config.get('training', {}).get('seed', 42)
+        try:
+            import numpy as np
+            import torch
+            np.random.seed(seed)
+            random.seed(seed)
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+            print(f"Global random seed set to {seed}")
+        except Exception as e:
+            print(f"[Warning] Could not set all random seeds: {e}")
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {self.device}")

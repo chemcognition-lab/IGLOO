@@ -47,6 +47,7 @@ results_dir: "results/synthetic/p53_nonlinear_LINEAR"
 force_retrain: false
 
 training:
+  seed: 42
   n_folds: 5
   test_fraction: 0.20
   split_seed: 42

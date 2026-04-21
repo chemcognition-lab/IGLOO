@@ -45,9 +45,10 @@ analysis:
     custom_sequences: []
 
 results_dir: "results/synthetic/GB1_additive_LINEAR"
-force_retrain: false
+force_retrain: true
 
 training:
+  seed: 42
   n_folds: 5
   test_fraction: 0.20
   split_seed: 42
