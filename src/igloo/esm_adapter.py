@@ -123,7 +123,7 @@ class ESMCBackend:
         key = "_".join(parts)  # e.g. esmc_300m
 
         print(f"Loading ESM-C model {key}...")
-        client = ESMC.from_pretrained(key).to(device)
+        client = ESMC.from_pretrained(key).to(device).float()  # force float32 to avoid bfloat16 NaN overflow
         client.eval()
         return cls(client, model_name)
 
