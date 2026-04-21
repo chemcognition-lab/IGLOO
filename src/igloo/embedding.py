@@ -1,4 +1,5 @@
 import os
+import tempfile
 from pathlib import Path
 
 import torch
@@ -107,7 +108,19 @@ def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA', subd
                 f"overflow for long sequences. Ensure the ESM adapter returns "
                 f"float32 tensors (check esm_adapter.py)."
             )
-        save_file({"embedding": emb}, str(batch_file))
+        # Atomic write: write to a temp file then rename so concurrent jobs
+        # don't corrupt a partially-written cache file (POSIX rename is atomic).
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=emb_dir, suffix=".tmp")
+        try:
+            os.close(tmp_fd)
+            save_file({"embedding": emb}, tmp_path)
+            os.replace(tmp_path, str(batch_file))
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
         embeddings.append(emb)
 
     # Handle variable sequence lengths by padding to max length
