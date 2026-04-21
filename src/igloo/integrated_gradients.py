@@ -100,7 +100,8 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 attribution_method=attribution_method,
                 completeness_threshold=completeness_threshold,
                 max_sequences=completeness_config.get('max_sequences_to_validate', None),
-                embeddings_subdir=embeddings_subdir
+                embeddings_subdir=embeddings_subdir,
+                esm_backend=esm_backend,
             )
 
             # Store validation results for later reporting
