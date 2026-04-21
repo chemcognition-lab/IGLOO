@@ -54,20 +54,26 @@ def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA', subd
     if all(f.exists() for f in batch_files):
         for f in batch_files:
             emb = load_file(str(f))["embedding"]
+            if torch.isnan(emb).any():
+                print(f"WARNING: NaN detected in cached embeddings {f.name} — deleting corrupt file.")
+                f.unlink()
+                break  # fall through to the recompute path below
             embeddings.append(emb)
-        # Handle variable sequence lengths by padding to max length
-        if embeddings:
-            max_len = max(emb.shape[1] for emb in embeddings)
-            padded_embeddings = []
-            for emb in embeddings:
-                if emb.shape[1] < max_len:
-                    # Pad with zeros to match max length
-                    padding = torch.zeros(emb.shape[0], max_len - emb.shape[1], emb.shape[2])
-                    emb = torch.cat([emb, padding], dim=1)
-                padded_embeddings.append(emb)
-            return torch.cat(padded_embeddings, dim=0).numpy()
         else:
-            return torch.empty(0).numpy()
+            # All files loaded without NaN — fast return
+            if embeddings:
+                max_len = max(emb.shape[1] for emb in embeddings)
+                padded_embeddings = []
+                for emb in embeddings:
+                    if emb.shape[1] < max_len:
+                        padding = torch.zeros(emb.shape[0], max_len - emb.shape[1], emb.shape[2])
+                        emb = torch.cat([emb, padding], dim=1)
+                    padded_embeddings.append(emb)
+                return torch.cat(padded_embeddings, dim=0).numpy()
+            else:
+                return torch.empty(0).numpy()
+        # Reset for recompute path
+        embeddings = []
 
     # Only initialise a backend if needed (cache miss present and none supplied)
     _backend = None
@@ -93,6 +99,14 @@ def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA', subd
         emb_np = _backend.get_sequence_embeddings(batch_seqs, layer=layer,
                                                    batch_size=len(batch_seqs))
         emb = torch.from_numpy(emb_np)  # (batch, L, D)
+        if torch.isnan(emb).any():
+            nan_count = torch.isnan(emb).sum().item()
+            raise RuntimeError(
+                f"ESM produced NaN embeddings for batch {start}-{end-1} "
+                f"({nan_count} NaN values). This typically indicates a bfloat16 "
+                f"overflow for long sequences. Ensure the ESM adapter returns "
+                f"float32 tensors (check esm_adapter.py)."
+            )
         save_file({"embedding": emb}, str(batch_file))
         embeddings.append(emb)
 
