@@ -17,13 +17,24 @@ from scipy import stats
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
+def _safe_filename(name: str) -> str:
+    """Convert a sequence name to a safe filename by replacing non-alphanumeric chars."""
+    import re
+    return re.sub(r'[^\w\-]', '_', name)
+
+
 def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[str] = None) -> None:
     """
     Plot integrated gradients for multiple sequences.
 
+    Each sequence is saved as its own PNG inside a ``_per_sequence/`` subdirectory
+    derived from *save_path*.  This avoids generating a single enormous stacked
+    figure (which could be hundreds of MB for large proteins / many sequences).
+
     Args:
         results_dict: Dictionary containing analysis results for each sequence
-        save_path: Optional path to save the plot
+        save_path: Base path for output.  Individual files are written to
+            ``<save_path without .png>_per_sequence/<sequence_name>.png``.
     """
     # Filter out special validation results keys that don't have sequence analysis data
     analysis_results = {name: result for name, result in results_dict.items()
@@ -34,40 +45,61 @@ def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[
         print("No valid sequences found for plotting.")
         return
 
-    fig, axes = plt.subplots(n_sequences, 1, figsize=(20, 4 * n_sequences))
+    # Derive per-sequence output directory from save_path
+    if save_path:
+        base = save_path[:-4] if save_path.endswith('.png') else save_path
+        save_dir = base + '_per_sequence'
+        os.makedirs(save_dir, exist_ok=True)
+    else:
+        save_dir = None
 
-    if n_sequences == 1:
-        axes = [axes]
-
-    for idx, (name, result) in enumerate(analysis_results.items()):
-        ax = axes[idx]
+    saved_paths = []
+    for name, result in analysis_results.items():
         positions = result['positions']
         gradients = result['position_gradients']
         amino_acids = result['amino_acids']
 
-        # Create bar plot
-        colors = ['red' if g < 0 else 'blue' for g in gradients]
-        ax.bar(positions, gradients, color=colors, alpha=0.7)
+        # Figure width scales with sequence length; height is fixed
+        n_pos = len(positions)
+        fig_width = max(12, min(n_pos * 0.15, 40))
 
-        # Add amino acid labels
+        fig, ax = plt.subplots(1, 1, figsize=(fig_width, 3.5))
+
+        # Bar plot: blue = positive contribution, red = negative
+        colors = ['#2166ac' if g >= 0 else '#d6604d' for g in gradients]
+        ax.bar(positions, gradients, color=colors, alpha=0.8, width=0.8)
+
+        # Label the top-10% magnitude positions
+        threshold = np.percentile(np.abs(gradients), 90)
         for pos, aa, grad in zip(positions, amino_acids, gradients):
-            if abs(grad) > np.percentile(np.abs(gradients), 90):  # Label top 10% gradients
-                ax.text(pos, grad + np.sign(grad) * 0.01 * max(np.abs(gradients)),
-                       aa, ha='center', va='bottom' if grad > 0 else 'top',
-                       fontweight='bold', fontsize=8)
+            if abs(grad) >= threshold:
+                offset = np.sign(grad) * 0.015 * max(np.abs(gradients), default=1)
+                ax.text(pos, grad + offset, aa,
+                        ha='center', va='bottom' if grad >= 0 else 'top',
+                        fontweight='bold', fontsize=7)
 
-        ax.set_xlabel('Position')
-        ax.set_ylabel('Integrated Gradient')
-        ax.set_title(f'{name}\nPredicted: {result["predicted_activity"]:.3f}, '
-                    f'Effect vs Baseline: {result["effect_vs_baseline"]:.3f}')
-        ax.grid(True, alpha=0.3)
-        ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
+        ax.set_xlabel('Position', fontsize=9)
+        ax.set_ylabel('Integrated Gradient', fontsize=9)
+        ax.set_title(
+            f'{name}   |   Predicted: {result["predicted_activity"]:.3f}'
+            f'   |   Effect vs Baseline: {result["effect_vs_baseline"]:.3f}',
+            fontsize=9,
+        )
+        ax.tick_params(labelsize=8)
+        ax.grid(True, alpha=0.25, axis='y')
+        ax.axhline(y=0, color='black', linewidth=0.8, alpha=0.6)
+        ax.spines[['top', 'right']].set_visible(False)
 
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Integrated gradients plot saved to {save_path}")
-    plt.close()
+        plt.tight_layout()
+
+        if save_dir:
+            out_path = os.path.join(save_dir, f'{_safe_filename(name)}.png')
+            plt.savefig(out_path, dpi=120, bbox_inches='tight')
+            saved_paths.append(out_path)
+        plt.close(fig)
+
+    if saved_paths:
+        print(f"Integrated gradients plots saved: {len(saved_paths)} files in {save_dir}")
 
 
 def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Optional[str] = None) -> None:
