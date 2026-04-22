@@ -9,7 +9,7 @@ _DEFAULT_ESM_MODEL = 'esmc_300m'
 
 
 def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA', subdir=None,
-                   esm_backend=None, esm_model_name=_DEFAULT_ESM_MODEL):
+                   esm_backend=None, esm_model_name=_DEFAULT_ESM_MODEL, device=None):
     """
     Return ESM embeddings for *sequences*, using a disk cache under data/embeddings/.
 
@@ -54,7 +54,7 @@ def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA', subd
     # If all batch files exist, load and return them (skip ESM model)
     if all(f.exists() for f in batch_files):
         for f in batch_files:
-            emb = load_file(str(f))["embedding"]
+            emb = load_file(str(f))["embedding"].clone()  # .clone() breaks mmap backing
             if torch.isnan(emb).any():
                 print(f"WARNING: NaN detected in cached embeddings {f.name} — deleting corrupt file.")
                 f.unlink()
@@ -84,7 +84,7 @@ def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA', subd
         end = min(i + batch_size, n)
         batch_file = emb_dir / f"{dataset_name}_embeddings_batch_{start}_{end-1}.safetensors"
         if batch_file.exists():
-            emb = load_file(str(batch_file))["embedding"]
+            emb = load_file(str(batch_file))["embedding"].clone()  # .clone() breaks mmap backing
             embeddings.append(emb)
             continue
 
@@ -94,7 +94,10 @@ def get_embeddings(sequences, layer=33, batch_size=16, dataset_name='PafA', subd
                 _backend = esm_backend
             else:
                 from .esm_adapter import load_esm_backend  # lazy import
-                _backend = load_esm_backend(esm_model_name, torch.device('cpu'))
+                _device = device if device is not None else (
+                    torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+                )
+                _backend = load_esm_backend(esm_model_name, _device)
 
         batch_seqs = sequences[start:end]
         emb_np = _backend.get_sequence_embeddings(batch_seqs, layer=layer,

@@ -190,6 +190,7 @@ def train_model_with_embeddings(
         dataset_name=f"{dataset_name}_train",
         subdir=embeddings_subdir,
         esm_model_name=esm_model_name,
+        device=device,
     )
 
     val_embeddings = None
@@ -202,6 +203,7 @@ def train_model_with_embeddings(
             dataset_name=f"{dataset_name}_val",
             subdir=embeddings_subdir,
             esm_model_name=esm_model_name,
+            device=device,
         )
 
     # Compute global normalization parameters for IG analysis (but don't use them for training)
@@ -1021,6 +1023,7 @@ def train_or_load_model(config, sequences, y, results_dir, device):
         dataset_name=f"{config['data']['name']}_sample",
         subdir=embeddings_subdir,
         esm_model_name=esm_model_name,
+        device=device,
     )
     L, D = sample_embeddings.shape[1], sample_embeddings.shape[2]
 
@@ -1380,6 +1383,7 @@ def kfold_cv_and_train(
         dataset_name=f"{dataset_name}_integrated_gradients_train",
         subdir=embeddings_subdir,
         esm_model_name=esm_model_name,
+        device=device,
     )
     L, D = int(all_embeddings.shape[1]), int(all_embeddings.shape[2])
 

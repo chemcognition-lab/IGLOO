@@ -317,6 +317,7 @@ def evaluate_model_performance(
         dataset_name=embedding_cache_name,
         subdir=embeddings_subdir,
         esm_model_name=esm_model_name,
+        device=device,
     )
 
     # Evaluate using DataLoader

@@ -123,7 +123,14 @@ class ESMCBackend:
         key = "_".join(parts)  # e.g. esmc_300m
 
         print(f"Loading ESM-C model {key}...")
-        client = ESMC.from_pretrained(key).to(device).float()  # force float32 to avoid bfloat16 NaN overflow
+        client = ESMC.from_pretrained(key)
+        # Materialize all mmap-backed parameters into real CPU RAM before moving
+        # to device.  Without this, safetensors leaves tensors backed by a memory-
+        # mapped file handle; on network filesystems (Lustre, NFS) the first
+        # dereference of that mapping raises SIGBUS ("Bus error").
+        for p in client.parameters():
+            p.data = p.data.clone()
+        client = client.to(device).float()  # force float32 to avoid bfloat16 NaN overflow
         client.eval()
         return cls(client, model_name)
 
