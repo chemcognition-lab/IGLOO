@@ -123,7 +123,20 @@ class ESMCBackend:
         key = "_".join(parts)  # e.g. esmc_300m
 
         print(f"Loading ESM-C model {key}...")
-        client = ESMC.from_pretrained(key).to(device)
+        client = ESMC.from_pretrained(key)
+        # Materialize all mmap-backed tensors into real CPU RAM before moving
+        # to device.  Without this, safetensors leaves tensors backed by a memory-
+        # mapped file handle; on network filesystems (Lustre, NFS) the first
+        # dereference of that mapping raises SIGBUS ("Bus error").
+        # Must cover both parameters() AND buffers() — the latter includes embedding
+        # tables and positional encodings that are registered via register_buffer().
+        for p in client.parameters():
+            p.data = p.data.clone()
+        for module in client.modules():
+            for buf_name, buf in module._buffers.items():
+                if buf is not None:
+                    module._buffers[buf_name] = buf.clone()
+        client = client.to(device).float()  # force float32 to avoid bfloat16 NaN overflow
         client.eval()
         return cls(client, model_name)
 
@@ -146,7 +159,9 @@ class ESMCBackend:
                     LogitsConfig(sequence=True, return_embeddings=True),
                 )
             # ESM-C embeddings are already (1, L, D) — no BOS/EOS tokens in output
-            emb = logits_output.embeddings.cpu()  # (1, L, D)
+            # Cast to float32 before moving to CPU: bfloat16 on H100 can produce
+            # NaN for long sequences due to softmax overflow.
+            emb = logits_output.embeddings.float().cpu()  # (1, L, D)
             all_embs.append(emb)
 
         return _concat_with_padding(all_embs)
