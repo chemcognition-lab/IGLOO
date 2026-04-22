@@ -420,6 +420,30 @@ class IntegratedGradientsRunner:
             self.config, results_dir, self.wt_seq, self.final_model
         )
 
+    def _zip_per_sequence_dirs(self, results_dir: str) -> None:
+        """Zip any *_per_sequence directories in results_dir and remove the originals."""
+        import zipfile
+        import glob
+
+        pattern = os.path.join(results_dir, '*_per_sequence')
+        dirs = [p for p in glob.glob(pattern) if os.path.isdir(p)]
+        if not dirs:
+            return
+
+        for dir_path in dirs:
+            zip_path = dir_path + '.zip'
+            print(f"Zipping {os.path.basename(dir_path)} → {os.path.basename(zip_path)} ...", end=' ', flush=True)
+            with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+                for root, _, files in os.walk(dir_path):
+                    for fname in files:
+                        fpath = os.path.join(root, fname)
+                        arcname = os.path.relpath(fpath, os.path.dirname(dir_path))
+                        zf.write(fpath, arcname)
+            # Remove original directory only after successful zip
+            import shutil
+            shutil.rmtree(dir_path)
+            print("done")
+
     def _write_timing_report(self, timing: dict, results_dir: str) -> None:
         """Write a timing summary to a .txt file in the results directory."""
         os.makedirs(results_dir, exist_ok=True)
@@ -551,6 +575,8 @@ class IntegratedGradientsRunner:
             _t = time.perf_counter()
             if ig_results:
                 self.create_visualizations_and_exports(ig_results, eval_results)
+            # Zip per-sequence plot directories to save inodes/space
+            self._zip_per_sequence_dirs(results_dir)
             timing['visualizations'] = time.perf_counter() - _t
 
             timing['end_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')

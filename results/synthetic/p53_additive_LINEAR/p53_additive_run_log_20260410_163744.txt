@@ -1,8 +1,0 @@
-============================================================
-INTEGRATED GRADIENTS ANALYSIS PIPELINE
-============================================================
-Config file: Unknown
-Device: cuda
-
-Loading data from /project/6111759/shared/IGLOO/data/synthetic/p53_additive.csv
-Error during analysis: [Errno 2] No such file or directory: '/project/6111759/shared/IGLOO/data/synthetic/p53_additive.csv'

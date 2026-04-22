@@ -9,8 +9,8 @@
 #   bash jobs/submit_sweep.sh --protein=GB1    # submit only one protein
 #
 # Per-protein SLURM resources:
-#   GB1        → L40s GPU, 128 GB RAM, 3 h
-#   T4Lysozyme → L40s GPU, 256 GB RAM, 8 h
+#   GB1        → H100 GPU, 128 GB RAM, 3 h
+#   T4Lysozyme → H100 GPU, 256 GB RAM, 8 h
 #   p53        → H100 GPU, 512 GB RAM, 12 h
 
 set -euo pipefail
@@ -45,9 +45,9 @@ INTERP_PATHS=(linear slerp nearest_neighbor)
 NOISE_LEVELS=(0.0 0.05 0.1 0.3 0.5 0.8 1.0)
 
 # ── Per-protein resource specs ────────────────────────────────────────────────
-declare -A GPU_TYPE=( [GB1]="l40s" [T4Lysozyme]="l40s" [p53]="h100" )
+declare -A GPU_TYPE=( [GB1]="h100" [T4Lysozyme]="h100" [p53]="h100" )
 declare -A MEM=(      [GB1]="128G" [T4Lysozyme]="256G"  [p53]="512G" )
-declare -A TIME=(     [GB1]="3:00:00" [T4Lysozyme]="8:00:00" [p53]="12:00:00" )
+declare -A TIME=(     [GB1]="3:00:00" [T4Lysozyme]="3:00:00" [p53]="6:00:00" )
 
 # ── Submit ────────────────────────────────────────────────────────────────────
 total=0

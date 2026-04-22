@@ -1,2 +1,0 @@
-training_size,test_size,esm_layer,pooling_method,loss_type,target_mean,target_std,train_r2,train_pearson_r,train_spearman_rho,test_r2,test_pearson_r,test_spearman_rho
-4678,520,33,esm_attention,huber,0.74024844,0.31631538,0.979458749294281,0.989679,0.9657105461317904,0.791806697845459,0.89045763,0.8666790132101201

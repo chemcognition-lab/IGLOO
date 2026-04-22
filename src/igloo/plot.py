@@ -104,27 +104,38 @@ def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[
 
 def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Optional[str] = None) -> None:
     """
-    Create a heatmap of gradients across sequences.
+    Create two separate figures from the gradient data:
 
-    Y-axis (sequences) labels are suppressed when there are more than 50
-    sequences — showing thousands of tiny labels makes the axis unreadable.
-    Figure height is capped so the file stays manageable.
+    Figure 1 — Main heatmap (saved to *save_path*):
+        One row per sequence, diverging RdBu colormap.
+
+    Figure 2 — Summary heatmap (saved to *<stem>_summary.<ext>*):
+        Two stacked rows: mean gradient per position (RdBu) and SD per
+        position (YlOrRd), sharing the same x-axis.
+
+    Y-axis labels in the main heatmap are suppressed when there are more than
+    50 sequences. Figure height is capped so the file stays manageable.
 
     Args:
         results_df: DataFrame with columns ['sequence_name', 'position', 'integrated_gradient']
-        title: Title for the heatmap
-        save_path: Optional path to save the plot
+        title: Title for the main heatmap
+        save_path: Optional path to save the main heatmap figure
     """
+    import os
+
     pivot_data = results_df.pivot(index='sequence_name', columns='position', values='integrated_gradient')
 
     num_positions = len(pivot_data.columns)
     num_sequences = len(pivot_data)
 
-    # Width scales with positions; height capped to keep file sizes sane
-    width = max(20, num_positions * 0.12)
-    height = min(max(6, num_sequences * 0.12), 30)
+    # Summary statistics (shape: 1 × positions)
+    mean_row = pivot_data.mean(axis=0).values.reshape(1, -1)
+    sd_row   = pivot_data.std(axis=0).values.reshape(1, -1)
 
-    # Show y-labels only when there are few enough sequences to be legible
+    width = max(20, num_positions * 0.12)
+    main_height = min(max(6, num_sequences * 0.12), 30)
+    summary_row_height = max(0.8, width * 0.04)
+
     show_ylabels = num_sequences <= 50
     y_fontsize = max(4, min(9, 400 // num_sequences)) if show_ylabels else 0
 
@@ -132,30 +143,85 @@ def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Opti
     x_tick_labels = [str(pos) if i % x_tick_frequency == 0 else ''
                      for i, pos in enumerate(pivot_data.columns)]
 
-    plt.figure(figsize=(width, height))
+    # Shared diverging scale for main heatmap and mean row
+    finite_vals = pivot_data.values[np.isfinite(pivot_data.values)]
+    vabs = max(abs(finite_vals.min()), abs(finite_vals.max())) if len(finite_vals) else 1.0
+    vabs = vabs if vabs > 0 else 1.0
+
+    # ── Figure 1: Main heatmap ───────────────────────────────────────────────
+    fig1, ax_main = plt.subplots(figsize=(width, main_height))
     sns.heatmap(
         pivot_data,
+        ax=ax_main,
         cmap='RdBu',
         center=0,
+        vmin=-vabs,
+        vmax=vabs,
         cbar_kws={'label': 'Integrated Gradient'},
         xticklabels=x_tick_labels,
         yticklabels=show_ylabels,
     )
-    ax = plt.gca()
-    plt.title(title)
-    plt.xlabel('Position')
-    plt.ylabel('Sequence')
-    plt.xticks(rotation=90, fontsize=8)
+    ax_main.set_title(title)
+    ax_main.set_xlabel('Position')
+    ax_main.set_ylabel('Sequence')
+    ax_main.tick_params(axis='x', labelsize=8, rotation=90)
     if show_ylabels:
-        plt.yticks(fontsize=y_fontsize)
+        ax_main.tick_params(axis='y', labelsize=y_fontsize)
     else:
-        ax.set_yticks([])
+        ax_main.set_yticks([])
 
-    plt.tight_layout()
+    fig1.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        fig1.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Gradient heatmap saved to {save_path}")
-    plt.close()
+    plt.close(fig1)
+
+    # ── Figure 2: Mean + SD summary ──────────────────────────────────────────
+    fig2, (ax_mean, ax_sd) = plt.subplots(
+        2, 1,
+        figsize=(width, 2 * summary_row_height + 0.5),
+        gridspec_kw={'height_ratios': [1, 1], 'hspace': 0.5},
+    )
+
+    sns.heatmap(
+        mean_row,
+        ax=ax_mean,
+        cmap='RdBu',
+        center=0,
+        vmin=-vabs,
+        vmax=vabs,
+        cbar_kws={'label': 'Mean IG'},
+        xticklabels=x_tick_labels,
+        yticklabels=['Mean'],
+    )
+    ax_mean.set_title('Mean Integrated Gradient per Position', fontsize=10)
+    ax_mean.set_xlabel('')
+    ax_mean.tick_params(axis='x', labelsize=7, rotation=90)
+    ax_mean.tick_params(axis='y', labelsize=8)
+
+    sd_max = float(np.nanmax(sd_row)) if np.nanmax(sd_row) > 0 else 1.0
+    sns.heatmap(
+        sd_row,
+        ax=ax_sd,
+        cmap='YlOrRd',
+        vmin=0,
+        vmax=sd_max,
+        cbar_kws={'label': 'SD'},
+        xticklabels=x_tick_labels,
+        yticklabels=['SD'],
+    )
+    ax_sd.set_title('Standard Deviation of Integrated Gradient per Position', fontsize=10)
+    ax_sd.set_xlabel('Position')
+    ax_sd.tick_params(axis='x', labelsize=7, rotation=90)
+    ax_sd.tick_params(axis='y', labelsize=8)
+
+    fig2.tight_layout()
+    if save_path:
+        base, ext = os.path.splitext(save_path)
+        summary_path = f"{base}_summary{ext}"
+        fig2.savefig(summary_path, dpi=150, bbox_inches='tight')
+        print(f"Gradient summary heatmap saved to {summary_path}")
+    plt.close(fig2)
 
 
 def plot_variants_vs_wt_gradients(ig_results: dict[str, Any], save_path: Optional[str] = None,
@@ -880,7 +946,7 @@ def plot_averaged_gradient_effects_comparison(
     plot_effects(
         ax1, top_effects,
         f'Top {top_n} Sequences (Avg Activity: {top_avg_activity:.2f})',
-        {'beneficial': 'orangered', 'detrimental': 'darkblue'}
+        {'beneficial': 'steelblue', 'detrimental': 'orangered'}
     )
 
     # Plot bottom sequences (use cooler colors)
@@ -888,7 +954,7 @@ def plot_averaged_gradient_effects_comparison(
     plot_effects(
         ax2, bottom_effects,
         f'Bottom {bottom_n} Sequences (Avg Activity: {bottom_avg_activity:.2f})',
-        {'beneficial': 'coral', 'detrimental': 'steelblue'}
+        {'beneficial': 'steelblue', 'detrimental': 'coral'}
     )
 
     plt.suptitle('Signed Gradient Effects: High vs Low Activity Sequences',
