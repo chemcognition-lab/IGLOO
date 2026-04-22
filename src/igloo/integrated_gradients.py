@@ -23,7 +23,8 @@ _DEFAULT_ESM_MODEL = 'esmc_300m'
 
 
 def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, sequences,
-                                     final_model, results_dir, device, y_log_mean, y_log_std):
+                                     final_model, results_dir, device, y_log_mean, y_log_std,
+                                     trainval_sequences=None, test_sequences=None):
     """Run the integrated gradients analysis"""
     print_analysis_sections("PERFORMING INTEGRATED GRADIENTS ANALYSIS")
 
@@ -49,23 +50,47 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
     interpolation_path = ig_config.get('interpolation_path', 'linear')  # 'linear' | 'slerp' | 'nearest_neighbor' | 'guided_ig'
     plot_umap = ig_config.get('plot_interpolation_umap', False)
 
-    # For nearest_neighbor paths, pre-load all training embeddings so
-    # _compute_path_integral can ground each integration step in real data.
-    training_embeddings: torch.Tensor | None = None
-    if interpolation_path == 'nearest_neighbor':
-        print("Loading training embeddings for nearest-neighbor interpolation path...")
-        esm_layer = model_config['esm_layer']
-        train_emb_np = get_embeddings(
-            sequences,
+    # Pre-load ALL training embeddings from the existing disk cache into a
+    # sequence → embedding lookup, so the per-sequence get_embeddings calls
+    # inside analyze_sequence_with_integrated_gradients can skip ESM inference.
+    # Use trainval_sequences if provided — their embeddings live under the
+    # training cache name and the batch boundaries match exactly.
+    _lookup_seqs = trainval_sequences if trainval_sequences is not None else sequences
+    print(f"Building sequence embedding lookup from training cache ({len(_lookup_seqs)} sequences)...")
+    esm_layer = model_config['esm_layer']
+    _train_cache_name = f"{config['data']['name']}_integrated_gradients"
+    train_emb_np = get_embeddings(
+        _lookup_seqs,
+        layer=esm_layer,
+        batch_size=model_config.get('batch_size', 16),
+        dataset_name=_train_cache_name,
+        subdir=embeddings_subdir,
+        esm_backend=esm_backend,
+    )  # (N, L, D) numpy array
+    embedding_lookup: dict = {seq: train_emb_np[i : i + 1] for i, seq in enumerate(_lookup_seqs)}
+
+    # Also pull in test-set embeddings from their evaluation cache.
+    if test_sequences:
+        print(f"  Adding test-set embeddings to lookup ({len(test_sequences)} sequences)...")
+        _test_cache_name = f"{config['data']['name']}_integrated_gradients_test"
+        test_emb_np = get_embeddings(
+            test_sequences,
             layer=esm_layer,
-            batch_size=ig_config.get('batch_size', 10),
-            dataset_name=config['data']['name'],
+            batch_size=model_config.get('batch_size', 16),
+            dataset_name=_test_cache_name,
             subdir=embeddings_subdir,
             esm_backend=esm_backend,
-        )  # (N, L, D) numpy array
+        )
+        for i, seq in enumerate(test_sequences):
+            embedding_lookup[seq] = test_emb_np[i : i + 1]
+
+    print(f"  Embedding lookup ready: {len(embedding_lookup)} sequences")
+
+    # For nearest_neighbor paths, also expose the full tensor for path grounding.
+    training_embeddings: torch.Tensor | None = None
+    if interpolation_path == 'nearest_neighbor':
         training_embeddings = torch.from_numpy(train_emb_np).float()
-        print(f"  Loaded {training_embeddings.shape[0]} training embeddings "
-              f"(shape {tuple(training_embeddings.shape)})")
+        print(f"  Training embeddings tensor for nearest-neighbour path: {tuple(training_embeddings.shape)}")
 
     # Check if completeness validation is enabled
     completeness_config = ig_config.get('completeness_validation', {})
@@ -151,6 +176,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 ),
                 training_embeddings=training_embeddings,
                 _esm_backend=esm_backend,
+                embedding_lookup=embedding_lookup,
             )
             ig_results[name] = result
             print_ig_sequence_results(name, actual_activity, result, None)

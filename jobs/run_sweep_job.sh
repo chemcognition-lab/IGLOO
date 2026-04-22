@@ -16,7 +16,8 @@
 #SBATCH --mail-user=ranamoneim@gmail.com
 # --output is set by submit_sweep.sh on the sbatch command line
 
-cd /project/aip-bensl/ranaab/IGLOO || exit 1
+cd /scratch/ranaab/IGLOO || exit 1
+
 
 module load python/3.12 cuda/12.2
 source IGLOO_env/bin/activate
@@ -34,9 +35,14 @@ echo "  model_dir : ${MODEL_DIR}"
 echo "  results   : ${RESULTS_DIR}"
 echo "=========================================="
 
+# Redirect HuggingFace cache to local node storage to avoid mmap bus errors
+# on network filesystems (Lustre/GPFS on /scratch does not support mmap).
+export HF_HOME="/tmp/hf_cache_${SLURM_JOB_ID}"
+export TRANSFORMERS_CACHE="${HF_HOME}"
+
 python scripts/run_integrated_gradients.py "${BASE_CONFIG}" \
     ig.interpolation_path="${INTERP}" \
     training.noise.label_noise_std="${NOISE}" \
     model_dir="${MODEL_DIR}" \
     results_dir="${RESULTS_DIR}" \
-    force_retrain=false
+    force_retrain=true

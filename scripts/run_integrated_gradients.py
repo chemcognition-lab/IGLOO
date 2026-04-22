@@ -396,7 +396,9 @@ class IntegratedGradientsRunner:
 
         return run_integrated_gradients_analysis(
             sequences_to_analyze, self.config, self.y_raw, self.sequences,
-            self.final_model, results_dir, self.device, self.y_log_mean, self.y_log_std
+            self.final_model, results_dir, self.device, self.y_log_mean, self.y_log_std,
+            trainval_sequences=self._trainval_sequences(),
+            test_sequences=[self.sequences[i] for i in self.test_idx] if (self.test_idx is not None and len(self.test_idx) > 0) else None,
         )
 
     def create_visualizations_and_exports(self, results, eval_results):

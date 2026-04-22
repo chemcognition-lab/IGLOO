@@ -1346,6 +1346,7 @@ def analyze_sequence_with_integrated_gradients(
     interpolation_umap_save_path: str | None = None,
     training_embeddings: torch.Tensor | None = None,
     _esm_backend=None,
+    embedding_lookup: dict | None = None,
 ) -> dict:
     """
     Analyze a sequence using integrated gradients.
@@ -1385,20 +1386,28 @@ def analyze_sequence_with_integrated_gradients(
     # Get ESM embeddings for sequences (same as training pipeline)
     print("Getting ESM embeddings for sequence and baseline...")
     esm_layer = model.esm_layer if hasattr(model, 'esm_layer') else 33
-    # Use unique dataset names to avoid caching conflicts between different sequences
-    seq_hash = hashlib.md5(sequence.encode()).hexdigest()[:8]
-    baseline_hash = hashlib.md5(baseline_sequence.encode()).hexdigest()[:8]
 
-    seq_embedding = get_embeddings(
-        [sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_seq_{seq_hash}',
-        subdir=embeddings_subdir,
-        esm_backend=_esm_backend,
-    )
-    baseline_embedding = get_embeddings(
-        [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_baseline_{baseline_hash}',
-        subdir=embeddings_subdir,
-        esm_backend=_esm_backend,
-    )
+    if embedding_lookup is not None and sequence in embedding_lookup:
+        seq_embedding = embedding_lookup[sequence]
+        print(f"  (sequence embedding loaded from lookup)")
+    else:
+        seq_hash = hashlib.md5(sequence.encode()).hexdigest()[:8]
+        seq_embedding = get_embeddings(
+            [sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_seq_{seq_hash}',
+            subdir=embeddings_subdir,
+            esm_backend=_esm_backend,
+        )
+
+    if embedding_lookup is not None and baseline_sequence in embedding_lookup:
+        baseline_embedding = embedding_lookup[baseline_sequence]
+        print(f"  (baseline embedding loaded from lookup)")
+    else:
+        baseline_hash = hashlib.md5(baseline_sequence.encode()).hexdigest()[:8]
+        baseline_embedding = get_embeddings(
+            [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_baseline_{baseline_hash}',
+            subdir=embeddings_subdir,
+            esm_backend=_esm_backend,
+        )
 
     # Get predictions using DataLoader approach (exactly like training/evaluation)
     print("Computing predictions using DataLoader method...")
