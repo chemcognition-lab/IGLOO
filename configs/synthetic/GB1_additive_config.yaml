@@ -45,7 +45,7 @@ analysis:
     custom_sequences: []
 
 results_dir: "results/synthetic/GB1_additive_LINEAR"
-force_retrain: true
+force_retrain: false
 
 training:
   seed: 42

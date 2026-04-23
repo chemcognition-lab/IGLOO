@@ -1026,33 +1026,66 @@ def evaluate_one(
         print(f"  [skip] Not a directory: {results_dir}")
         return None
 
-    # ── Infer protein ────────────────────────────────────────────────────────
-    protein = _parse_protein_from_dir(results_dir)
+    # ── Infer protein — search the full path, not just leaf dir name ─────────
+    # Path hierarchy: {root}/{Protein}_{model}/noise_{level}/{interp}/
+    # Build a combined string from all path components for robust parsing.
+    full_path_str = str(results_dir)
+
+    protein = None
+    for part in reversed(results_dir.parts):
+        for p in sorted(PROTEINS, key=len, reverse=True):
+            if p.lower() in part.lower():
+                protein = p
+                break
+        if protein:
+            break
     if protein is None:
-        print(f"  [skip] Cannot identify protein from dir name: {results_dir.name}")
+        print(f"  [skip] Cannot identify protein from path: {results_dir}")
         return None
 
-    # ── Parse metadata from directory name ──────────────────────────────────
-    # Expected patterns: GB1_additive_LINEAR  or  GB1_additive_embedding_signed
+    # ── Parse metadata from the full path hierarchy ──────────────────────────
+    # Leaf dir name (e.g. 'linear', 'slerp', 'nearest_neighbor')
     dirname = results_dir.name
+    # Parent dir name (e.g. 'noise_0.0', 'noise_0.3')
+    noise_dirname = results_dir.parent.name
+    # Grandparent dir name (e.g. 'GB1_additive', 'T4Lysozyme_nonlinear')
+    model_dirname = results_dir.parent.parent.name
+
+    # Combine all path components for legacy flat dirs too
+    search_str = " ".join([full_path_str])
+
     fitness_model = next(
-        (fm for fm in ["additive", "epistatic", "nonlinear"] if fm in dirname.lower()),
+        (fm for fm in ["additive", "epistatic", "nonlinear"] if fm in model_dirname.lower() or fm in dirname.lower()),
         "unknown",
     )
     ig_method = next(
-        (m for m in ["embedding", "token"] if m in dirname.lower()),
+        (m for m in ["embedding", "token"] if m in search_str.lower()),
         "unknown",
     )
     attribution = next(
-        (a for a in ["signed", "magnitude"] if a in dirname.lower()),
+        (a for a in ["signed", "magnitude"] if a in search_str.lower()),
         "unknown",
     )
-    interp_match = re.search(
-        r"(LINEAR|SLERP|NEAREST_NEIGHBOR|GUIDED_IG|LINEARINTERPOLATION)",
-        dirname,
-        re.IGNORECASE,
-    )
-    interp = interp_match.group(1).lower() if interp_match else "unknown"
+    # Interpolation path: prefer leaf dir name (e.g. 'linear', 'slerp', 'nearest_neighbor'),
+    # fall back to regex search across full path.
+    _interp_map = {
+        "nearest_neighbor": "nearest_neighbor",
+        "slerp":            "slerp",
+        "linear":           "linear",
+        "guided_ig":        "guided_ig",
+    }
+    interp = _interp_map.get(dirname.lower(), None)
+    if interp is None:
+        interp_match = re.search(
+            r"(nearest_neighbor|slerp|linear|guided_ig|linearinterpolation)",
+            full_path_str,
+            re.IGNORECASE,
+        )
+        interp = interp_match.group(1).lower() if interp_match else "unknown"
+
+    # Noise level: parse from parent dir name, e.g. 'noise_0.05' → 0.05
+    noise_match = re.search(r"noise[_\-]([0-9]*\.?[0-9]+)", noise_dirname, re.IGNORECASE)
+    noise_level: float | None = float(noise_match.group(1)) if noise_match else None
 
     # ── Load ground truth ────────────────────────────────────────────────────
     try:
@@ -1162,6 +1195,7 @@ def evaluate_one(
         "ig_method":     ig_method,
         "attribution":   attribution,
         "interp":        interp,
+        "noise_level":   noise_level,
         "split":         split_filter if split_filter else "all",
         **metrics,
         **weighted_acc_metrics,
@@ -1181,17 +1215,46 @@ def evaluate_one(
 # ---------------------------------------------------------------------------
 
 def discover_synthetic_results(root: Path = SYNTHETIC_RESULTS_DIR) -> list[Path]:
-    """Return all subdirectories under *root* that contain IG result CSVs."""
+    """Return all leaf subdirectories under *root* that contain IG result CSVs.
+
+    Supports the three-level hierarchy produced by submit_sweep.sh:
+      {root}/{Protein}_{model}/noise_{level}/{interp}/
+    as well as legacy flat directories directly under *root*.
+    """
+    import os
+
+    _SUFFIXES = ("_position_importance_summary.csv", "_integrated_gradients_results.csv")
+
+    def _has_csv(d: Path) -> bool:
+        try:
+            with os.scandir(d) as it:
+                for entry in it:
+                    if entry.is_file(follow_symlinks=False) and any(
+                        entry.name.endswith(s) for s in _SUFFIXES
+                    ):
+                        return True
+        except PermissionError:
+            pass
+        return False
+
     dirs = []
-    for d in sorted(root.iterdir()):
-        if not d.is_dir():
+    for level1 in sorted(root.iterdir()):          # e.g. GB1_additive/
+        if not level1.is_dir():
             continue
-        has_csv = (
-            list(d.glob("*_position_importance_summary.csv"))
-            or list(d.glob("*_integrated_gradients_results.csv"))
-        )
-        if has_csv:
-            dirs.append(d)
+        if _has_csv(level1):
+            dirs.append(level1)
+            continue
+        for level2 in sorted(level1.iterdir()):    # e.g. noise_0.0/
+            if not level2.is_dir():
+                continue
+            if _has_csv(level2):
+                dirs.append(level2)
+                continue
+            for level3 in sorted(level2.iterdir()):  # e.g. linear/
+                if not level3.is_dir():
+                    continue
+                if _has_csv(level3):
+                    dirs.append(level3)
     return dirs
 
 
@@ -1218,33 +1281,76 @@ _INTERP_SHADES: dict[str, float] = {
 
 
 def _assign_colors(df: pd.DataFrame) -> list:
-    """Return one RGBA colour per row based on (fitness_model, interp) combination.
+    """Return one RGBA colour per row.
 
-    Each fitness model maps to a colormap family; the interpolation path
-    selects a specific shade within that family.
+    Hue = interpolation path (consistent with noise-vs-interp line plots).
+    Lightness = noise level: low noise → light tint, high noise → full saturation.
+    Falls back to fitness-model colourmap when no noise_level column is present.
     """
+    import matplotlib.colors as mcolors
+
+    # Check whether noise_level varies in this dataframe
+    has_noise = (
+        "noise_level" in df.columns
+        and df["noise_level"].notna().any()
+    )
+    noise_vals = df["noise_level"].values if has_noise else None
+    noise_min  = float(np.nanmin(noise_vals)) if has_noise else 0.0
+    noise_max  = float(np.nanmax(noise_vals)) if has_noise else 1.0
+    noise_range = max(noise_max - noise_min, 1e-6)
+
     colours = []
-    for _, row in df.iterrows():
-        model  = str(row.get("fitness_model", "unknown"))
+    for i, (_, row) in enumerate(df.iterrows()):
         interp = str(row.get("interp", "unknown"))
-        cmap   = _FITNESS_MODEL_CMAPS.get(model, _DEFAULT_CMAP)
-        shade  = _INTERP_SHADES.get(interp, 0.55)
+        base_hex = _INTERP_COLORS.get(interp, "#607D8B")
+        base_rgb = np.array(mcolors.to_rgb(base_hex))
+
+        if has_noise and noise_vals is not None:
+            nl = noise_vals[i]
+            if np.isfinite(nl):
+                # t=0 → full colour (noise=0), t=1 → very light (noise=max)
+                t = 1.0 - (float(nl) - noise_min) / noise_range
+                t = 0.20 + 0.80 * t   # keep minimum lightness so bars are visible
+                colour = tuple(1.0 - t * (1.0 - c) for c in base_rgb) + (1.0,)
+                colours.append(colour)
+                continue
+        # Fallback: use fitness-model colormap as before
+        model = str(row.get("fitness_model", "unknown"))
+        cmap  = _FITNESS_MODEL_CMAPS.get(model, _DEFAULT_CMAP)
+        shade = _INTERP_SHADES.get(interp, 0.55)
         colours.append(cmap(shade))
     return colours
 
 
 def _config_legend_handles(df: pd.DataFrame) -> list:
-    """One legend Patch per unique (fitness_model, interp) combination present in df."""
-    seen: dict[tuple, mpatches.Patch] = {}
+    """Legend patches: one per unique interp path (full-saturation colour).
+
+    When noise_level varies, adds a second set of ghost patches showing
+    the light→dark scale so the reader understands the shading.
+    """
+    import matplotlib.colors as mcolors
+
+    has_noise = (
+        "noise_level" in df.columns
+        and df["noise_level"].notna().any()
+        and df["noise_level"].nunique() > 1
+    )
+
+    # One full-saturation patch per interp path
+    seen: dict[str, mpatches.Patch] = {}
     for _, row in df.iterrows():
-        model  = str(row.get("fitness_model", "unknown"))
         interp = str(row.get("interp", "unknown"))
-        key    = (model, interp)
-        if key not in seen:
-            cmap  = _FITNESS_MODEL_CMAPS.get(model, _DEFAULT_CMAP)
-            shade = _INTERP_SHADES.get(interp, 0.55)
-            seen[key] = mpatches.Patch(color=cmap(shade), label=f"{model} / {interp}")
-    return list(seen.values())
+        if interp not in seen:
+            base_hex = _INTERP_COLORS.get(interp, "#607D8B")
+            seen[interp] = mpatches.Patch(color=base_hex, label=f"interp: {interp}")
+    handles = list(seen.values())
+
+    if has_noise:
+        # Light-to-dark gradient hint patches
+        handles.append(mpatches.Patch(color="#444444", label="← noise=low (dark)"))
+        handles.append(mpatches.Patch(color="#dddddd", label="→ noise=high (light)"))
+
+    return handles
 
 
 def plot_metric_comparison(
@@ -1271,6 +1377,9 @@ def plot_metric_comparison(
             parts.append(row["attribution"])
         if row["interp"] not in ("unknown", ""):
             parts.append(row["interp"])
+        nl = row.get("noise_level")
+        if nl is not None and str(nl) != "nan":
+            parts.append(f"noise={float(nl):.2g}")
         return "\n".join(parts)
 
     summary_df = summary_df.copy()
@@ -1384,6 +1493,9 @@ def plot_fitness_metric_comparison(
             parts.append(row["attribution"])
         if row["interp"] not in ("unknown", ""):
             parts.append(row["interp"])
+        nl = row.get("noise_level")
+        if nl is not None and str(nl) != "nan":
+            parts.append(f"noise={float(nl):.2g}")
         return "\n".join(parts)
 
     summary_df = summary_df.copy()
@@ -1494,6 +1606,9 @@ def plot_completeness_summary(
             parts.append(row["attribution"])
         if row.get("interp", "unknown") not in ("unknown", ""):
             parts.append(row["interp"])
+        nl = row.get("noise_level")
+        if nl is not None and str(nl) != "nan":
+            parts.append(f"noise={float(nl):.2g}")
         return "\n".join(parts)
 
     df = summary_df.copy()
@@ -1598,6 +1713,9 @@ def plot_weighted_position_accuracy(
             parts.append(row["attribution"])
         if row["interp"] not in ("unknown", ""):
             parts.append(row["interp"])
+        nl = row.get("noise_level")
+        if nl is not None and str(nl) != "nan":
+            parts.append(f"noise={float(nl):.2g}")
         return "\n".join(parts)
 
     df = summary_df.copy()
@@ -1632,6 +1750,184 @@ def plot_weighted_position_accuracy(
     ax.set_axisbelow(True)
 
     fname = f"{protein_prefix}_weighted_pos_accuracy.png" if protein_prefix else "synthetic_weighted_pos_accuracy.png"
+    out_path = output_dir / fname
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved: {out_path}")
+
+
+# Distinct colors for each interpolation path
+_INTERP_COLORS: dict[str, str] = {
+    "linear":           "#2196F3",   # blue
+    "slerp":            "#FF5722",   # deep orange
+    "nearest_neighbor": "#4CAF50",   # green
+    "guided_ig":        "#9C27B0",   # purple
+}
+_INTERP_MARKERS: dict[str, str] = {
+    "linear":           "o",
+    "slerp":            "s",
+    "nearest_neighbor": "^",
+    "guided_ig":        "D",
+}
+
+
+def plot_noise_vs_interp(
+    summary_df: pd.DataFrame,
+    output_dir: Path,
+    protein: str,
+    fitness_model: str,
+    protein_prefix: str | None = None,
+) -> None:
+    """Line plots of key metrics vs noise level, coloured by interpolation path.
+
+    For a single (protein, fitness_model) subset, produces a grid of panels —
+    one per metric.  Each interpolation path is a separate line so you can
+    read off:
+      - How does metric degrade as noise increases?
+      - Which interp path is most robust to noise?
+
+    Metrics shown: Spearman ρ (GT), AUROC (GT), AUPRC (GT),
+                   Spearman ρ (fitness), AUROC (fitness),
+                   sign accuracy (active-site), completeness (5% pass-rate),
+                   weighted position accuracy.
+    """
+    if "noise_level" not in summary_df.columns:
+        return
+
+    df = summary_df[
+        (summary_df["protein"] == protein)
+        & (summary_df["fitness_model"] == fitness_model)
+    ].copy()
+    if df.empty:
+        return
+
+    # Drop rows where noise_level is None/NaN
+    df = df[df["noise_level"].notna()]
+    if df.empty:
+        return
+
+    df["noise_level"] = df["noise_level"].astype(float)
+
+    metrics = [
+        ("spearman_r",                "Spearman ρ (GT)",         0.0),
+        ("auroc",                     "AUROC (GT)",               0.5),
+        ("auprc",                     "AUPRC (GT)",               None),
+        ("fitness_spearman_r",        "Spearman ρ (fitness)",    0.0),
+        ("fitness_auroc",             "AUROC (fitness)",          0.5),
+        ("sign_acc_active",           "Sign acc (active-site)",  0.5),
+        ("completeness_frac_pass_5pct", "Completeness (5% pass)", None),
+        ("weighted_pos_acc",          "Weighted pos accuracy",   None),
+    ]
+    # Keep only metrics that actually exist in the dataframe
+    metrics = [(col, lbl, base) for col, lbl, base in metrics if col in df.columns]
+    if not metrics:
+        return
+
+    # Pre-compute near-zero fraction per (interp, noise_level):
+    #   frac = n_near_zero / (n_completeness_sequences + n_near_zero)
+    # so 0 = fully reliable, 1 = all sequences excluded
+    _has_near_zero = (
+        "n_near_zero_sequences" in df.columns
+        and "n_completeness_sequences" in df.columns
+    )
+
+    n_panels = len(metrics)
+    ncols = 4
+    nrows = (n_panels + ncols - 1) // ncols
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(ncols * 4.5, nrows * 3.5),
+        constrained_layout=True,
+    )
+    axes_flat = np.array(axes).flatten()
+
+    interps = sorted(df["interp"].unique())
+    noise_levels = sorted(df["noise_level"].unique())
+
+    for ax_idx, (col, label, baseline) in enumerate(metrics):
+        ax = axes_flat[ax_idx]
+        for interp in interps:
+            sub = df[df["interp"] == interp].sort_values("noise_level")
+            if sub.empty:
+                continue
+            color  = _INTERP_COLORS.get(interp, "#607D8B")
+            marker = _INTERP_MARKERS.get(interp, "o")
+            vals = sub[col].values.astype(float)
+            ax.plot(
+                sub["noise_level"].values, vals,
+                color=color, marker=marker, linewidth=1.8, markersize=6,
+                label=interp, alpha=0.88,
+            )
+
+        if baseline is not None:
+            ax.axhline(baseline, color="grey", lw=1.0, linestyle="--", alpha=0.7)
+        ax.set_xlabel("Noise level", fontsize=8)
+        ax.set_ylabel(label, fontsize=8)
+        ax.set_title(label, fontsize=9, fontweight="bold")
+        ax.set_xticks(noise_levels)
+        ax.set_xticklabels([str(n) for n in noise_levels], fontsize=7, rotation=45)
+        ax.yaxis.grid(True, linestyle=":", alpha=0.5)
+        ax.set_axisbelow(True)
+
+        # ── Secondary axis: near-zero fraction ──────────────────────────
+        if _has_near_zero:
+            ax2 = ax.twinx()
+            for interp in interps:
+                sub = df[df["interp"] == interp].sort_values("noise_level")
+                if sub.empty:
+                    continue
+                total = sub["n_near_zero_sequences"] + sub["n_completeness_sequences"]
+                frac = np.where(
+                    total > 0,
+                    sub["n_near_zero_sequences"].values / total.values,
+                    0.0,
+                )
+                color = _INTERP_COLORS.get(interp, "#607D8B")
+                ax2.plot(
+                    sub["noise_level"].values, frac,
+                    color=color, linewidth=1.0, linestyle=":",
+                    alpha=0.5, marker=None,
+                )
+            ax2.set_ylim(0, 1)
+            ax2.set_ylabel("near-zero frac ↑ = unreliable", fontsize=6, color="dimgrey")
+            ax2.tick_params(axis="y", labelsize=6, colors="dimgrey")
+            ax2.spines["right"].set_color("dimgrey")
+            ax2.spines["right"].set_linestyle(":")
+            # Shade background red when near-zero fraction is high (>0.3)
+            # Use the mean across interps per noise level for the shading
+            mean_frac = (
+                df.groupby("noise_level").apply(
+                    lambda g: (g["n_near_zero_sequences"].sum()
+                               / max((g["n_near_zero_sequences"] + g["n_completeness_sequences"]).sum(), 1))
+                ).reindex(noise_levels).values
+            )
+            for ni, (nl, mf) in enumerate(zip(noise_levels, mean_frac)):
+                if mf > 0.3:
+                    x_lo = nl - (noise_levels[1] - noise_levels[0]) * 0.4 if ni > 0 else nl - 0.02
+                    x_hi = nl + (noise_levels[min(ni + 1, len(noise_levels) - 1)] - nl) * 0.4
+                    ax.axvspan(x_lo, x_hi, color="red", alpha=0.06, zorder=0)
+
+        if ax_idx == 0:
+            leg = ax.legend(title="Interp path", fontsize=7, title_fontsize=7)
+            if _has_near_zero:
+                # Add a manual entry for the near-zero overlay
+                leg.get_frame().set_alpha(0.9)
+                ax.plot([], [], color="dimgrey", linewidth=1.0, linestyle=":",
+                        alpha=0.7, label="near-zero frac (right axis)")
+                ax.legend(title="Interp path", fontsize=7, title_fontsize=7)
+
+    # Hide unused panels
+    for ax in axes_flat[n_panels:]:
+        ax.set_visible(False)
+
+    prot_label = protein_prefix or f"{protein}_{fitness_model}"
+    fig.suptitle(
+        f"IG quality vs noise level — {protein} / {fitness_model}\n"
+        f"(lines = interpolation paths; dashed grey = random baseline; "
+        f"dotted right axis = near-zero fraction; red shading = >30% unreliable)",
+        fontsize=9,
+    )
+    fname = f"{prot_label}_noise_vs_interp.png"
     out_path = output_dir / fname
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close()
@@ -1806,7 +2102,7 @@ def main() -> None:
     export_df = summary_df.drop(columns=[c for c in ["_cliff_rows", "_cliff_threshold"] if c in summary_df.columns])
     col_order = [
         "dirname", "protein", "fitness_model", "ig_method", "attribution", "interp",
-        "split",
+        "noise_level", "split",
         "spearman_r", "spearman_p", "kendall_tau", "kendall_p",
         "auroc", "auprc", "n_positions", "n_annotated",
         "weighted_pos_acc", "unweighted_pos_acc", "ig_threshold",
@@ -1905,6 +2201,9 @@ def main() -> None:
             print(f"  [warn] Sign accuracy [{prefix}] failed: {exc}")
 
     # Per-protein × per-split plots
+    fitness_models_present = (
+        list(export_df["fitness_model"].unique()) if "fitness_model" in export_df.columns else []
+    )
     for prot in proteins_present:
         prot_df = export_df[export_df["protein"] == prot]
         for split in splits_present:
@@ -1915,6 +2214,19 @@ def main() -> None:
             prefix = f"{prot}_{split}" if split != "all" else prot
             print(f"\n  Generating plots for protein={prot} split={split} ({len(split_df)} runs)")
             _safe_plots(split_df, prefix)
+
+            # Per-(protein, fitness_model) noise-vs-interp line plots
+            for fm in fitness_models_present:
+                fm_df = split_df[split_df["fitness_model"] == fm] if "fitness_model" in split_df.columns else pd.DataFrame()
+                if fm_df.empty or "noise_level" not in fm_df.columns or fm_df["noise_level"].isna().all():
+                    continue
+                fm_prefix = f"{prefix}_{fm}" if split != "all" else f"{prot}_{fm}"
+                print(f"    Noise-vs-interp plot: {prot} / {fm} (split={split}, {len(fm_df)} runs)")
+                try:
+                    plot_noise_vs_interp(fm_df, output_dir, protein=prot, fitness_model=fm, protein_prefix=fm_prefix)
+                except Exception as exc:
+                    print(f"  [warn] Noise-vs-interp [{fm_prefix}] failed: {exc}")
+
 
     # Combined plots across all proteins — one set per split
     for split in splits_present:
