@@ -41,7 +41,7 @@ export HF_HOME="/tmp/hf_cache_${SLURM_JOB_ID}"
 export TRANSFORMERS_CACHE="${HF_HOME}"
 
 python scripts/run_integrated_gradients.py "${BASE_CONFIG}" \
-    ig.interpolation_path="${INTERP}" \
+    integrated_gradients.interpolation_path="${INTERP}" \
     training.noise.label_noise_std="${NOISE}" \
     model_dir="${MODEL_DIR}" \
     results_dir="${RESULTS_DIR}" \

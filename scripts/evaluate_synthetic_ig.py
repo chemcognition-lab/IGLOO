@@ -19,22 +19,71 @@ The script discovers results directories automatically or accepts an explicit
 list. It parses the protein name from the directory / config, loads the
 matching ground-truth JSON, and writes a summary CSV + bar-plot comparison.
 
+Results directory layout expected
+----------------------------------
+    results/synthetic/
+        {protein}_{fitness_model}/          e.g. GB1_additive/, T4Lysozyme_nonlinear/
+            noise_{level}/                  e.g. noise_0.0/, noise_0.1/, …, noise_1.0/
+                {interp_method}/            e.g. linear/, slerp/, nearest_neighbor/
+                    *_integrated_gradients_results.csv
+                    *_position_importance_summary.csv
+
 Usage
 -----
-    # Scan all synthetic results and compare
-    python scripts/evaluate_synthetic_ig.py
-
-    # Specific results directories
-    python scripts/evaluate_synthetic_ig.py \\
-        results/synthetic/GB1_additive_LINEAR \\
-        results/synthetic/GB1_additive_SLERP
-
-    # Control output location
-    python scripts/evaluate_synthetic_ig.py --output-dir results/synthetic/evaluation
-
-    # Use per-variant gradients (integrated_gradients_results.csv) instead of
-    # the pre-aggregated position_importance_summary.csv
+    # ── Standard production run (RECOMMENDED) ───────────────────────────────
+    # Auto-discovers all results/synthetic/{protein}_{model}/noise_*/interp/
+    # directories and evaluates every one.  Run this once all IG SLURM jobs
+    # have completed.
+    #
+    source IGLOO_env/bin/activate
     python scripts/evaluate_synthetic_ig.py --use-per-variant
+
+    # Output: results/synthetic/evaluation/
+    #   synthetic_ig_validation_summary.csv  – one row per run, all metrics
+    #   *_metrics_comparison.png             – bar charts per metric
+    #   *_fitness_metrics_comparison.png
+    #   *_completeness_summary.png
+    #   *_weighted_pos_acc.png
+    #   *_sign_accuracy.png
+    #   *_noise_vs_interp_{protein}_{model}.png  (one per protein × fitness-model)
+
+    # ── Filter by protein and/or fitness-model ───────────────────────────────
+    # All GB1 results (all noise levels, all interp methods, all fitness models):
+    python scripts/evaluate_synthetic_ig.py --use-per-variant --proteins GB1
+
+    # All additive results across all proteins:
+    python scripts/evaluate_synthetic_ig.py --use-per-variant --fitness-models additive
+
+    # Combine filters:
+    python scripts/evaluate_synthetic_ig.py --use-per-variant \\
+        --proteins GB1 --fitness-models additive epistatic
+
+    # ── Evaluate specific directories only ──────────────────────────────────
+    python scripts/evaluate_synthetic_ig.py \\
+        results/synthetic/GB1_additive/noise_0.0/linear \\
+        results/synthetic/GB1_additive/noise_0.0/slerp
+
+    # ── Control output location ──────────────────────────────────────────────
+    python scripts/evaluate_synthetic_ig.py \\
+        --use-per-variant \\
+        --output-dir results/synthetic/evaluation
+
+    # ── Also save per-position |IG| vs ground-truth bar charts ──────────────
+    python scripts/evaluate_synthetic_ig.py --use-per-variant --per-position-plots
+
+    # ── Flag reference ───────────────────────────────────────────────────────
+    # --use-per-variant   Use per-variant integrated_gradients_results.csv
+    #                     (recommended; more detailed than pre-aggregated summary)
+    # --per-position-plots  Save a |IG| vs ground-truth bar chart per run
+    # --output-dir PATH   Override default output location
+
+    # -── Regenerate paper results ─────────────────────────────────────────────
+    # To reproduce the main paper figures, run with:
+    python scripts/evaluate_synthetic_ig.py --use-per-variant --per-position-plots \\
+        --proteins GB1 \\
+        --fitness-models additive epistatic nonlinear \\
+        --output-dir results/synthetic/evaluation/GB1_results
+
 """
 
 import argparse
@@ -526,8 +575,11 @@ def compute_sign_correctness(
 # Practical IG interpretation checks
 # ---------------------------------------------------------------------------
 
-# Near-zero output-difference threshold: |F(x) - F(x')| below this value
-# makes attributions numerically unreliable (division-by-zero regime).
+# Near-zero output-difference threshold: sequences with |F(x) - F(x')| below
+# this value are excluded from the completeness error calculation because the
+# relative error ε = |Σ IG − diff| / |diff| becomes unreliably large for very
+# small denominators.  This does NOT indicate bad attributions — it simply
+# means the sequence has a near-WT fitness effect in normalized space.
 _NEAR_ZERO_THRESHOLD = 0.01
 
 
@@ -537,20 +589,22 @@ def compute_completeness_stats(ig_df: pd.DataFrame) -> dict:
     For each non-WT sequence the relative completeness error is:
         ε = |Σ IG_i − outputDiff| / max(|outputDiff|, 1e-8)
 
-    Sequences with |outputDiff| < _NEAR_ZERO_THRESHOLD are flagged as
-    numerically unstable and reported separately.
+    Sequences with |outputDiff| < _NEAR_ZERO_THRESHOLD are excluded from the
+    relative-error calculation (division instability for tiny denominators).
+    These are sequences with near-WT fitness in normalized space — the
+    completeness axiom was already verified during IG computation.
 
     Returns
     -------
     dict with:
-      completeness_mean_rel_error  – mean ε over stable sequences
+      completeness_mean_rel_error  – mean ε over included sequences
       completeness_median_rel_error
       completeness_frac_pass_1pct  – fraction with ε < 0.01
       completeness_frac_pass_5pct  – fraction with ε < 0.05
       completeness_frac_pass_10pct – fraction with ε < 0.10
-      n_completeness_sequences     – number of stable sequences evaluated
-      n_near_zero_sequences        – sequences with |outputDiff| < threshold
-                                     (attributions unreliable, excluded above)
+      n_completeness_sequences     – number of sequences included
+      n_near_zero_sequences        – sequences excluded (|outputDiff| < threshold;
+                                     near-WT fitness, not faulty attributions)
     """
     _nan = {
         "completeness_mean_rel_error":   float("nan"),
@@ -566,16 +620,22 @@ def compute_completeness_stats(ig_df: pd.DataFrame) -> dict:
     if not need_cols.issubset(ig_df.columns):
         return _nan
 
+    # Prefer the unclipped output difference: IG sums converge to
+    # F_unclipped(x) - F_unclipped(x'), not the clipped version.
+    # Fall back to effect_vs_baseline for old CSVs that lack the column.
+    use_unclipped = "effect_vs_baseline_unclipped" in ig_df.columns
+    diff_col = "effect_vs_baseline_unclipped" if use_unclipped else "effect_vs_baseline"
+
     errors = []
     n_near_zero = 0
 
     for seq_name, seq_df in ig_df.groupby("sequence_name"):
         if _is_wt_sequence_name(seq_name):
             continue
-        output_diff = float(seq_df["effect_vs_baseline"].iloc[0])
+        output_diff = float(seq_df[diff_col].iloc[0])
         if abs(output_diff) < _NEAR_ZERO_THRESHOLD:
             n_near_zero += 1
-            continue   # [4] unstable — skip
+            continue   # unstable — skip
         sum_ig = float(seq_df["integrated_gradient"].sum())
         rel_err = abs(sum_ig - output_diff) / abs(output_diff)
         errors.append(rel_err)
@@ -908,23 +968,34 @@ def plot_sign_accuracy_bars(
     """Bar chart of sign accuracy for each results directory.
 
     sign_rows : list of dicts, each with 'label', 'sign_acc_active',
-                'sign_acc_wt', 'sign_acc_overall'.
+                'sign_acc_wt', 'sign_acc_overall', and optionally
+                'noise_level', 'interp', 'fitness_model'.
     """
     if not sign_rows:
         return
 
-    labels   = [r["label"] for r in sign_rows]
+    # Sort rows the same way as other bar charts: fitness_model → interp → noise_level
+    import pandas as _pd_sa
+    _df = _pd_sa.DataFrame(sign_rows)
+    if "fitness_model" not in _df.columns:
+        _df["fitness_model"] = _df.get("label", "unknown")
+    if "interp" not in _df.columns:
+        _df["interp"] = _df.get("label", "unknown")
+    _df, fm_groups = _sort_df_and_get_groups(_df)
+    sign_rows = _df.to_dict("records")
+
     acc_act  = [r["sign_acc_active"]  for r in sign_rows]
     acc_wt   = [r["sign_acc_wt"]      for r in sign_rows]
     acc_all  = [r["sign_acc_overall"] for r in sign_rows]
 
-    x     = np.arange(len(labels))
+    n     = len(sign_rows)
     width = 0.25
+    x_pos = _make_x_positions(n, fm_groups)
 
-    fig, ax = plt.subplots(figsize=(max(8, len(labels) * 0.9), 5), constrained_layout=True)
-    b1 = ax.bar(x - width, acc_act, width, label="Active-site (mutated+annotated)", color="steelblue",  alpha=0.85, edgecolor="k", linewidth=0.4)
-    b2 = ax.bar(x,         acc_wt,  width, label="WT residues (unchanged)",         color="darkorange", alpha=0.85, edgecolor="k", linewidth=0.4)
-    b3 = ax.bar(x + width, acc_all, width, label="Overall",                          color="seagreen",   alpha=0.85, edgecolor="k", linewidth=0.4)
+    fig, ax = plt.subplots(figsize=(max(8, n * 0.9), 5), constrained_layout=True)
+    b1 = ax.bar(x_pos - width, acc_act, width, label="Active-site (mutated+annotated)", color="steelblue",  alpha=0.85, edgecolor="k", linewidth=0.4)
+    b2 = ax.bar(x_pos,         acc_wt,  width, label="WT residues (unchanged)",         color="darkorange", alpha=0.85, edgecolor="k", linewidth=0.4)
+    b3 = ax.bar(x_pos + width, acc_all, width, label="Overall",                          color="seagreen",   alpha=0.85, edgecolor="k", linewidth=0.4)
 
     for bars in (b1, b2, b3):
         for bar in bars:
@@ -934,15 +1005,16 @@ def plot_sign_accuracy_bars(
                         f"{h:.2f}", ha="center", va="bottom", fontsize=6, rotation=90)
 
     ax.axhline(0.5, color="grey", lw=1.0, linestyle="--", label="chance (0.5)")
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=7)
+    ax.set_xticks([])
     ax.set_ylabel("Sign accuracy (fraction correct)")
-    ax.set_ylim(0, 1.15)
+    ax.set_ylim(0, 1.32)  # extra headroom for labels + group header
+    ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
     title_prot = f" [{protein_prefix}]" if protein_prefix else ""
     ax.set_title(f"Sign Correctness{title_prot}: should mutations at critical sites produce negative IG?")
     ax.legend(fontsize=7, loc="lower right")
     ax.yaxis.grid(True, linestyle="--", alpha=0.4)
     ax.set_axisbelow(True)
+    _apply_group_decorations(ax, fm_groups, x_pos)
 
     fname = f"{protein_prefix}_ig_sign_accuracy.png" if protein_prefix else "synthetic_ig_sign_accuracy.png"
     out_path = output_dir / fname
@@ -1170,12 +1242,6 @@ def evaluate_one(
     completeness_metrics: dict = {}
     if ig_df is not None:
         completeness_metrics = compute_completeness_stats(ig_df)
-        n_near_zero = completeness_metrics.get("n_near_zero_sequences", 0)
-        if n_near_zero > 0:
-            print(
-                f"  [warn] {n_near_zero} sequences have |F(x)-F(x')| < {_NEAR_ZERO_THRESHOLD}"
-                f" — attributions numerically unstable, excluded from completeness/normalized metrics."
-            )
 
     # [2] Normalized position scores: IG_i / |F(x) - F(x')| for cross-sample comparison
     # Re-run rank-correlation & classification metrics on the normalized scores.
@@ -1353,6 +1419,84 @@ def _config_legend_handles(df: pd.DataFrame) -> list:
     return handles
 
 
+def _sort_df_and_get_groups(df: pd.DataFrame) -> tuple[pd.DataFrame, list[tuple[str, int, int]]]:
+    """Sort *df* by fitness_model → interp → noise_level and return group boundaries.
+
+    Returns
+    -------
+    sorted_df   : reset-indexed copy sorted for grouped display
+    fm_groups   : list of (fitness_model_name, start_idx, end_idx_inclusive)
+    """
+    _fm_order = {"additive": 0, "epistatic": 1, "nonlinear": 2}
+    df = df.copy()
+    df["_fm_sort"] = df["fitness_model"].map(lambda x: _fm_order.get(str(x).lower(), 99))
+    sort_cols = ["_fm_sort", "interp"]
+    if "noise_level" in df.columns:
+        df["noise_level"] = pd.to_numeric(df["noise_level"], errors="coerce")
+        sort_cols.append("noise_level")
+    df = df.sort_values(sort_cols).reset_index(drop=True)
+    df.drop(columns=["_fm_sort"], inplace=True)
+
+    fm_vals = df["fitness_model"].values
+    n = len(fm_vals)
+    groups: list[tuple[str, int, int]] = []
+    i_start = 0
+    for k in range(1, n):
+        if fm_vals[k] != fm_vals[k - 1]:
+            groups.append((str(fm_vals[i_start]), i_start, k - 1))
+            i_start = k
+    groups.append((str(fm_vals[i_start]), i_start, n - 1))
+    return df, groups
+
+
+def _make_x_positions(
+    n: int,
+    fm_groups: list[tuple[str, int, int]],
+    gap: float = 2.0,
+) -> np.ndarray:
+    """Return x-axis positions for *n* bars with extra *gap* between fitness-model groups.
+
+    Within each group bars are spaced 1 unit apart; *gap* extra units are
+    inserted between consecutive groups so they are visually separated.
+    """
+    x = np.zeros(n)
+    cursor = 0.0
+    for g_idx, (_, g_start, g_end) in enumerate(fm_groups):
+        if g_idx > 0:
+            cursor += gap  # extra gap before each new group
+        for i in range(g_start, g_end + 1):
+            x[i] = cursor
+            cursor += 1.0
+    return x
+
+
+def _apply_group_decorations(
+    ax,
+    fm_groups: list[tuple[str, int, int]],
+    x_pos: np.ndarray | None = None,
+) -> None:
+    """Draw vertical separators and fitness-model header labels on *ax*.
+
+    If *x_pos* is provided it is used for correct placement when groups have
+    been given non-uniform x coordinates (i.e. via _make_x_positions).
+    """
+    y_top = ax.get_ylim()[1]
+    for g_idx, (fm_name, g_start, g_end) in enumerate(fm_groups):
+        if x_pos is not None:
+            mid = (x_pos[g_start] + x_pos[g_end]) / 2
+            sep_x = (x_pos[g_start] - 1.0) if g_start > 0 else None  # midpoint between groups
+            if g_start > 0 and x_pos is not None:
+                sep_x = (x_pos[g_start - 1 if g_start > 0 else g_start] + x_pos[g_start]) / 2
+        else:
+            mid = (g_start + g_end) / 2
+            sep_x = g_start - 0.5 if g_start > 0 else None
+        ax.text(mid, y_top * 0.98, fm_name,
+                ha="center", va="top", fontsize=7, fontweight="bold", color="dimgray",
+                bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="lightgray", alpha=0.7))
+        if g_start > 0 and sep_x is not None:
+            ax.axvline(sep_x, color="lightgray", lw=1.2, linestyle="-", zorder=0)
+
+
 def plot_metric_comparison(
     summary_df: pd.DataFrame,
     output_dir: Path,
@@ -1367,23 +1511,8 @@ def plot_metric_comparison(
         "auprc":       "AUPRC",
     }
 
-    # Create a display label per row
-    def _label(row):
-        parts = [] if protein_prefix else [row["protein"]]
-        parts.append(row["fitness_model"])
-        if row["ig_method"] != "unknown":
-            parts.append(row["ig_method"])
-        if row["attribution"] != "unknown":
-            parts.append(row["attribution"])
-        if row["interp"] not in ("unknown", ""):
-            parts.append(row["interp"])
-        nl = row.get("noise_level")
-        if nl is not None and str(nl) != "nan":
-            parts.append(f"noise={float(nl):.2g}")
-        return "\n".join(parts)
-
     summary_df = summary_df.copy()
-    summary_df["label"] = summary_df.apply(_label, axis=1)
+    summary_df, fm_groups = _sort_df_and_get_groups(summary_df)
 
     n_configs = len(summary_df)
     fig, axes = plt.subplots(
@@ -1395,9 +1524,9 @@ def plot_metric_comparison(
 
     colours = _assign_colors(summary_df)
     prot_handles = _config_legend_handles(summary_df)
+    x_pos = _make_x_positions(n_configs, fm_groups)
 
     # Random-chance baselines per metric
-    # AUPRC baseline = fraction of positives (annotated / total positions)
     if "n_annotated" in summary_df.columns and "n_positions" in summary_df.columns:
         auprc_baseline = float(
             (summary_df["n_annotated"] / summary_df["n_positions"].replace(0, np.nan)).mean()
@@ -1405,19 +1534,18 @@ def plot_metric_comparison(
     else:
         auprc_baseline = float("nan")
     _gt_baselines = {
-        "spearman_r":  (0.0,                   "random (0)"),
-        "kendall_tau": (0.0,                   "random (0)"),
-        "auroc":       (0.5,                   "random (0.5)"),
-        "auprc":       (auprc_baseline,        f"random ({auprc_baseline:.2f})"),
+        "spearman_r":  (0.0,            "random (0)"),
+        "kendall_tau": (0.0,            "random (0)"),
+        "auroc":       (0.5,            "random (0.5)"),
+        "auprc":       (auprc_baseline, f"random ({auprc_baseline:.2f})"),
     }
 
-    for i, (ax, metric) in enumerate(zip(axes, metrics)):
+    for panel_i, (ax, metric) in enumerate(zip(axes, metrics)):
         vals = summary_df[metric].values
         bars = ax.bar(
-            range(n_configs), vals,
+            x_pos, vals,
             color=colours, edgecolor="black", linewidth=0.5, alpha=0.85,
         )
-        # Random baseline for every metric
         base_val, base_label = _gt_baselines.get(metric, (float("nan"), ""))
         extra_handles = []
         if np.isfinite(base_val):
@@ -1425,11 +1553,10 @@ def plot_metric_comparison(
             extra_handles.append(
                 plt.Line2D([0], [0], color="grey", lw=1.2, linestyle="--", label=base_label)
             )
-        if i == 0:
+        if panel_i == 0:
             ax.legend(handles=prot_handles + extra_handles, fontsize=7, loc="upper right")
         elif extra_handles:
             ax.legend(handles=extra_handles, fontsize=7)
-        # Annotate value above each bar
         for bar, v in zip(bars, vals):
             if np.isfinite(v):
                 ax.text(
@@ -1438,13 +1565,19 @@ def plot_metric_comparison(
                     f"{v:.3f}",
                     ha="center", va="bottom", fontsize=6, rotation=90,
                 )
-        ax.set_xticks(range(n_configs))
-        ax.set_xticklabels(summary_df["label"].values, fontsize=6, ha="right", rotation=45)
+        ax.set_xticks([])
         ax.set_ylabel(metric_labels[metric], fontsize=9)
         ax.set_title(metric_labels[metric], fontsize=10, fontweight="bold")
-        ax.set_ylim(bottom=min(0, float(np.nanmin(vals)) - 0.05))
+        y_min = min(0, float(np.nanmin(vals)) - 0.05)
+        # headroom: enough for rotated value labels (~20% of data range above max)
+        y_max = float(np.nanmax(vals))
+        y_range = max(y_max - y_min, 0.1)
+        ax.set_ylim(bottom=y_min, top=y_max + y_range * 0.28)
+        # tight x limits with half-bar padding on each side
+        ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
         ax.yaxis.grid(True, linestyle="--", alpha=0.4)
         ax.set_axisbelow(True)
+        _apply_group_decorations(ax, fm_groups, x_pos)
 
     title_prot = f" [{protein_prefix}]" if protein_prefix else ""
     fig.suptitle(
@@ -1484,22 +1617,8 @@ def plot_fitness_metric_comparison(
         "fitness_auprc":       "AUPRC (fitness)",
     }
 
-    def _label(row):
-        parts = [] if protein_prefix else [row["protein"]]
-        parts.append(row["fitness_model"])
-        if row["ig_method"] != "unknown":
-            parts.append(row["ig_method"])
-        if row["attribution"] != "unknown":
-            parts.append(row["attribution"])
-        if row["interp"] not in ("unknown", ""):
-            parts.append(row["interp"])
-        nl = row.get("noise_level")
-        if nl is not None and str(nl) != "nan":
-            parts.append(f"noise={float(nl):.2g}")
-        return "\n".join(parts)
-
     summary_df = summary_df.copy()
-    summary_df["label"] = summary_df.apply(_label, axis=1)
+    summary_df, fm_groups = _sort_df_and_get_groups(summary_df)
 
     n_configs = len(summary_df)
     n_metrics = len(available)
@@ -1515,9 +1634,8 @@ def plot_fitness_metric_comparison(
 
     colours = _assign_colors(summary_df)
     prot_handles = _config_legend_handles(summary_df)
+    x_pos = _make_x_positions(n_configs, fm_groups)
 
-    # Random-chance baselines: Spearman/Kendall → 0, AUROC/AUPRC → 0.5
-    # (AUPRC baseline is 0.5 because positives = top-50% most deleterious positions)
     _fit_baselines = {
         "fitness_spearman_r":  (0.0, "random (0)"),
         "fitness_kendall_tau": (0.0, "random (0)"),
@@ -1528,7 +1646,7 @@ def plot_fitness_metric_comparison(
     for i, (ax, metric) in enumerate(zip(axes_flat, available)):
         vals = summary_df[metric].values
         bars = ax.bar(
-            range(n_configs), vals,
+            x_pos, vals,
             color=colours, edgecolor="black", linewidth=0.5, alpha=0.85,
         )
         base_val, base_label = _fit_baselines.get(metric, (float("nan"), ""))
@@ -1550,15 +1668,18 @@ def plot_fitness_metric_comparison(
                     f"{v:.3f}",
                     ha="center", va="bottom", fontsize=6, rotation=90,
                 )
-        ax.set_xticks(range(n_configs))
-        ax.set_xticklabels(summary_df["label"].values, fontsize=6, ha="right", rotation=45)
+        ax.set_xticks([])
         ax.set_ylabel(metric_labels.get(metric, metric), fontsize=9)
         ax.set_title(metric_labels.get(metric, metric), fontsize=10, fontweight="bold")
-        ax.set_ylim(bottom=min(0, float(np.nanmin(vals)) - 0.05))
+        y_min = min(0, float(np.nanmin(vals)) - 0.05)
+        y_max = float(np.nanmax(vals))
+        y_range = max(y_max - y_min, 0.1)
+        ax.set_ylim(bottom=y_min, top=y_max + y_range * 0.28)
+        ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
         ax.yaxis.grid(True, linestyle="--", alpha=0.4)
         ax.set_axisbelow(True)
+        _apply_group_decorations(ax, fm_groups, x_pos)
 
-    # Hide unused axes
     for ax in axes_flat[len(available):]:
         ax.set_visible(False)
 
@@ -1597,28 +1718,14 @@ def plot_completeness_summary(
         print("  [skip] No completeness / normalized-IG data to plot.")
         return
 
-    def _label(row):
-        parts = [] if protein_prefix else [row["protein"]]
-        parts.append(row["fitness_model"])
-        if row.get("ig_method", "unknown") != "unknown":
-            parts.append(row["ig_method"])
-        if row.get("attribution", "unknown") != "unknown":
-            parts.append(row["attribution"])
-        if row.get("interp", "unknown") not in ("unknown", ""):
-            parts.append(row["interp"])
-        nl = row.get("noise_level")
-        if nl is not None and str(nl) != "nan":
-            parts.append(f"noise={float(nl):.2g}")
-        return "\n".join(parts)
-
-    df = summary_df.copy()
-    df["label"] = df.apply(_label, axis=1)
+    df, fm_groups = _sort_df_and_get_groups(summary_df)
     n = len(df)
     colours = _assign_colors(df)
     config_handles = _config_legend_handles(df)
+    x_pos = _make_x_positions(n, fm_groups)
 
     n_panels = int(has_completeness) + int(has_norm)
-    fig, axes = plt.subplots(1, n_panels, figsize=(max(8, n * 0.9) * n_panels, 5),
+    fig, axes = plt.subplots(n_panels, 1, figsize=(max(8, n * 0.9), 5 * n_panels),
                              constrained_layout=True)
     if n_panels == 1:
         axes = [axes]
@@ -1629,57 +1736,60 @@ def plot_completeness_summary(
         tols = [("completeness_frac_pass_1pct",  "ε<1%",  0.55),
                 (comp_col,                        "ε<5%",  0.68),
                 ("completeness_frac_pass_10pct",  "ε<10%", 0.82)]
-        x = np.arange(n)
         w = 0.22
         offsets = [-w, 0, w]
         bar_colors = [plt.cm.Blues(s) for _, _, s in tols]
         for k, (col, lbl, _) in enumerate(tols):
             vals = df[col].values if col in df.columns else np.full(n, np.nan)
-            brs = ax.bar(x + offsets[k], vals, w, color=bar_colors[k],
+            brs = ax.bar(x_pos + offsets[k], vals, w, color=bar_colors[k],
                          edgecolor="k", linewidth=0.4, alpha=0.85, label=lbl)
             for bar, v in zip(brs, vals):
                 if np.isfinite(v):
                     ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
                             f"{v:.2f}", ha="center", va="bottom", fontsize=5, rotation=90)
-        ax.set_xticks(x)
-        ax.set_xticklabels(df["label"].values, rotation=35, ha="right", fontsize=7)
+        ax.set_xticks([])
         ax.set_ylabel("Fraction of sequences passing")
-        ax.set_ylim(0, 1.15)
+        ax.set_ylim(0, 1.32)  # extra headroom for rotated labels + group header
+        ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
         title_prot = f" [{protein_prefix}]" if protein_prefix else ""
         ax.set_title(f"Completeness Axiom Pass-Rate{title_prot}\n(Σ IG ≈ F(x)−F(x′) within tolerance)")
-        ax.legend(fontsize=7, loc="lower right")
+        ax.legend(handles=config_handles + [mpatches.Patch(color=c, label=l) for c, l in
+                  [(plt.cm.Blues(s), lb) for _, lb, s in tols]], fontsize=7, loc="lower right")
         ax.yaxis.grid(True, linestyle="--", alpha=0.4)
         ax.set_axisbelow(True)
+        _apply_group_decorations(ax, fm_groups, x_pos)
 
-        # Annotate near-zero sequence counts if available
         if "n_near_zero_sequences" in df.columns:
-            for idx, (_, row) in enumerate(df.iterrows()):
+            for idx, (xp, (_, row)) in enumerate(zip(x_pos, df.iterrows())):
                 nz = int(row.get("n_near_zero_sequences", 0))
                 if nz > 0:
-                    ax.text(idx, -0.06, f"⚠{nz}", ha="center", va="top",
+                    ax.text(xp, -0.06, f"⚠{nz}", ha="center", va="top",
                             fontsize=6, color="firebrick", transform=ax.transData)
 
     if has_norm:
         ax = axes[panel]
         raw_vals  = df["spearman_r"].values  if "spearman_r"  in df.columns else np.full(n, np.nan)
         norm_vals = df["norm_spearman_r"].values
-        x = np.arange(n)
         w = 0.35
-        ax.bar(x - w/2, raw_vals,  w, color=plt.cm.Blues(0.55), edgecolor="k",
+        ax.bar(x_pos - w/2, raw_vals,  w, color=colours, edgecolor="k",
                linewidth=0.4, alpha=0.85, label="raw |IG|")
-        ax.bar(x + w/2, norm_vals, w, color=plt.cm.Oranges(0.65), edgecolor="k",
-               linewidth=0.4, alpha=0.85, label="|IG| / |ΔF| (normalised)")
+        ax.bar(x_pos + w/2, norm_vals, w, color=colours, edgecolor="k",
+               linewidth=0.4, alpha=0.55, label="|IG| / |ΔF| (normalised)")
         ax.axhline(0, color="grey", lw=0.8, linestyle="--")
-        ax.set_xticks(x)
-        ax.set_xticklabels(df["label"].values, rotation=35, ha="right", fontsize=7)
+        ax.set_xticks([])
         ax.set_ylabel("Spearman ρ vs ground-truth importance")
-        ax.set_ylim(bottom=min(0, float(np.nanmin(np.concatenate([raw_vals, norm_vals]))) - 0.05))
+        y_min = min(0, float(np.nanmin(np.concatenate([raw_vals, norm_vals]))) - 0.05)
+        y_max = float(np.nanmax(np.concatenate([raw_vals, norm_vals])))
+        y_range = max(y_max - y_min, 0.1)
+        ax.set_ylim(bottom=y_min, top=y_max + y_range * 0.28)
+        ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
         title_prot = f" [{protein_prefix}]" if protein_prefix else ""
         ax.set_title(f"Raw vs Normalised |IG| Rank Correlation{title_prot}\n"
                      "(normalise by |F(x)−F(x′)| to compare across sequences)")
-        ax.legend(fontsize=7)
+        ax.legend(handles=config_handles, fontsize=7)
         ax.yaxis.grid(True, linestyle="--", alpha=0.4)
         ax.set_axisbelow(True)
+        _apply_group_decorations(ax, fm_groups, x_pos)
 
     fname = f"{protein_prefix}_completeness.png" if protein_prefix else "synthetic_completeness.png"
     out_path = output_dir / fname
@@ -1704,30 +1814,16 @@ def plot_weighted_position_accuracy(
         print("  [skip] No weighted_pos_acc data to plot.")
         return
 
-    def _label(row):
-        parts = [] if protein_prefix else [row["protein"]]
-        parts.append(row["fitness_model"])
-        if row["ig_method"] != "unknown":
-            parts.append(row["ig_method"])
-        if row["attribution"] != "unknown":
-            parts.append(row["attribution"])
-        if row["interp"] not in ("unknown", ""):
-            parts.append(row["interp"])
-        nl = row.get("noise_level")
-        if nl is not None and str(nl) != "nan":
-            parts.append(f"noise={float(nl):.2g}")
-        return "\n".join(parts)
-
-    df = summary_df.copy()
-    df["label"] = df.apply(_label, axis=1)
+    df, fm_groups = _sort_df_and_get_groups(summary_df)
     n = len(df)
 
     colours = _assign_colors(df)
     config_handles = _config_legend_handles(df)
+    x_pos = _make_x_positions(n, fm_groups)
 
     fig, ax = plt.subplots(figsize=(max(8, n * 0.9), 5), constrained_layout=True)
     vals = df[col].values
-    bars = ax.bar(range(n), vals, color=colours, edgecolor="black", linewidth=0.5, alpha=0.85)
+    bars = ax.bar(x_pos, vals, color=colours, edgecolor="black", linewidth=0.5, alpha=0.85)
 
     for bar, v in zip(bars, vals):
         if np.isfinite(v):
@@ -1735,10 +1831,11 @@ def plot_weighted_position_accuracy(
                     f"{v:.3f}", ha="center", va="bottom", fontsize=6, rotation=90)
 
     ax.axhline(0.5, color="grey", lw=1.2, linestyle="--", label="chance (0.5)")
-    ax.set_xticks(range(n))
-    ax.set_xticklabels(df["label"].values, rotation=35, ha="right", fontsize=7)
+    ax.set_xticks([])
     ax.set_ylabel("Weighted position identification accuracy")
-    ax.set_ylim(0, 1.15)
+    y_max = float(np.nanmax(vals))
+    ax.set_ylim(0, max(1.0, y_max) * 1.28)
+    ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
     title_prot = f" [{protein_prefix}]" if protein_prefix else ""
     ax.set_title(
         f"Importance-Weighted Position Identification Accuracy{title_prot}\n"
@@ -1748,6 +1845,7 @@ def plot_weighted_position_accuracy(
     ax.legend(handles=config_handles + [chance_line], fontsize=7, loc="lower right")
     ax.yaxis.grid(True, linestyle="--", alpha=0.4)
     ax.set_axisbelow(True)
+    _apply_group_decorations(ax, fm_groups, x_pos)
 
     fname = f"{protein_prefix}_weighted_pos_accuracy.png" if protein_prefix else "synthetic_weighted_pos_accuracy.png"
     out_path = output_dir / fname
@@ -1777,6 +1875,7 @@ def plot_noise_vs_interp(
     protein: str,
     fitness_model: str,
     protein_prefix: str | None = None,
+    split: str = "all",
 ) -> None:
     """Line plots of key metrics vs noise level, coloured by interpolation path.
 
@@ -1921,8 +2020,9 @@ def plot_noise_vs_interp(
         ax.set_visible(False)
 
     prot_label = protein_prefix or f"{protein}_{fitness_model}"
+    split_label = f" [{split}]" if split and split != "all" else ""
     fig.suptitle(
-        f"IG quality vs noise level — {protein} / {fitness_model}\n"
+        f"IG quality vs noise level — {protein} / {fitness_model}{split_label}\n"
         f"(lines = interpolation paths; dashed grey = random baseline; "
         f"dotted right axis = near-zero fraction; red shading = >30% unreliable)",
         fontsize=9,
@@ -2015,6 +2115,20 @@ def main() -> None:
         action="store_true",
         help="Also save a per-position |IG| vs ground-truth bar chart for each run.",
     )
+    parser.add_argument(
+        "--proteins",
+        nargs="+",
+        default=None,
+        choices=["GB1", "T4Lysozyme", "p53"],
+        help="Restrict auto-discovery to specific proteins (default: all).",
+    )
+    parser.add_argument(
+        "--fitness-models",
+        nargs="+",
+        default=None,
+        choices=["additive", "epistatic", "nonlinear"],
+        help="Restrict auto-discovery to specific fitness models (default: all).",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -2025,7 +2139,20 @@ def main() -> None:
         dirs = [Path(d) for d in args.results_dirs]
     else:
         print(f"Scanning for synthetic results under {SYNTHETIC_RESULTS_DIR} ...")
-        dirs = discover_synthetic_results()
+        all_dirs = discover_synthetic_results()
+        # Apply optional protein / fitness-model filters
+        def _matches(d: Path) -> bool:
+            # Walk up to find the protein_model level (e.g. GB1_additive)
+            parts = d.relative_to(SYNTHETIC_RESULTS_DIR).parts
+            top = parts[0] if parts else ""
+            if args.proteins and not any(top.startswith(p + "_") for p in args.proteins):
+                return False
+            if args.fitness_models and not any(
+                f"_{fm}" in top for fm in args.fitness_models
+            ):
+                return False
+            return True
+        dirs = [d for d in all_dirs if _matches(d)]
         print(f"  Found {len(dirs)} result directories.\n")
 
     if not dirs:
@@ -2191,6 +2318,9 @@ def main() -> None:
         try:
             sign_rows = [
                 {"label": r["dirname"],
+                 "noise_level":      r.get("noise_level",      float("nan")),
+                 "interp":           r.get("interp",           ""),
+                 "fitness_model":    r.get("fitness_model",    ""),
                  "sign_acc_active":  r.get("sign_acc_active",  float("nan")),
                  "sign_acc_wt":      r.get("sign_acc_wt",      float("nan")),
                  "sign_acc_overall": r.get("sign_acc_overall", float("nan"))}
@@ -2223,7 +2353,7 @@ def main() -> None:
                 fm_prefix = f"{prefix}_{fm}" if split != "all" else f"{prot}_{fm}"
                 print(f"    Noise-vs-interp plot: {prot} / {fm} (split={split}, {len(fm_df)} runs)")
                 try:
-                    plot_noise_vs_interp(fm_df, output_dir, protein=prot, fitness_model=fm, protein_prefix=fm_prefix)
+                    plot_noise_vs_interp(fm_df, output_dir, protein=prot, fitness_model=fm, protein_prefix=fm_prefix, split=split)
                 except Exception as exc:
                     print(f"  [warn] Noise-vs-interp [{fm_prefix}] failed: {exc}")
 

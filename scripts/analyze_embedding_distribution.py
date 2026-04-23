@@ -21,17 +21,54 @@ Evaluates the quality of interpolation paths in embedding space using three anal
    the assumption of linearity is probably wrong.)
 
 Usage:
+    # ── Single config ────────────────────────────────────────────────────────
     python scripts/analyze_embedding_distribution.py configs/pafa_config_embedding-signed.yaml
     python scripts/analyze_embedding_distribution.py configs/betalactamase_config_embedding-signed.yaml
 
     # Control how many sequence pairs to use for path analysis
     python scripts/analyze_embedding_distribution.py configs/pafa_config_embedding-signed.yaml --n-pairs 30
 
-    # Skip ALS (faster, no model needed beyond embeddings)
-    python scripts/analyze_embedding_distribution.py configs/pafa_config_embedding-signed.yaml
-
-    # Run ALS (requires a trained model)
+    # Run ALS (requires a trained model; skipped by default)
     python scripts/analyze_embedding_distribution.py configs/pafa_config_embedding-signed.yaml --run-als
+
+    # ── Synthetic batch mode (RECOMMENDED for all synthetic datasets) ────────
+    # Full production run over all proteins × fitness-models.
+    # Requires: IG embedding cache files already generated in
+    #   data/embeddings/synthetic/<dataset>_integrated_gradients_embeddings_batch_*.safetensors
+    # Output goes to: results/synthetic/distribution_analysis/<dataset_name>/
+    #
+    source IGLOO_env/bin/activate
+    python scripts/analyze_embedding_distribution.py \\
+        --synthetic \\
+        --n-pairs 20 \\
+        --steps 500 \\
+        --interp-methods linear slerp nearest_neighbor
+
+    # Restrict to a single protein / fitness-model for testing:
+    python scripts/analyze_embedding_distribution.py \\
+        --synthetic \\
+        --proteins T4Lysozyme \\
+        --fitness-models additive \\
+        --n-pairs 5 \\
+        --steps 500 \\
+        --interp-methods linear slerp nearest_neighbor
+
+    # ── Pair-selection options (mutually exclusive intent) ───────────────────
+    # Default: random pairs from non-WT sequences.
+    #
+    # Add top/bottom fitness extremes ON TOP of random pairs:
+    #   --include-extremes --n-extremes 10
+    #
+    # Replace random selection with sequences farthest from embedding centroid:
+    #   --embedding-extremes --n-embedding-extremes 20
+
+    # ── Outputs per dataset ──────────────────────────────────────────────────
+    # results/synthetic/distribution_analysis/<dataset>/
+    #   <dataset>_individual_paths_linear.png
+    #   <dataset>_individual_paths_slerp.png
+    #   <dataset>_individual_paths_nearest_neighbor.png
+    #   <dataset>_paths_method_comparison.png
+    #   <dataset>_FED_boxplot.png
 """
 
 import argparse
@@ -335,6 +372,7 @@ def collect_path_embeddings(sequences: list[str], wt_seq: str,
                              y_log_std: float = 1.0,
                              device: torch.device | None = None,
                              train_pooled_embs: np.ndarray | None = None,
+                             precomputed_embs: np.ndarray | None = None,
                              ) -> tuple[np.ndarray, list[np.ndarray], list[str]]:
     """
     Sample embeddings from interpolation paths.
@@ -366,28 +404,48 @@ def collect_path_embeddings(sequences: list[str], wt_seq: str,
           f"[{min(n_pairs, len(non_wt))} random + {n_total - min(n_pairs, len(non_wt))} extremes] × "
           f"{steps} steps, method='{interpolation_method}')...")
 
+    # Build a fast seq→row-index lookup from pre-fetched embeddings (shape N,L,D)
+    # so we can avoid re-running ESM for sequences already in memory.
+    _seq_to_idx: dict[str, int] = {}
+    if precomputed_embs is not None:
+        _seq_to_idx = {s: i for i, s in enumerate(sequences)}
+
+    def _get_emb(seq: str, cache_name: str, bs: int) -> np.ndarray:
+        """Return (1, L, D) raw embedding, using precomputed_embs when available."""
+        if precomputed_embs is not None and seq in _seq_to_idx:
+            return precomputed_embs[_seq_to_idx[seq]:_seq_to_idx[seq]+1]
+        return get_embeddings([seq], layer=esm_layer, batch_size=bs,
+                              dataset_name=cache_name, subdir=embeddings_subdir)
+
     # Pre-fetch WT embedding once
-    wt_emb_raw = get_embeddings(
-        [wt_seq], layer=esm_layer, batch_size=1,
-        dataset_name=f'{dataset_name}_wt_baseline',
-        subdir=embeddings_subdir,
-    )  # (1, L, D)
+    wt_emb_raw = _get_emb(wt_seq, f'{dataset_name}_wt_baseline', 1)  # (1, L, D)
     wt_emb = torch.tensor(wt_emb_raw[0], dtype=torch.float32)   # (L, D)
 
-    # Pre-fetch all chosen variant embeddings in one batched call so each
-    # sequence gets a unique cache slot (avoids all variants hitting the same
-    # batch_0_0 cache file when called one-at-a-time).
-    all_seq_embs_raw = get_embeddings(
-        chosen_seqs, layer=esm_layer, batch_size=16,
-        dataset_name=f'{dataset_name}_path_seqs',
-        subdir=embeddings_subdir,
-    )  # (N, L, D)
+    # Pre-fetch all chosen variant embeddings — use precomputed where available,
+    # fall back to ESM only for sequences not already in memory.
+    missing_seqs  = [s for s in chosen_seqs if s not in _seq_to_idx or precomputed_embs is None]
+    missing_idxs  = [i for i, s in enumerate(chosen_seqs) if s not in _seq_to_idx or precomputed_embs is None]
+    if missing_seqs:
+        print(f"  Fetching {len(missing_seqs)} variant embedding(s) not in precomputed cache...")
+        missing_embs = get_embeddings(
+            missing_seqs, layer=esm_layer, batch_size=16,
+            dataset_name=f'{dataset_name}_path_seqs',
+            subdir=embeddings_subdir,
+        )  # (M, L, D)
+    else:
+        missing_embs = None
+
+    def _get_variant_emb(idx: int, seq: str) -> np.ndarray:
+        if precomputed_embs is not None and seq in _seq_to_idx:
+            return precomputed_embs[_seq_to_idx[seq]:_seq_to_idx[seq]+1]
+        pos = missing_idxs.index(idx)
+        return missing_embs[pos:pos+1]
 
     all_path_pooled: list[np.ndarray] = []
     per_pair_paths:  list[np.ndarray] = []
 
     for idx, seq in enumerate(tqdm(chosen_seqs, desc='  Pairs')):
-        seq_emb_raw = all_seq_embs_raw[idx:idx+1]  # (1, L_seq, D)
+        seq_emb_raw = _get_variant_emb(idx, seq)  # (1, L_seq, D)
         seq_emb = torch.tensor(seq_emb_raw[0], dtype=torch.float32)  # (L_seq, D)
 
         # Sequences may differ in length — pad shorter to match longer
@@ -481,8 +539,9 @@ def compute_and_plot_fed(real_pooled: np.ndarray, path_pooled: np.ndarray,
     # Project onto first 2 principal components for visual check
     from sklearn.decomposition import PCA
     combined = np.concatenate([real_pooled, path_pooled], axis=0)
-    pca = PCA(n_components=2)
-    proj = pca.fit_transform(combined)
+    combined_f64 = combined.astype(np.float64)
+    pca = PCA(n_components=2, svd_solver='full')
+    proj = pca.fit_transform(combined_f64)
     n_real = len(real_pooled)
     proj_real = proj[:n_real]
     proj_path = proj[n_real:]
@@ -716,8 +775,8 @@ def plot_individual_paths_pca(
     wt_y = seq_to_y.get(wt_seq, float('nan'))
 
     # Fit PCA on real data only, then project everything into that space
-    pca = PCA(n_components=2)
-    real_proj = pca.fit_transform(real_pooled)          # (N, 2)
+    pca = PCA(n_components=2, svd_solver='full')
+    real_proj = pca.fit_transform(real_pooled.astype(np.float64))          # (N, 2)
     exp_var = pca.explained_variance_ratio_
 
     # WT projection
@@ -1061,15 +1120,437 @@ def plot_als(als_result: dict, dataset_name: str, output_dir: str,
     print(f"  Saved: {path}")
 
 
+def plot_methods_comparison_pca(
+    real_pooled: np.ndarray,
+    all_methods_paths: dict,         # method → list of (steps+1, D) arrays
+    all_methods_seqs:  dict,         # method → list of chosen variant seqs
+    ref_seqs: list[str],             # canonical sequence order (from first method)
+    all_sequences: list[str],
+    y_raw: np.ndarray,
+    wt_seq: str,
+    dataset_name: str,
+    output_dir: str,
+    max_pairs: int = 10,
+) -> None:
+    """Grid plot: rows = sequence pairs, columns = interpolation methods.
+
+    Each cell shares the same PCA space so paths are directly comparable.
+    """
+    from sklearn.decomposition import PCA
+
+    methods = list(all_methods_paths.keys())
+    n_methods = len(methods)
+
+    # Limit to first max_pairs so the figure stays readable
+    pairs_to_show = ref_seqs[:max_pairs]
+    n_pairs = len(pairs_to_show)
+    if n_pairs == 0:
+        return
+
+    # Fit PCA on real data
+    pca = PCA(n_components=2, svd_solver='full')
+    real_proj = pca.fit_transform(real_pooled.astype(np.float64))
+    exp_var = pca.explained_variance_ratio_
+
+    # WT projection
+    if wt_seq in all_sequences:
+        wt_proj = real_proj[all_sequences.index(wt_seq)]
+    else:
+        wt_proj = None
+
+    # Axis limits from real data
+    margin = 0.05
+    xr = real_proj[:, 0].ptp()
+    yr = real_proj[:, 1].ptp()
+    xlim = (real_proj[:, 0].min() - margin * xr, real_proj[:, 0].max() + margin * xr)
+    ylim = (real_proj[:, 1].min() - margin * yr, real_proj[:, 1].max() + margin * yr)
+
+    seq_to_y = {s: float(v) for s, v in zip(all_sequences, y_raw)}
+    all_y = np.array([seq_to_y.get(s, float('nan')) for s in pairs_to_show])
+    y_finite = all_y[np.isfinite(all_y)]
+    y_min = float(y_finite.min()) if len(y_finite) else 0.0
+    y_max = float(y_finite.max()) if len(y_finite) else 1.0
+    fitness_cmap = plt.cm.RdBu
+
+    # Method colours for path lines
+    method_colors = ['darkorange', 'steelblue', 'mediumseagreen', 'orchid', 'tomato']
+
+    cell = 2.8
+    fig, axes = plt.subplots(n_pairs, n_methods,
+                              figsize=(n_methods * cell, n_pairs * cell),
+                              squeeze=False)
+
+    for col, method in enumerate(methods):
+        m_paths = all_methods_paths[method]
+        m_seqs  = all_methods_seqs[method]
+        seq_to_path = {s: p for s, p in zip(m_seqs, m_paths)}
+        color = method_colors[col % len(method_colors)]
+
+        for row, seq in enumerate(pairs_to_show):
+            ax = axes[row][col]
+            ax.scatter(real_proj[:, 0], real_proj[:, 1],
+                       s=2, color='lightgrey', alpha=0.4, zorder=1, rasterized=True)
+
+            if seq in seq_to_path:
+                path_proj = pca.transform(seq_to_path[seq])
+                pts  = path_proj[:, np.newaxis, :]
+                segs = np.concatenate([pts[:-1], pts[1:]], axis=1)
+                for seg, a in zip(segs, np.linspace(0.15, 1.0, len(segs))):
+                    ax.plot(seg[:, 0], seg[:, 1], color=color,
+                            lw=1.4, alpha=a, zorder=3, solid_capstyle='round')
+                ax.annotate('', xy=path_proj[-1], xytext=path_proj[-2],
+                            arrowprops=dict(arrowstyle='->', color=color, lw=1.4),
+                            zorder=4)
+                var_end = path_proj[-1]
+            else:
+                var_end = None
+
+            if wt_proj is not None:
+                ax.scatter(*wt_proj, marker='*', s=100, color='limegreen',
+                           edgecolors='black', linewidths=0.4, zorder=5)
+
+            if var_end is not None:
+                var_y = seq_to_y.get(seq, float('nan'))
+                norm_y = np.clip((var_y - y_min) / (y_max - y_min + 1e-12), 0, 1)
+                ax.scatter(*var_end, s=50, color=fitness_cmap(norm_y),
+                           edgecolors='black', linewidths=0.4, zorder=6)
+
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+            if row == 0:
+                ax.set_title(method, fontsize=8, fontweight='bold')
+            if col == 0:
+                var_y = seq_to_y.get(seq, float('nan'))
+                label = f'fit={var_y:.2f}' if np.isfinite(var_y) else '?'
+                ax.set_ylabel(label, fontsize=7)
+
+    fig.text(0.5, 0.01, f'PC1 ({exp_var[0]*100:.1f}%)', ha='center', fontsize=9)
+    fig.text(0.01, 0.5, f'PC2 ({exp_var[1]*100:.1f}%)', va='center',
+             rotation='vertical', fontsize=9)
+
+    fig.suptitle(
+        f'{dataset_name}: Interpolation Path Comparison\n'
+        f'Green ★ = WT  |  dot = variant (red=low, blue=high fitness)  |  '
+        f'grey = real embedding cloud',
+        fontsize=9, y=1.01,
+    )
+
+    plt.tight_layout()
+    out_path = os.path.join(output_dir, f'{dataset_name}_paths_method_comparison.png')
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  Saved: {out_path}")
+
+
 # ============================================================
 # Main
 # ============================================================
+
+# ---------------------------------------------------------------------------
+# Per-config analysis runner (shared by single-config and --synthetic modes)
+# ---------------------------------------------------------------------------
+
+def _run_one_config(config_path: Path, args, output_root: Path | None = None) -> None:
+    """Run the full embedding distribution analysis for one config file.
+
+    Parameters
+    ----------
+    config_path  : path to a YAML config file.
+    args         : parsed argparse namespace (all CLI flags).
+    output_root  : if given, results go to output_root/{dataset_name}/;
+                   otherwise the config's own results_dir is used.
+    """
+    import torch  # local to avoid top-level issues when called from sweep
+
+    config = load_config(str(config_path))
+    validate_config(config)
+
+    dataset_name   = config['data']['name']
+    esm_layer      = config['model']['esm_layer']
+    pooling_method = config['model']['pooling_method']
+    emb_batch_size = config['model'].get('batch_size', 16)
+
+    if output_root is not None:
+        output_dir = str(output_root / dataset_name)
+    else:
+        results_dir = str(PROJECT_ROOT / config.get(
+            'results_dir', f'results/{dataset_name}_dist_analysis'))
+        output_dir = os.path.join(results_dir, 'distribution_analysis')
+    os.makedirs(output_dir, exist_ok=True)
+
+    embeddings_subdir = 'synthetic' if 'synthetic' in config['data']['path'] else None
+
+    print(f"\n{'='*70}")
+    print(f"  Dataset        : {dataset_name}")
+    print(f"  ESM layer      : {esm_layer}")
+    print(f"  Output         : {output_dir}")
+    print(f"{'='*70}")
+
+    # ── Load data ────────────────────────────────────────────────────────────
+    data_path = str(PROJECT_ROOT / config['data']['path'])
+    df, sequences, y_raw, y, y_log_mean, y_log_std = load_and_prepare_data(config, data_path)
+    wt_seq, _ = prepare_wildtype_sequence(df, config)
+
+    # ── Build extreme-sequence lists ─────────────────────────────────────────
+    extreme_seqs: list[str] = []
+    fit_top_set:  set[str]  = set()
+    fit_bot_set:  set[str]  = set()
+    if args.include_extremes:
+        n_ext = args.n_extremes
+        order = np.argsort(y_raw)
+        fit_bot_set = {sequences[i] for i in order[:n_ext]  if sequences[i] != wt_seq}
+        fit_top_set = {sequences[i] for i in order[-n_ext:] if sequences[i] != wt_seq}
+        extreme_seqs = [s for s in
+                        [sequences[i] for i in np.concatenate([order[:n_ext], order[-n_ext:]])]
+                        if s != wt_seq]
+        print(f"  Extreme sequences: {len(extreme_seqs)} "
+              f"({n_ext} bottom + {n_ext} top by target value, WT excluded)")
+
+    # Ensure the config's own IG interpolation method is always included in the
+    # analysis, even if not explicitly requested via --interp-methods.
+    cfg_interp = config.get('integrated_gradients', {}).get('interpolation_path', None)
+    if cfg_interp and cfg_interp not in args.interp_methods:
+        print(f"  [config] Adding config interpolation_path '{cfg_interp}' to analysis methods.")
+        args.interp_methods = list(args.interp_methods) + [cfg_interp]
+
+    # ── Get all dataset embeddings ───────────────────────────────────────────
+    # The IG pipeline caches embeddings under "{dataset_name}_integrated_gradients"
+    # with config['model']['batch_size'] — use that directly to hit the cache.
+    emb_cache_name = f"{dataset_name}_integrated_gradients"
+    _emb_bs = emb_batch_size  # from config['model']['batch_size']
+    _emb_cache_dir = PROJECT_ROOT / 'data' / 'embeddings'
+    if embeddings_subdir:
+        _emb_cache_dir = _emb_cache_dir / embeddings_subdir
+
+    # Find the highest contiguous sequence index covered by cache files so we
+    # don't trigger ESM recomputation for sequences (e.g. test set) that were
+    # never embedded by the IG pipeline.
+    _n_seqs = len(sequences)
+    _cached_end = 0
+    for _i in range(0, _n_seqs, _emb_bs):
+        _e = min(_i + _emb_bs, _n_seqs)
+        _f = _emb_cache_dir / f"{emb_cache_name}_embeddings_batch_{_i}_{_e-1}.safetensors"
+        if _f.exists():
+            _cached_end = _e
+        else:
+            break  # first gap — stop here
+    if _cached_end < _n_seqs:
+        print(f"  [cache] Cache covers {_cached_end}/{_n_seqs} sequences "
+              f"(IG pipeline likely only embedded training set). "
+              f"Restricting analysis to cached sequences.")
+        sequences  = sequences[:_cached_end]
+        y_raw      = y_raw[:_cached_end]
+        y          = y[:_cached_end]
+        df         = df.iloc[:_cached_end].reset_index(drop=True)
+        # Re-filter extreme sets to only include sequences still in scope
+        _seq_set   = set(sequences)
+        extreme_seqs = [s for s in extreme_seqs if s in _seq_set]
+        fit_top_set  = fit_top_set  & _seq_set
+        fit_bot_set  = fit_bot_set  & _seq_set
+
+    print(f"\nFetching ESM embeddings for all {len(sequences)} sequences...")
+    all_embs  = get_embeddings(sequences, layer=esm_layer, batch_size=_emb_bs,
+                               dataset_name=emb_cache_name, subdir=embeddings_subdir)
+    pooled_embs = mean_pool(all_embs)
+
+    # ── Build embedding-extremes list ────────────────────────────────────────
+    emb_extreme_seqs: list[str] = []
+    if args.embedding_extremes:
+        centroid = pooled_embs.mean(axis=0)
+        dists = np.linalg.norm(pooled_embs - centroid, axis=1)
+        order_ee = np.argsort(dists)[::-1]
+        emb_extreme_seqs = [sequences[i] for i in order_ee
+                            if sequences[i] != wt_seq][:args.n_embedding_extremes]
+        print(f"  Embedding-extreme sequences: {len(emb_extreme_seqs)} selected")
+
+    print(f"  Embedding shape (raw): {all_embs.shape}")
+    print(f"  Pooled shape:          {pooled_embs.shape}")
+
+    # ── Step 1: Data distribution ────────────────────────────────────────────
+    plot_data_distribution(pooled_embs, dataset_name, output_dir,
+                           subset_size=args.subset_size)
+    plot_all_dimensions_kde(pooled_embs, dataset_name, output_dir)
+
+    # ── Load trained model (for ALS / guided_ig) ─────────────────────────────
+    predictor_model = None
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    if args.run_als or 'guided_ig' in args.interp_methods:
+        # In synthetic mode, look for the pre-trained noise_0.0 model first
+        candidate_pth = (PROJECT_ROOT / 'results' / 'synthetic' /
+                         dataset_name / 'noise_0.0' / f'{dataset_name}_training_model.pth')
+        try:
+            if candidate_pth.exists():
+                print(f"\nLoading pre-trained model from {candidate_pth} ...")
+                from src.igloo.utils import create_model
+                model_obj = create_model(config, device)
+                import torch as _torch
+                model_obj.load_state_dict(_torch.load(str(candidate_pth), map_location=device))
+                model_obj.eval()
+                predictor_model = model_obj
+                print("  Model loaded successfully.")
+            else:
+                from src.igloo.train_and_eval import train_or_load_model
+                results_dir_for_model = str(PROJECT_ROOT / config.get(
+                    'results_dir', f'results/{dataset_name}_dist_analysis'))
+                print(f"\nLoading/training model for ALS (device={device})...")
+                final_model, _, _ = train_or_load_model(
+                    config, sequences, y, results_dir_for_model, device)
+                predictor_model = final_model
+                print("  Model loaded successfully.")
+        except Exception as exc:
+            print(f"\n  Warning: Could not load trained model — skipping ALS/guided_ig. ({exc})")
+
+    # ── Steps 2 & 3: FED and ALS per interpolation method ───────────────────
+    fed_results:   dict[str, float]        = {}
+    fed_per_pair:       dict[str, list[float]]  = {}
+    fed_chosen_seqs:    list[str] = []
+    all_methods_paths:  dict[str, list[np.ndarray]] = {}   # method → per_pair_paths
+    all_methods_seqs:   dict[str, list[str]] = {}          # method → chosen_seqs
+
+    for method in args.interp_methods:
+        print(f"\n{'='*60}")
+        print(f" Interpolation method: {method}")
+        print(f"{'='*60}")
+
+        if method == 'guided_ig' and predictor_model is None:
+            print("  Skipping guided_ig — no trained model available.")
+            continue
+
+        combined_extra: list[str] = []
+        if args.include_extremes:
+            combined_extra.extend(extreme_seqs)
+        if args.embedding_extremes:
+            combined_extra.extend(emb_extreme_seqs)
+        seen: set[str] = set()
+        combined_extra = [s for s in combined_extra if not (s in seen or seen.add(s))]
+
+        n_random = 0 if args.embedding_extremes else args.n_pairs
+
+        path_embs, per_pair_paths, chosen_seqs = collect_path_embeddings(
+            sequences=sequences, wt_seq=wt_seq, n_pairs=n_random,
+            steps=args.steps, esm_layer=esm_layer, dataset_name=dataset_name,
+            interpolation_method=method, embeddings_subdir=embeddings_subdir,
+            extra_seqs=combined_extra if combined_extra else None,
+            predictor_model=predictor_model, pooling_method=pooling_method,
+            y_log_mean=y_log_mean, y_log_std=y_log_std, device=device,
+            train_pooled_embs=pooled_embs,
+            precomputed_embs=all_embs,
+        )
+
+        fed_val = compute_and_plot_fed(pooled_embs, path_embs,
+                                       dataset_name, output_dir, method)
+        fed_results[method] = fed_val
+
+        per_pair_feds = compute_per_pair_feds(pooled_embs, per_pair_paths)
+        fed_per_pair[method] = per_pair_feds
+        if not fed_chosen_seqs:
+            fed_chosen_seqs = list(chosen_seqs)
+
+        all_methods_paths[method] = per_pair_paths
+        all_methods_seqs[method]  = list(chosen_seqs)
+
+        plot_individual_paths_pca(
+            real_pooled=pooled_embs, per_pair_paths=per_pair_paths,
+            chosen_seqs=chosen_seqs, all_sequences=sequences,
+            y_raw=y_raw, wt_seq=wt_seq, dataset_name=dataset_name,
+            output_dir=output_dir, interpolation_method=method,
+            emb_extreme_set=set(emb_extreme_seqs) if args.embedding_extremes else None,
+            fit_top_set=fit_top_set if args.include_extremes else None,
+            fit_bot_set=fit_bot_set if args.include_extremes else None,
+            per_pair_feds=per_pair_feds,
+        )
+
+        if args.run_als:
+            if predictor_model is not None:
+                als_result = compute_als(
+                    sequences=sequences, y_raw=y_raw, wt_seq=wt_seq,
+                    n_pairs=args.n_pairs, steps=args.steps, esm_layer=esm_layer,
+                    dataset_name=dataset_name, predictor_model=predictor_model,
+                    pooling_method=pooling_method, y_log_mean=y_log_mean,
+                    y_log_std=y_log_std, device=device, interpolation_method=method,
+                    embeddings_subdir=embeddings_subdir,
+                )
+                plot_als(als_result, dataset_name, output_dir, method)
+            else:
+                print("  [Step 3] Skipping ALS (no trained model).")
+
+    # ── Cross-method path comparison PCA ──────────────────────────────────────
+    if len(all_methods_paths) > 1:
+        print("\n  Plotting cross-method path comparison PCA...")
+        # Use the sequence set from the first method (seed=0 → same seqs for all)
+        ref_method = next(iter(all_methods_paths))
+        ref_seqs   = all_methods_seqs[ref_method]
+        plot_methods_comparison_pca(
+            real_pooled=pooled_embs,
+            all_methods_paths=all_methods_paths,
+            all_methods_seqs=all_methods_seqs,
+            ref_seqs=ref_seqs,
+            all_sequences=sequences,
+            y_raw=y_raw,
+            wt_seq=wt_seq,
+            dataset_name=dataset_name,
+            output_dir=output_dir,
+        )
+
+    # ── FED boxplot ──────────────────────────────────────────────────────────
+    if fed_per_pair:
+        print("\n  Plotting per-variant FED boxplot...")
+        plot_fed_boxplot(fed_per_pair, dataset_name, output_dir,
+                         chosen_seqs=fed_chosen_seqs)
+
+    # ── Summary ──────────────────────────────────────────────────────────────
+    print(f"\n{'='*60}")
+    print(f"  SUMMARY — {dataset_name}  (N={len(sequences)}, D={pooled_embs.shape[1]})")
+    print(f"{'='*60}")
+    for method, fed in fed_results.items():
+        pair_feds = fed_per_pair.get(method, [])
+        extra = (f"  per-pair μ={np.mean(pair_feds):.4f}  σ={np.std(pair_feds):.4f}"
+                 f"  (n={len(pair_feds)})" if pair_feds else "")
+        print(f"  FED [{method:20s}]: {fed:.4f}{extra}")
+    print(f"\n  Output saved to: {output_dir}")
+
+    import pandas as _pd
+    summary_df = _pd.DataFrame([{'method': m, 'FED': v} for m, v in fed_results.items()])
+    csv_path = os.path.join(output_dir, f'{dataset_name}_distribution_summary.csv')
+    summary_df.to_csv(csv_path, index=False)
+    print(f"  Summary CSV: {csv_path}")
+
 
 def main():
     parser = argparse.ArgumentParser(
         description='Analyze embedding distribution and interpolation path quality.'
     )
-    parser.add_argument('config', help='Path to a YAML/JSON config file.')
+    parser.add_argument(
+        'config', nargs='?', default=None,
+        help='Path to a YAML/JSON config file (omit when using --synthetic).'
+    )
+    # ── Synthetic batch mode ─────────────────────────────────────────────────
+    parser.add_argument(
+        '--synthetic', action='store_true',
+        help='Batch mode: loop over all configs in configs/synthetic/ and '
+             'analyse every protein × fitness-model combination.'
+    )
+    parser.add_argument(
+        '--proteins', nargs='+', default=None,
+        choices=['GB1', 'T4Lysozyme', 'p53'],
+        help='Restrict --synthetic mode to specific proteins (default: all).'
+    )
+    parser.add_argument(
+        '--fitness-models', nargs='+', default=None,
+        choices=['additive', 'epistatic', 'nonlinear'],
+        help='Restrict --synthetic mode to specific fitness models (default: all).'
+    )
+    parser.add_argument(
+        '--synthetic-output-dir', type=str,
+        default='results/synthetic/distribution_analysis',
+        help='Root output directory for --synthetic mode '
+             '(default: results/synthetic/distribution_analysis).'
+    )
+    # ── Common analysis options ──────────────────────────────────────────────
     parser.add_argument(
         '--n-pairs', type=int, default=20,
         help='Number of sequence pairs to use for path analysis (default: 20).'
@@ -1080,10 +1561,10 @@ def main():
     )
     parser.add_argument(
         '--interp-methods', nargs='+',
-        default=['linear', 'slerp', 'nearest_neighbor', 'guided_ig'],
+        default=['linear', 'slerp', 'nearest_neighbor'],
         choices=['linear', 'slerp', 'nearest_neighbor', 'guided_ig'],
-        help='Interpolation methods to evaluate (default: linear). '
-             'guided_ig requires a trained model (incompatible with --skip-als).'
+        help='Interpolation methods to evaluate (default: linear slerp nearest_neighbor). '
+             'guided_ig requires a trained model.'
     )
     parser.add_argument(
         '--run-als', action='store_true',
@@ -1095,8 +1576,7 @@ def main():
     )
     parser.add_argument(
         '--include-extremes', action='store_true',
-        help='Always include the top-N and bottom-N fitness sequences as path pairs, '
-             'in addition to the random --n-pairs sample.'
+        help='Always include the top-N and bottom-N fitness sequences as path pairs.'
     )
     parser.add_argument(
         '--n-extremes', type=int, default=10,
@@ -1105,9 +1585,7 @@ def main():
     )
     parser.add_argument(
         '--embedding-extremes', action='store_true',
-        help='Select path endpoints from sequences whose embeddings are farthest '
-             'from the dataset centroid in embedding space (periphery of distribution). '
-             'Replaces random sampling; use --n-embedding-extremes to control count.'
+        help='Select path endpoints from sequences farthest from the dataset centroid.'
     )
     parser.add_argument(
         '--n-embedding-extremes', type=int, default=20,
@@ -1115,231 +1593,49 @@ def main():
     )
     args = parser.parse_args()
 
-    # ── Load config ──────────────────────────────────────────────────────────
-    config_path = Path(args.config)
-    if not config_path.is_absolute():
-        config_path = PROJECT_ROOT / config_path
-    config = load_config(str(config_path))
-    validate_config(config)
+    # ── Dispatch ─────────────────────────────────────────────────────────────
+    if args.synthetic:
+        synthetic_config_dir = PROJECT_ROOT / 'configs' / 'synthetic'
+        all_configs = sorted(synthetic_config_dir.glob('*.yaml'))
+        if not all_configs:
+            print(f"No configs found in {synthetic_config_dir}")
+            return
 
-    dataset_name = config['data']['name']
-    esm_layer = config['model']['esm_layer']
-    results_dir = str(PROJECT_ROOT / config.get('results_dir',
-                                                 f'results/{dataset_name}_dist_analysis'))
-    output_dir = os.path.join(results_dir, 'distribution_analysis')
-    os.makedirs(output_dir, exist_ok=True)
-    # Use the same embedding subdirectory as the main pipeline
-    embeddings_subdir = 'synthetic' if 'synthetic' in config['data']['path'] else None
+        # Optional filtering
+        def _matches(p: Path) -> bool:
+            name = p.stem  # e.g. GB1_additive_config
+            if args.proteins and not any(name.startswith(prot + '_') for prot in args.proteins):
+                return False
+            if args.fitness_models and not any(f'_{fm}_' in name or name.endswith(f'_{fm}_config')
+                                                for fm in args.fitness_models):
+                return False
+            return True
 
-    print(f"Dataset        : {dataset_name}")
-    print(f"ESM layer      : {esm_layer}")
-    print(f"Embeddings dir : data/embeddings/{embeddings_subdir or '(root)'}")
-    print(f"Output         : {output_dir}")
+        configs_to_run = [c for c in all_configs if _matches(c)]
+        if not configs_to_run:
+            print("No configs matched the specified --proteins / --fitness-models filters.")
+            return
 
-    # ── Load data ────────────────────────────────────────────────────────────
-    data_path = str(PROJECT_ROOT / config['data']['path'])
-    df, sequences, y_raw, y, y_log_mean, y_log_std = load_and_prepare_data(config, data_path)
-    wt_seq, _ = prepare_wildtype_sequence(df, config)
+        output_root = PROJECT_ROOT / args.synthetic_output_dir
+        print(f"Running --synthetic mode: {len(configs_to_run)} config(s) → {output_root}")
+        for cfg_path in configs_to_run:
+            try:
+                _run_one_config(cfg_path, args, output_root=output_root)
+            except Exception as exc:
+                print(f"\n  ERROR processing {cfg_path.name}: {exc}")
+                import traceback; traceback.print_exc()
+                print("  Continuing with next config...")
 
-    # ── Build extreme sequences list if requested ────────────────────────────
-    extreme_seqs: list[str] = []
-    fit_top_set: set[str] = set()
-    fit_bot_set: set[str] = set()
-    if args.include_extremes:
-        n_ext = args.n_extremes
-        order = np.argsort(y_raw)
-        bottom_idx = order[:n_ext]
-        top_idx    = order[-n_ext:]
-        fit_bot_set = {sequences[i] for i in bottom_idx if sequences[i] != wt_seq}
-        fit_top_set = {sequences[i] for i in top_idx    if sequences[i] != wt_seq}
-        extreme_seqs = [s for s in
-                        [sequences[i] for i in np.concatenate([bottom_idx, top_idx])]
-                        if s != wt_seq]
-        print(f"  Extreme sequences: {len(extreme_seqs)} "
-              f"({n_ext} bottom + {n_ext} top by target value, WT excluded)")
+    elif args.config is not None:
+        config_path = Path(args.config)
+        if not config_path.is_absolute():
+            config_path = PROJECT_ROOT / config_path
+        _run_one_config(config_path, args, output_root=None)
 
-    # ── Get all dataset embeddings ───────────────────────────────────────────
-    print(f"\nFetching ESM embeddings for all {len(sequences)} sequences...")
-    all_embs = get_embeddings(
-        sequences,
-        layer=esm_layer,
-        batch_size=16,
-        dataset_name=dataset_name,
-        subdir=embeddings_subdir,
-    )  # (N, L, D)
-
-    pooled_embs = mean_pool(all_embs)   # (N, D)
-
-    # ── Build embedding-extremes list if requested ───────────────────────────
-    emb_extreme_seqs: list[str] = []
-    if args.embedding_extremes:
-        centroid = pooled_embs.mean(axis=0)           # (D,)
-        dists = np.linalg.norm(pooled_embs - centroid, axis=1)  # (N,)
-        order = np.argsort(dists)[::-1]               # farthest first
-        n_ee = args.n_embedding_extremes
-        emb_extreme_seqs = [
-            sequences[i] for i in order if sequences[i] != wt_seq
-        ][:n_ee]
-        print(f"  Embedding-extreme sequences: {len(emb_extreme_seqs)} selected "
-              f"(farthest from distribution centroid, WT excluded)")
-    print(f"  Embedding shape (raw): {all_embs.shape}")
-    print(f"  Pooled shape:          {pooled_embs.shape}")
-
-    # ────────────────────────────────────────────────────────────────────────
-    # Step 1: Data distribution
-    # ────────────────────────────────────────────────────────────────────────
-    plot_data_distribution(pooled_embs, dataset_name, output_dir,
-                           subset_size=args.subset_size)
-    plot_all_dimensions_kde(pooled_embs, dataset_name, output_dir)
-
-    # ────────────────────────────────────────────────────────────────────────
-    # Steps 2 & 3: FED and ALS per interpolation method
-    # ────────────────────────────────────────────────────────────────────────
-    fed_results: dict[str, float] = {}
-    fed_per_pair: dict[str, list[float]] = {}
-    fed_chosen_seqs: list[str] = []
-
-    # Optionally load the trained predictor model for ALS
-    predictor_model = None
-    pooling_method = config['model']['pooling_method']
-
-    if args.run_als:
-        try:
-            from src.igloo.train_and_eval import train_or_load_model
-            from src.igloo.utils import create_model
-
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            print(f"\nLoading trained model for ALS (device={device})...")
-            final_model, _, _ = train_or_load_model(
-                config, sequences, y, results_dir, device
-            )
-            predictor_model = final_model
-            print("  Model loaded successfully.")
-        except Exception as exc:
-            print(f"\n  Warning: Could not load trained model — skipping ALS. ({exc})")
-            predictor_model = None
-            device = torch.device('cpu')
     else:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    for method in args.interp_methods:
-        print(f"\n{'='*60}")
-        print(f" Interpolation method: {method}")
-        print(f"{'='*60}")
-
-        # ── Step 2: FED ──────────────────────────────────────────────────
-        # Combine extra sequences from all sources
-        combined_extra: list[str] = []
-        if args.include_extremes:
-            combined_extra.extend(extreme_seqs)
-        if args.embedding_extremes:
-            combined_extra.extend(emb_extreme_seqs)
-        # Deduplicate while preserving order
-        seen: set[str] = set()
-        combined_extra = [s for s in combined_extra if not (s in seen or seen.add(s))]
-
-        # If embedding_extremes, skip random sampling (n_pairs=0) so only
-        # peripheral sequences are used as path endpoints
-        n_random = 0 if args.embedding_extremes else args.n_pairs
-
-        if method == 'guided_ig' and predictor_model is None:
-            print("  Skipping guided_ig — no trained model available (use without --skip-als).")
-            continue
-
-        path_embs, per_pair_paths, chosen_seqs = collect_path_embeddings(
-            sequences=sequences,
-            wt_seq=wt_seq,
-            n_pairs=n_random,
-            steps=args.steps,
-            esm_layer=esm_layer,
-            dataset_name=dataset_name,
-            interpolation_method=method,
-            embeddings_subdir=embeddings_subdir,
-            extra_seqs=combined_extra if combined_extra else None,
-            predictor_model=predictor_model,
-            pooling_method=pooling_method,
-            y_log_mean=y_log_mean,
-            y_log_std=y_log_std,
-            device=device,
-            train_pooled_embs=pooled_embs,
-        )
-        fed_val = compute_and_plot_fed(pooled_embs, path_embs,
-                                       dataset_name, output_dir, method)
-        fed_results[method] = fed_val
-
-        per_pair_feds = compute_per_pair_feds(pooled_embs, per_pair_paths)
-        fed_per_pair[method] = per_pair_feds
-        if not fed_chosen_seqs:
-            fed_chosen_seqs = list(chosen_seqs)
-
-        plot_individual_paths_pca(
-            real_pooled=pooled_embs,
-            per_pair_paths=per_pair_paths,
-            chosen_seqs=chosen_seqs,
-            all_sequences=sequences,
-            y_raw=y_raw,
-            wt_seq=wt_seq,
-            dataset_name=dataset_name,
-            output_dir=output_dir,
-            interpolation_method=method,
-            emb_extreme_set=set(emb_extreme_seqs) if args.embedding_extremes else None,
-            fit_top_set=fit_top_set if args.include_extremes else None,
-            fit_bot_set=fit_bot_set if args.include_extremes else None,
-            per_pair_feds=per_pair_feds,
-        )
-
-        # ── Step 3: ALS ──────────────────────────────────────────────────
-        if predictor_model is not None:
-            als_result = compute_als(
-                sequences=sequences,
-                y_raw=y_raw,
-                wt_seq=wt_seq,
-                n_pairs=args.n_pairs,
-                steps=args.steps,
-                esm_layer=esm_layer,
-                dataset_name=dataset_name,
-                predictor_model=predictor_model,
-                pooling_method=pooling_method,
-                y_log_mean=y_log_mean,
-                y_log_std=y_log_std,
-                device=device,
-                interpolation_method=method,
-                embeddings_subdir=embeddings_subdir,
-            )
-            plot_als(als_result, dataset_name, output_dir, method)
-        else:
-            print("  [Step 3] Skipping ALS (no trained model).")
-
-    # ── FED boxplot across methods ─────────────────────────────────────────
-    if len(fed_per_pair) > 0:
-        print("\n  Plotting per-variant FED boxplot...")
-        plot_fed_boxplot(fed_per_pair, dataset_name, output_dir,
-                         chosen_seqs=fed_chosen_seqs)
-
-    # ── Summary ──────────────────────────────────────────────────────────────
-    print("\n" + "=" * 60)
-    print(" SUMMARY")
-    print("=" * 60)
-    print(f"  Dataset : {dataset_name}  (N={len(sequences)}, D={pooled_embs.shape[1]})")
-    for method, fed in fed_results.items():
-        pair_feds = fed_per_pair.get(method, [])
-        if pair_feds:
-            pp_mean = float(np.mean(pair_feds))
-            pp_std  = float(np.std(pair_feds))
-            print(f"  FED [{method:20s}]: {fed:.4f}  |  per-pair μ={pp_mean:.4f}  σ={pp_std:.4f}  (n={len(pair_feds)})")
-        else:
-            print(f"  FED [{method:20s}]: {fed:.4f}")
-    print(f"\n  Output saved to: {output_dir}")
-
-    # Save summary CSV
-    import pandas as pd
-    summary_df = pd.DataFrame([
-        {'method': m, 'FED': v} for m, v in fed_results.items()
-    ])
-    csv_path = os.path.join(output_dir, f'{dataset_name}_distribution_summary.csv')
-    summary_df.to_csv(csv_path, index=False)
-    print(f"  Summary CSV: {csv_path}")
+        parser.error("Provide a config file path or use --synthetic to run all proteins.")
 
 
 if __name__ == '__main__':
     main()
+

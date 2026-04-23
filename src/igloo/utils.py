@@ -407,6 +407,7 @@ def create_visualizations_and_exports(ig_results, r2, pearson_r, spearman_rho, t
                 'predicted_activity': result['predicted_activity'],
                 'baseline_activity': result['baseline_activity'],
                 'effect_vs_baseline': result['effect_vs_baseline'],
+                'effect_vs_baseline_unclipped': result.get('effect_vs_baseline_unclipped', result['effect_vs_baseline']),
                 'actual_activity': result.get('actual_activity', 'N/A'),
                 'baseline_actual_activity': result.get('baseline_actual_activity', 'N/A')
             })
@@ -447,6 +448,7 @@ def create_visualizations_and_exports(ig_results, r2, pearson_r, spearman_rho, t
                     'predicted_activity': result['predicted_activity'],
                     'baseline_activity': result['baseline_activity'],
                     'effect_vs_baseline': result['effect_vs_baseline'],
+                    'effect_vs_baseline_unclipped': result.get('effect_vs_baseline_unclipped', result['effect_vs_baseline']),
                     'actual_activity': result.get('actual_activity', 'N/A'),
                     'baseline_actual_activity': result.get('baseline_actual_activity', 'N/A')
                 })

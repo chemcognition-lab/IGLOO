@@ -1592,18 +1592,20 @@ def analyze_sequence_with_integrated_gradients(
     print(f"Theoretical (unclipped) difference: {theoretical_diff:.6f}")
     print(f"Theoretical completeness error: {theoretical_error:.6f}")
 
-    if theoretical_error < 0.01:
-        print("✅ Completeness axiom satisfied for unclipped predictions!")
-    elif theoretical_error < 0.1:
-        print("⚠️ Minor completeness axiom violation (< 0.1)")
+    # Tolerance for Riemann sum approximation: ~1e-5 for 300 steps in float32
+    atol = 1e-5
+    if theoretical_error < atol:
+        print(f"✓ Completeness axiom satisfied (error < {atol:.0e})")
+    elif theoretical_error < 1e-3:
+        print(f"! Minor completeness axiom violation (error < 1e-3, expected < {atol:.0e})")
     else:
-        print("❌ Significant completeness axiom violation")
+        print(f"!!!! Significant completeness axiom violation (error = {theoretical_error:.2e}, expected < {atol:.0e})")
 
     if clip_min is not None or clip_max is not None:
         clipping_effect = abs((seq_pred - baseline_pred) - theoretical_diff)
         print(f"Clipping effect on difference: {clipping_effect:.6f}")
-        if clipping_effect > 0.01:
-            print("📝 Note: Large clipping effect may explain apparent completeness violation")
+        if clipping_effect > atol:
+            print(" * Note: Large clipping effect may explain apparent completeness violation")
 
     print("=" * 50)
 
@@ -1725,6 +1727,7 @@ def analyze_sequence_with_integrated_gradients(
         'predicted_activity': seq_pred,
         'baseline_activity': baseline_pred,
         'effect_vs_baseline': seq_pred - baseline_pred,
+        'effect_vs_baseline_unclipped': seq_pred_unclipped - baseline_pred_unclipped,
         'position_gradients': position_gradients,
         'positions': list(range(1, seq_len_actual + 1)),
         'amino_acids': list(sequence),
@@ -2043,18 +2046,20 @@ def analyze_sequence_with_token_level_integrated_gradients(
     print(f"Theoretical (unclipped) difference: {theoretical_diff:.6f}")
     print(f"Theoretical completeness error: {theoretical_error:.6f}")
 
-    if theoretical_error < 0.01:
-        print("✅ Completeness axiom satisfied for unclipped predictions!")
-    elif theoretical_error < 0.1:
-        print("⚠️ Minor completeness axiom violation (< 0.1)")
+    # Tolerance for Riemann sum approximation: ~1e-5 for 300 steps in float32
+    atol = 1e-5
+    if theoretical_error < atol:
+        print(f"✓ Completeness axiom satisfied (error < {atol:.0e})")
+    elif theoretical_error < 1e-3:
+        print(f"! Minor completeness axiom violation (error < 1e-3, expected < {atol:.0e})")
     else:
-        print("❌ Significant completeness axiom violation")
+        print(f"!!!! Significant completeness axiom violation (error = {theoretical_error:.2e}, expected < {atol:.0e})")
 
     if clip_min is not None or clip_max is not None:
         clipping_effect = abs((seq_pred - baseline_pred) - theoretical_diff)
         print(f"Clipping effect on difference: {clipping_effect:.6f}")
-        if clipping_effect > 0.01:
-            print("📝 Note: Large clipping effect may explain apparent completeness violation")
+        if clipping_effect > atol:
+            print(" * Note: Large clipping effect may explain apparent completeness violation")
 
     print("=" * 50)
 
@@ -2079,6 +2084,7 @@ def analyze_sequence_with_token_level_integrated_gradients(
         'predicted_activity': seq_pred,
         'baseline_activity': baseline_pred,
         'effect_vs_baseline': seq_pred - baseline_pred,
+        'effect_vs_baseline_unclipped': seq_pred_unclipped - baseline_pred_unclipped,
         'position_gradients': position_gradients,
         'positions': list(range(1, len(sequence) + 1)),
         'amino_acids': list(sequence),
