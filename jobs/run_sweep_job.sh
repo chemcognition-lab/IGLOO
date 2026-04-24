@@ -10,13 +10,13 @@
 # Resource directives are intentionally absent here — submit_sweep.sh passes
 # them via `sbatch --mem=... --time=... --gres=...` on the command line.
 
-#SBATCH --account=rrg-mahadeva
+#SBATCH --account=aip-bensl
 #SBATCH --cpus-per-task=4
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=ranamoneim@gmail.com
 # --output is set by submit_sweep.sh on the sbatch command line
 
-cd /home/ranaab/projects/rrg-mahadeva/ranaab/IGLOO || exit 1
+cd /scratch/ranaab/IGLOO || exit 1
 
 
 module load python/3.12 cuda/12.2

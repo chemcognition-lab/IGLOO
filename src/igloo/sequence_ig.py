@@ -1252,10 +1252,13 @@ def _compute_path_integral(
             print("WARNING: magnitude attribution violates the completeness axiom.")
 
     # ══════════════════════════════════════════════════════════════════════
-    # Branch B: nearest_neighbor and guided_ig — staircase line integral
-    # IG = Σ_{k=1}^{K} ∇F(γ_k) ⊙ (γ_k − γ_{k−1})
-    # nearest_neighbor generates its path via interpolate_embeddings;
-    # guided_ig uses build_guided_ig_path (gradient-priority ordering).
+    # Branch B: nearest_neighbor and guided_ig — linear IG along each segment
+    # Waypoints γ_0, γ_1, …, γ_K are selected via NN lookup (or guided ordering).
+    # Between each consecutive pair of waypoints the integral is approximated by
+    # standard IG with sub_steps gradient evaluations linearly spaced along the
+    # segment, so completeness holds per-segment and approximately overall:
+    #   IG_seg_k = (γ_k − γ_{k−1}) ⊙ (1/M) Σ_{m=1}^{M} ∇F(γ_{k−1} + m/M·(γ_k−γ_{k−1}))
+    #   IG = Σ_k IG_seg_k
     # ══════════════════════════════════════════════════════════════════════
     else:
         alphas = torch.linspace(0, 1, steps + 1, device=device)
@@ -1296,26 +1299,37 @@ def _compute_path_integral(
 
             path.append(seq_emb_torch)   # γ_K = sequence (preserves completeness)
 
-        # IG = Σ_{k=1}^{K} ∇F(γ_k) ⊙ (γ_k − γ_{k−1})
+        # Distribute gradient evaluations evenly across segments
+        n_seg = len(path) - 1
+        sub_steps = max(1, steps // n_seg)
+
+        # IG = Σ_{k=1}^{K} (γ_k − γ_{k−1}) ⊙ (1/M) Σ_{m=1}^{M} ∇F(γ_{k−1} + m/M·(γ_k−γ_{k−1}))
         accumulated_ig = torch.zeros(L, D, device=device)
         for k in range(1, len(path)):
             gamma_k      = path[k]          # (1, L, D)
             gamma_k_prev = path[k - 1]      # (1, L, D)
-            step_diff    = (gamma_k - gamma_k_prev).squeeze(0).detach()   # (L, D)
+            seg_diff     = (gamma_k - gamma_k_prev)                        # (1, L, D)
+            seg_diff_np  = seg_diff.squeeze(0).detach()                    # (L, D)
 
-            grad_k, f_vals = _grad_at(gamma_k)             # (1, L, D), array
-            accumulated_ig += grad_k.squeeze(0) * step_diff
+            # Linearly interpolate along segment and accumulate gradients
+            grad_sum = torch.zeros(L, D, device=device)
+            for m in range(1, sub_steps + 1):
+                t = m / sub_steps
+                interp = gamma_k_prev + t * seg_diff                       # (1, L, D)
+                grad_m, f_vals = _grad_at(interp)                          # (1, L, D), array
+                grad_sum += grad_m.squeeze(0)
+
+            accumulated_ig += (grad_sum / sub_steps) * seg_diff_np
 
             if collect_umap:
                 umap_trajectory.append(gamma_k.squeeze(0).mean(dim=0).detach().cpu().numpy())
-                umap_alphas.append(alphas[k].item())
+                umap_alphas.append(alphas[k].item() if k < len(alphas) else 1.0)
                 path_predictions.extend(f_vals.tolist())
 
         if attribution_method == 'signed':
             position_gradients = accumulated_ig.sum(dim=-1).cpu().numpy()   # (L,)
         else:  # magnitude
             position_gradients = accumulated_ig.norm(dim=-1).cpu().numpy()  # (L,)
-            print("WARNING: magnitude attribution on a staircase path is not theoretically motivated.")
 
     return position_gradients, umap_trajectory, umap_alphas, path_predictions
 

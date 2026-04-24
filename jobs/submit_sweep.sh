@@ -53,7 +53,7 @@ NOISE_LEVELS=(0.0 0.05 0.1 0.3 0.5 0.8 1.0)
 # ── Per-protein resource specs ────────────────────────────────────────────────
 declare -A GPU_TYPE=( [GB1]="h100" [T4Lysozyme]="h100" [p53]="h100" )
 declare -A MEM=(      [GB1]="128G" [T4Lysozyme]="256G"  [p53]="512G" )
-declare -A TIME=(     [GB1]="1:30:00" [T4Lysozyme]="3:00:00" [p53]="6:00:00" )
+declare -A TIME=(     [GB1]="1:30:00" [T4Lysozyme]="4:00:00" [p53]="6:00:00" )
 
 # ── Submit ────────────────────────────────────────────────────────────────────
 total=0

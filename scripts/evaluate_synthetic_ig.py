@@ -356,15 +356,27 @@ def compute_metrics(
         auroc = roc_auc_score(y_true, y_score)
         auprc = average_precision_score(y_true, y_score)
 
+    # Precision@K: K = n_annotated
+    K = int(y_true.sum())
+    if K > 0 and K < len(y_score):
+        top_k_idx = np.argsort(-y_score)[:K]
+        precision_at_k = float(y_true[top_k_idx].mean())
+        precision_at_k_random = K / len(y_score)
+    else:
+        precision_at_k = float("nan")
+        precision_at_k_random = float("nan")
+
     return {
-        "spearman_r":  float(sp_r),
-        "spearman_p":  float(sp_p),
-        "kendall_tau": float(kt_tau),
-        "kendall_p":   float(kt_p),
-        "auroc":       float(auroc),
-        "auprc":       float(auprc),
-        "n_positions": int(len(ig_scores)),
-        "n_annotated": int(y_true.sum()),
+        "spearman_r":             float(sp_r),
+        "spearman_p":             float(sp_p),
+        "kendall_tau":            float(kt_tau),
+        "kendall_p":              float(kt_p),
+        "auroc":                  float(auroc),
+        "auprc":                  float(auprc),
+        "n_positions":            int(len(ig_scores)),
+        "n_annotated":            int(y_true.sum()),
+        "precision_at_k":         precision_at_k,
+        "precision_at_k_random":  precision_at_k_random,
     }
 
 
@@ -402,13 +414,15 @@ def compute_fitness_based_metrics(
       n_fitness_positions  – number of positions with ≥1 observed mutation
     """
     _nan = {
-        "fitness_spearman_r":   float("nan"),
-        "fitness_spearman_p":   float("nan"),
-        "fitness_kendall_tau":  float("nan"),
-        "fitness_kendall_p":    float("nan"),
-        "fitness_auroc":        float("nan"),
-        "fitness_auprc":        float("nan"),
-        "n_fitness_positions":  0,
+        "fitness_spearman_r":            float("nan"),
+        "fitness_spearman_p":            float("nan"),
+        "fitness_kendall_tau":           float("nan"),
+        "fitness_kendall_p":             float("nan"),
+        "fitness_auroc":                 float("nan"),
+        "fitness_auprc":                 float("nan"),
+        "n_fitness_positions":           0,
+        "fitness_precision_at_k":        float("nan"),
+        "fitness_precision_at_k_random": float("nan"),
     }
 
     data_df = _load_data_csv(protein, fitness_model)
@@ -480,14 +494,26 @@ def compute_fitness_based_metrics(
         auroc = roc_auc_score(y_true, y_score)
         auprc = average_precision_score(y_true, y_score)
 
+    # Fitness Precision@K: K = number of "positive" positions (below median)
+    K_fit = int(y_true.sum())
+    if K_fit > 0 and K_fit < len(y_score):
+        top_k_fit = np.argsort(-y_score)[:K_fit]
+        fitness_precision_at_k = float(y_true[top_k_fit].mean())
+        fitness_precision_at_k_random = K_fit / len(y_score)
+    else:
+        fitness_precision_at_k = float("nan")
+        fitness_precision_at_k_random = float("nan")
+
     return {
-        "fitness_spearman_r":  float(sp_r),
-        "fitness_spearman_p":  float(sp_p),
-        "fitness_kendall_tau": float(kt_tau),
-        "fitness_kendall_p":   float(kt_p),
-        "fitness_auroc":       float(auroc),
-        "fitness_auprc":       float(auprc),
-        "n_fitness_positions": n_obs,
+        "fitness_spearman_r":          float(sp_r),
+        "fitness_spearman_p":          float(sp_p),
+        "fitness_kendall_tau":         float(kt_tau),
+        "fitness_kendall_p":           float(kt_p),
+        "fitness_auroc":               float(auroc),
+        "fitness_auprc":               float(auprc),
+        "n_fitness_positions":         n_obs,
+        "fitness_precision_at_k":      fitness_precision_at_k,
+        "fitness_precision_at_k_random": fitness_precision_at_k_random,
     }
 
 
@@ -694,48 +720,43 @@ def compute_normalized_position_scores(
     result = np.where(valid, accumulator / np.maximum(count, 1), 0.0)
     return result
 
-def compute_weighted_position_accuracy(
+def compute_precision_at_k(
     ig_vec: np.ndarray,
-    gt_importance: np.ndarray,
     annotated_mask: np.ndarray,
 ) -> dict:
-    """Importance-weighted accuracy for identifying annotated positions via |IG|.
+    """Precision@K: fraction of annotated positions among the top-K |IG| positions.
 
-    A position is predicted as "important" when |IG| exceeds the median |IG|
-    across all positions (data-driven, per-run threshold).  Accuracy is weighted
-    by ground-truth importance relative to the background level so that highly
-    important positions contribute more to the score.
+    K is set to the number of ground-truth annotated positions, so the metric
+    matches the true positive density and has a meaningful per-protein random
+    baseline of K/L (annotation density).
 
     Parameters
     ----------
-    ig_vec         : (L,) array of |IG| values, one per position.
-    gt_importance  : (L,) ground-truth importance vector.
+    ig_vec         : (L,) array of IG values (signed or unsigned).
     annotated_mask : (L,) bool array; True = functionally annotated.
 
     Returns
     -------
     dict with keys:
-      weighted_pos_acc – importance-weighted identification accuracy (0–1)
-      ig_threshold     – per-run |IG| threshold used (median |IG|)
-      unweighted_pos_acc – plain fraction correct (for reference)
+      precision_at_k        – fraction of top-K positions that are annotated (0–1)
+      precision_at_k_random – random baseline = K/L (annotation density)
+      precision_at_k_K      – K used (= n_annotated)
     """
-    ig_threshold = float(np.median(np.abs(ig_vec)))
-    pred_positive = np.abs(ig_vec) > ig_threshold   # predicted important
-    gt_positive   = annotated_mask                  # ground-truth important
-
-    # Importance weights: annotated positions have weight ∝ importance, others = 1
-    weights = gt_importance / BACKGROUND_IMPORTANCE  # unannotated ≈ 1, annotated > 1
-    weights = np.maximum(weights, 1.0)               # floor at 1
-
-    correct = (pred_positive == gt_positive)
-    w_total = float(weights.sum())
-    weighted_acc   = float((weights * correct).sum()) / w_total if w_total > 0 else float("nan")
-    unweighted_acc = float(correct.mean())
-
+    K = int(annotated_mask.sum())
+    L = len(ig_vec)
+    if K == 0 or K >= L:
+        return {
+            "precision_at_k":        float("nan"),
+            "precision_at_k_random": float("nan"),
+            "precision_at_k_K":      K,
+        }
+    top_k_idx = np.argsort(-np.abs(ig_vec))[:K]
+    precision = float(annotated_mask[top_k_idx].mean())
+    random_baseline = K / L
     return {
-        "weighted_pos_acc":   weighted_acc,
-        "unweighted_pos_acc": unweighted_acc,
-        "ig_threshold":       ig_threshold,
+        "precision_at_k":        precision,
+        "precision_at_k_random": random_baseline,
+        "precision_at_k_K":      K,
     }
 
 
@@ -1195,8 +1216,8 @@ def evaluate_one(
     # ── Compute core metrics ─────────────────────────────────────────────────
     metrics = compute_metrics(ig_vec, gt_vec, mask)
 
-    # ── Weighted position identification accuracy ────────────────────────────
-    weighted_acc_metrics = compute_weighted_position_accuracy(ig_vec, gt_vec, mask)
+    # ── Precision@K: top-K |IG| positions vs annotated mask ─────────────────
+    weighted_acc_metrics = compute_precision_at_k(ig_vec, mask)
 
     # ── Detailed per-sequence IG for advanced metrics ────────────────────────
     ig_df_full = _load_detailed_ig(results_dir)
@@ -1503,12 +1524,13 @@ def plot_metric_comparison(
     protein_prefix: str | None = None,
 ) -> None:
     """Grouped bar charts — one panel per metric, one bar per configuration."""
-    metrics = ["spearman_r", "kendall_tau", "auroc", "auprc"]
+    metrics = ["spearman_r", "kendall_tau", "auroc", "auprc", "precision_at_k"]
     metric_labels = {
-        "spearman_r":  "Spearman ρ",
-        "kendall_tau": "Kendall τ",
-        "auroc":       "AUROC",
-        "auprc":       "AUPRC",
+        "spearman_r":      "Spearman ρ",
+        "kendall_tau":     "Kendall τ",
+        "auroc":           "AUROC",
+        "auprc":           "AUPRC",
+        "precision_at_k":  "Precision@K",
     }
 
     summary_df = summary_df.copy()
@@ -1516,11 +1538,13 @@ def plot_metric_comparison(
 
     n_configs = len(summary_df)
     fig, axes = plt.subplots(
-        2, 2,
-        figsize=(max(10, n_configs * 0.7), 10),
+        2, 3,
+        figsize=(max(15, n_configs * 1.0), 10),
         constrained_layout=True,
     )
     axes = axes.flatten()
+    # Hide the 6th panel (only 5 metrics)
+    axes[5].set_visible(False)
 
     colours = _assign_colors(summary_df)
     prot_handles = _config_legend_handles(summary_df)
@@ -1533,11 +1557,17 @@ def plot_metric_comparison(
         )
     else:
         auprc_baseline = float("nan")
+    # Per-run random baseline for Precision@K
+    if "precision_at_k_random" in summary_df.columns:
+        pak_random_mean = float(summary_df["precision_at_k_random"].mean())
+    else:
+        pak_random_mean = float("nan")
     _gt_baselines = {
-        "spearman_r":  (0.0,            "random (0)"),
-        "kendall_tau": (0.0,            "random (0)"),
-        "auroc":       (0.5,            "random (0.5)"),
-        "auprc":       (auprc_baseline, f"random ({auprc_baseline:.2f})"),
+        "spearman_r":     (0.0,            "random (0)"),
+        "kendall_tau":    (0.0,            "random (0)"),
+        "auroc":          (0.5,            "random (0.5)"),
+        "auprc":          (auprc_baseline, f"random ({auprc_baseline:.2f})"),
+        "precision_at_k": (pak_random_mean, f"random ({pak_random_mean:.2f})"),
     }
 
     for panel_i, (ax, metric) in enumerate(zip(axes, metrics)):
@@ -1603,7 +1633,7 @@ def plot_fitness_metric_comparison(
 
     Same layout as plot_metric_comparison but uses the fitness_* metric columns.
     """
-    fitness_metrics = ["fitness_spearman_r", "fitness_kendall_tau", "fitness_auroc", "fitness_auprc"]
+    fitness_metrics = ["fitness_spearman_r", "fitness_kendall_tau", "fitness_auroc", "fitness_auprc", "fitness_precision_at_k"]
     # Only plot if at least one run has these columns populated
     available = [m for m in fitness_metrics if m in summary_df.columns and summary_df[m].notna().any()]
     if not available:
@@ -1611,10 +1641,11 @@ def plot_fitness_metric_comparison(
         return
 
     metric_labels = {
-        "fitness_spearman_r":  "Spearman ρ (fitness)",
-        "fitness_kendall_tau": "Kendall τ (fitness)",
-        "fitness_auroc":       "AUROC (fitness)",
-        "fitness_auprc":       "AUPRC (fitness)",
+        "fitness_spearman_r":   "Spearman ρ (fitness)",
+        "fitness_kendall_tau":  "Kendall τ (fitness)",
+        "fitness_auroc":        "AUROC (fitness)",
+        "fitness_auprc":        "AUPRC (fitness)",
+        "fitness_precision_at_k": "Precision@K (fitness)",
     }
 
     summary_df = summary_df.copy()
@@ -1636,11 +1667,16 @@ def plot_fitness_metric_comparison(
     prot_handles = _config_legend_handles(summary_df)
     x_pos = _make_x_positions(n_configs, fm_groups)
 
+    if "fitness_precision_at_k_random" in summary_df.columns:
+        fit_pak_random_mean = float(summary_df["fitness_precision_at_k_random"].mean())
+    else:
+        fit_pak_random_mean = float("nan")
     _fit_baselines = {
-        "fitness_spearman_r":  (0.0, "random (0)"),
-        "fitness_kendall_tau": (0.0, "random (0)"),
-        "fitness_auroc":       (0.5, "random (0.5)"),
-        "fitness_auprc":       (0.5, "random (0.5)"),
+        "fitness_spearman_r":      (0.0, "random (0)"),
+        "fitness_kendall_tau":     (0.0, "random (0)"),
+        "fitness_auroc":           (0.5, "random (0.5)"),
+        "fitness_auprc":           (0.5, "random (0.5)"),
+        "fitness_precision_at_k":  (fit_pak_random_mean, f"random ({fit_pak_random_mean:.2f})"),
     }
 
     for i, (ax, metric) in enumerate(zip(axes_flat, available)):
@@ -1798,20 +1834,19 @@ def plot_completeness_summary(
     print(f"  Saved: {out_path}")
 
 
-def plot_weighted_position_accuracy(
+def plot_precision_at_k(
     summary_df: pd.DataFrame,
     output_dir: Path,
     protein_prefix: str | None = None,
 ) -> None:
-    """Bar chart of importance-weighted position identification accuracy per run.
+    """Bar chart of Precision@K per run, with per-run random baseline markers.
 
-    Uses the 'weighted_pos_acc' column computed by
-    compute_weighted_position_accuracy.  One chart per protein when
-    protein_prefix is provided.
+    K = number of annotated positions (ground truth), so the random baseline
+    equals the annotation density (K/L) and varies per protein/run.
     """
-    col = "weighted_pos_acc"
+    col = "precision_at_k"
     if col not in summary_df.columns or summary_df[col].isna().all():
-        print("  [skip] No weighted_pos_acc data to plot.")
+        print("  [skip] No precision_at_k data to plot.")
         return
 
     df, fm_groups = _sort_df_and_get_groups(summary_df)
@@ -1830,24 +1865,34 @@ def plot_weighted_position_accuracy(
             ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
                     f"{v:.3f}", ha="center", va="bottom", fontsize=6, rotation=90)
 
-    ax.axhline(0.5, color="grey", lw=1.2, linestyle="--", label="chance (0.5)")
+    # Per-run random baseline (annotation density = K/L, may differ per run)
+    if "precision_at_k_random" in df.columns:
+        rand_vals = df["precision_at_k_random"].values
+        for xp, rv in zip(x_pos, rand_vals):
+            if np.isfinite(rv):
+                ax.plot(xp, rv, marker="_", color="grey", markersize=12, markeredgewidth=1.5)
+        rand_handle = plt.Line2D(
+            [0], [0], color="grey", marker="_", linestyle="none",
+            markersize=10, markeredgewidth=1.5, label="random (K/L)"
+        )
+        config_handles = config_handles + [rand_handle]
+
     ax.set_xticks([])
-    ax.set_ylabel("Weighted position identification accuracy")
+    ax.set_ylabel("Precision@K  (K = n_annotated)")
     y_max = float(np.nanmax(vals))
-    ax.set_ylim(0, max(1.0, y_max) * 1.28)
+    ax.set_ylim(0, min(1.0, max(1.0, y_max)) * 1.28)
     ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
     title_prot = f" [{protein_prefix}]" if protein_prefix else ""
     ax.set_title(
-        f"Importance-Weighted Position Identification Accuracy{title_prot}\n"
-        "(|IG| > median threshold → predicted important; weighted by ground-truth importance)"
+        f"Precision@K{title_prot}\n"
+        "Fraction of top-K |IG| positions that are annotated; K = n_annotated (grey tick = random baseline)"
     )
-    chance_line = plt.Line2D([0], [0], color="grey", lw=1.2, linestyle="--", label="chance (0.5)")
-    ax.legend(handles=config_handles + [chance_line], fontsize=7, loc="lower right")
+    ax.legend(handles=config_handles, fontsize=7, loc="lower right")
     ax.yaxis.grid(True, linestyle="--", alpha=0.4)
     ax.set_axisbelow(True)
     _apply_group_decorations(ax, fm_groups, x_pos)
 
-    fname = f"{protein_prefix}_weighted_pos_accuracy.png" if protein_prefix else "synthetic_weighted_pos_accuracy.png"
+    fname = f"{protein_prefix}_precision_at_k.png" if protein_prefix else "synthetic_precision_at_k.png"
     out_path = output_dir / fname
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close()
@@ -1915,7 +1960,7 @@ def plot_noise_vs_interp(
         ("fitness_auroc",             "AUROC (fitness)",          0.5),
         ("sign_acc_active",           "Sign acc (active-site)",  0.5),
         ("completeness_frac_pass_5pct", "Completeness (5% pass)", None),
-        ("weighted_pos_acc",          "Weighted pos accuracy",   None),
+        ("precision_at_k",            "Precision@K",             None),
     ]
     # Keep only metrics that actually exist in the dataframe
     metrics = [(col, lbl, base) for col, lbl, base in metrics if col in df.columns]
@@ -2203,9 +2248,15 @@ def main() -> None:
                             p0 = int(r["position"]) - 1
                             if 0 <= p0 < L:
                                 ig_vec[p0] = float(r["mean_abs_gradient"])
+                        # Build a label that includes protein, model, noise level, and interp
+                        # so each combination gets its own file, e.g.:
+                        #   GB1_additive_noise_0.1_linear_all_per_position.png
+                        prot_model = row.get("protein", "") + "_" + row.get("fitness_model", "")
+                        noise_part = d.parent.name if d.parent.name.startswith("noise_") else ""
+                        per_pos_label = "_".join(filter(None, [prot_model, noise_part, d.name, _split_label]))
                         plot_per_position_comparison(
                             d, protein, gt, ig_vec, output_dir,
-                            label=f"{d.name}_{_split_label}")
+                            label=per_pos_label)
                 except Exception as exc:
                     print(f"  [warn] Per-position plot failed: {exc}")
 
@@ -2232,7 +2283,7 @@ def main() -> None:
         "noise_level", "split",
         "spearman_r", "spearman_p", "kendall_tau", "kendall_p",
         "auroc", "auprc", "n_positions", "n_annotated",
-        "weighted_pos_acc", "unweighted_pos_acc", "ig_threshold",
+        "precision_at_k", "precision_at_k_random", "precision_at_k_K",
         # [2] Normalized rank metrics (|IG| / |ΔF|)
         "norm_spearman_r", "norm_kendall_tau", "norm_auroc", "norm_auprc",
         # [1] Completeness axiom stats
@@ -2244,6 +2295,7 @@ def main() -> None:
         "fitness_spearman_r", "fitness_spearman_p",
         "fitness_kendall_tau", "fitness_kendall_p",
         "fitness_auroc", "fitness_auprc", "n_fitness_positions",
+        "fitness_precision_at_k", "fitness_precision_at_k_random",
         "sign_acc_active", "sign_acc_wt", "sign_acc_overall",
         "n_active_mut", "n_wt_positions",
         "linear_spearman_r", "linear_pearson_r", "n_prop_obs",
@@ -2308,7 +2360,7 @@ def main() -> None:
         except Exception as exc:
             print(f"  [warn] Fitness metric comparison [{prefix}] failed: {exc}")
         try:
-            plot_weighted_position_accuracy(df_sub, output_dir, protein_prefix=prefix)
+            plot_precision_at_k(df_sub, output_dir, protein_prefix=prefix)
         except Exception as exc:
             print(f"  [warn] Weighted pos accuracy [{prefix}] failed: {exc}")
         try:
