@@ -1,17 +1,19 @@
 #!/bin/bash
 # submit_sweep.sh — submit the full interpolation-path × noise sweep.
 #
-# Proteins × data_models × interpolation_paths × noise_levels = 189 jobs
+# Proteins × data_models × interpolation_paths × noise_levels × seeds
 #
 # Usage:
-#   bash jobs/submit_sweep.sh                  # submit everything
-#   bash jobs/submit_sweep.sh --dry-run        # print sbatch commands, don't run
-#   bash jobs/submit_sweep.sh --protein=GB1    # submit only one protein
+#   bash jobs/submit_sweep.sh                         # submit everything (seed=42)
+#   bash jobs/submit_sweep.sh --dry-run               # print sbatch commands, don't run
+#   bash jobs/submit_sweep.sh --protein=GB1           # submit only one protein
+#   bash jobs/submit_sweep.sh --seed=0 --seed=1       # multiple seeds (repeat flag)
+#   bash jobs/submit_sweep.sh --seed=0                # single seed override
 #
 # Per-protein SLURM resources:
-#   GB1        → H100 GPU, 128 GB RAM, 3 h
-#   T4Lysozyme → H100 GPU, 256 GB RAM, 8 h
-#   p53        → H100 GPU, 512 GB RAM, 12 h
+#   GB1        → H100 GPU, 128 GB RAM, 1.5 h  (2.5 h for nearest_neighbor)
+#   T4Lysozyme → H100 GPU, 256 GB RAM, 4 h    (5.5 h for nearest_neighbor)
+#   p53        → H100 GPU, 512 GB RAM, 6 h    (10 h  for nearest_neighbor)
 
 set -euo pipefail
 
@@ -19,6 +21,7 @@ DRY_RUN=false
 EMAIL="ranamoneim@gmail.com"  # override with --email=other@address.com
 PROTEIN_FILTER=""  # override with --protein=GB1
 INTERP_FILTER=""   # override with --interp=slerp
+SEED_FILTER=""     # override with --seed=42
 
 for arg in "$@"; do
     case "$arg" in
@@ -26,6 +29,7 @@ for arg in "$@"; do
         --email=*) EMAIL="${arg#--email=}" ;;
         --protein=*) PROTEIN_FILTER="${arg#--protein=}" ;;
         --interp=*) INTERP_FILTER="${arg#--interp=}" ;;
+        --seed=*) SEED_FILTER="${arg#--seed=}" ;;
     esac
 done
 
@@ -48,12 +52,19 @@ if [[ -n "$INTERP_FILTER" ]]; then
 else
     INTERP_PATHS=(linear slerp nearest_neighbor)
 fi
+if [[ -n "$SEED_FILTER" ]]; then
+    SEEDS=("$SEED_FILTER")
+else
+    SEEDS=(42)
+fi
 NOISE_LEVELS=(0.0 0.05 0.1 0.3 0.5 0.8 1.0)
 
 # ── Per-protein resource specs ────────────────────────────────────────────────
 declare -A GPU_TYPE=( [GB1]="h100" [T4Lysozyme]="h100" [p53]="h100" )
 declare -A MEM=(      [GB1]="128G" [T4Lysozyme]="256G"  [p53]="512G" )
+# Default time limits; nearest_neighbor jobs get longer limits (set per-interp below)
 declare -A TIME=(     [GB1]="1:30:00" [T4Lysozyme]="4:00:00" [p53]="6:00:00" )
+declare -A TIME_NN=(  [GB1]="2:30:00" [T4Lysozyme]="5:30:00" [p53]="10:00:00" )
 
 # ── Submit ────────────────────────────────────────────────────────────────────
 total=0
@@ -69,8 +80,14 @@ for PROTEIN in "${PROTEINS[@]}"; do
         fi
         for INTERP in "${INTERP_PATHS[@]}"; do
             for NOISE in "${NOISE_LEVELS[@]}"; do
+                for SEED in "${SEEDS[@]}"; do
                 ((total++)) || true
-                JOB_NAME="${PROTEIN}_${DATA_MODEL}_${INTERP}_n${NOISE}"
+                JOB_NAME="${PROTEIN}_${DATA_MODEL}_${INTERP}_n${NOISE}_s${SEED}"
+
+                JOB_TIME="${TIME[$PROTEIN]}"
+                if [[ "$INTERP" == "nearest_neighbor" ]]; then
+                    JOB_TIME="${TIME_NN[$PROTEIN]}"
+                fi
 
                 SBATCH_CMD=(
                     sbatch
@@ -78,8 +95,8 @@ for PROTEIN in "${PROTEINS[@]}"; do
                     --output="jobs/logs/${JOB_NAME}_%j.out"
                     --gres="gpu:${GPU_TYPE[$PROTEIN]}:1"
                     --mem="${MEM[$PROTEIN]}"
-                    --time="${TIME[$PROTEIN]}"
-                    --export="PROTEIN=${PROTEIN},DATA_MODEL=${DATA_MODEL},INTERP=${INTERP},NOISE=${NOISE}"
+                    --time="${JOB_TIME}"
+                    --export="PROTEIN=${PROTEIN},DATA_MODEL=${DATA_MODEL},INTERP=${INTERP},NOISE=${NOISE},SEED=${SEED}"
                 )
                 if [[ -n "$EMAIL" ]]; then
                     SBATCH_CMD+=(--mail-type=END,FAIL --mail-user="${EMAIL}")
@@ -92,6 +109,7 @@ for PROTEIN in "${PROTEINS[@]}"; do
                     "${SBATCH_CMD[@]}"
                     ((submitted++)) || true
                 fi
+                done
             done
         done
     done

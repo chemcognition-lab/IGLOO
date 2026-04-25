@@ -170,6 +170,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 embeddings_subdir=embeddings_subdir,
                 interpolation_path=interpolation_path,
                 plot_interpolation_umap=plot_umap,
+                nn_waypoints=ig_config.get('nn_waypoints', 10),
                 interpolation_umap_save_path=(
                     os.path.join(results_dir, f"{name}_interpolation_umap.png")
                     if plot_umap else None

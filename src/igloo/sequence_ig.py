@@ -1077,6 +1077,7 @@ def _compute_path_integral(
     attribution_method: str,
     collect_umap: bool = False,
     training_embeddings: torch.Tensor | None = None,
+    nn_waypoints: int = 10,
 ) -> tuple:
     """Numerically approximate the integrated-gradients line integral.
 
@@ -1282,9 +1283,17 @@ def _compute_path_integral(
             # Pre-compute mean-pooled training vectors once: (N, D)
             train_pooled = training_embeddings.float().to(device).mean(dim=1)  # (N, D)
 
-            # Build path: baseline → NN waypoints → sequence
+            # Build path: baseline → nn_waypoints NN anchors → sequence.
+            # The number of waypoints is controlled by nn_waypoints (separate
+            # from `steps`), so the integration budget (steps) is distributed
+            # across n_seg = nn_waypoints + 1 segments with sub_steps ≈ steps/n_seg
+            # gradient evaluations each — giving a much more accurate estimate
+            # than the old scheme which created one segment per step.
+            nn_alphas = torch.linspace(0, 1, nn_waypoints + 2, device=device)[1:-1]  # (nn_waypoints,)
+            # waypoint_alphas[k] = alpha value of path[k] (for UMAP labelling)
+            waypoint_alphas = [0.0] + nn_alphas.tolist() + [1.0]
             path = [baseline_emb_torch]  # γ_0 = baseline
-            for a in alphas[1:-1]:       # interior α steps
+            for a in nn_alphas:
                 # Linearly-interpolated reference, mean-pooled → (D,)
                 ref = (
                     baseline_emb_torch
@@ -1323,7 +1332,10 @@ def _compute_path_integral(
 
             if collect_umap:
                 umap_trajectory.append(gamma_k.squeeze(0).mean(dim=0).detach().cpu().numpy())
-                umap_alphas.append(alphas[k].item() if k < len(alphas) else 1.0)
+                if interpolation_path == 'nearest_neighbor':
+                    umap_alphas.append(waypoint_alphas[k])
+                else:
+                    umap_alphas.append(alphas[k].item() if k < len(alphas) else 1.0)
                 path_predictions.extend(f_vals.tolist())
 
         if attribution_method == 'signed':
@@ -1361,6 +1373,7 @@ def analyze_sequence_with_integrated_gradients(
     training_embeddings: torch.Tensor | None = None,
     _esm_backend=None,
     embedding_lookup: dict | None = None,
+    nn_waypoints: int = 10,
 ) -> dict:
     """
     Analyze a sequence using integrated gradients.
@@ -1515,7 +1528,9 @@ def analyze_sequence_with_integrated_gradients(
         n_train = 0 if training_embeddings is None else training_embeddings.shape[0]
         print(
             f"  Interpolation path check [nearest_neighbor] — "
-            f"path grounded in training embeddings ({n_train} training points)"
+            f"path grounded in training embeddings ({n_train} training points), "
+            f"{nn_waypoints} NN waypoints, {steps} total integration steps "
+            f"(~{max(1, steps // (nn_waypoints + 1))} sub-steps per segment)"
         )
     else:
         with torch.no_grad():
@@ -1550,6 +1565,7 @@ def analyze_sequence_with_integrated_gradients(
             attribution_method=attribution_method,
             collect_umap=plot_interpolation_umap,
             training_embeddings=training_embeddings,
+            nn_waypoints=nn_waypoints,
         )
 
     # Optionally visualise the interpolation path in UMAP-projected embedding space
