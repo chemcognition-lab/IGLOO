@@ -100,6 +100,19 @@ import pandas as pd
 from scipy.stats import kendalltau, pearsonr, spearmanr
 from sklearn.metrics import average_precision_score, roc_auc_score
 
+# Plotting functions are defined in igloo.plot and imported here
+from igloo.plot import (
+    plot_sign_accuracy_bars,
+    plot_cliff_damage,
+    plot_metric_comparison,
+    plot_fitness_metric_comparison,
+    plot_completeness_summary,
+    plot_precision_at_k,
+    plot_noise_vs_interp,
+    plot_noise_vs_interp_boxplots,
+    plot_per_position_comparison,
+)
+
 
 # Lazy import from synthetic_data (only used for advanced metrics)
 def _get_synthetic_protein(protein_name: str):
@@ -130,6 +143,27 @@ def _contact_weight(protein_def, pos1: int, pos2: int) -> float:
         return _cw(protein_def, pos1, pos2)
     except Exception:
         return 0.0
+
+
+def _get_fitness_fn(model_name: str):
+    """Return the synthetic fitness callable for *model_name*, or None."""
+    try:
+        _root = Path(__file__).resolve().parent.parent
+        if str(_root) not in sys.path:
+            sys.path.insert(0, str(_root))
+        from src.igloo.synthetic_data import (
+            fitness_additive,
+            fitness_epistatic,
+            fitness_nonlinear,
+        )
+        _map = {
+            "additive":  fitness_additive,
+            "epistatic": fitness_epistatic,
+            "nonlinear": fitness_nonlinear,
+        }
+        return _map.get(model_name)
+    except Exception:
+        return None
 
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -978,120 +1012,281 @@ def compute_cliff_analysis(
 
 
 # ---------------------------------------------------------------------------
-# Plotting — sign correctness
+# Per-variant ground-truth correlation
 # ---------------------------------------------------------------------------
 
-def plot_sign_accuracy_bars(
-    sign_rows: list[dict],
-    output_dir: Path,
-    protein_prefix: str | None = None,
-) -> None:
-    """Bar chart of sign accuracy for each results directory.
+def compute_per_variant_gt_correlation(
+    ig_df: pd.DataFrame,
+    gt: dict,
+) -> dict:
+    """Per-variant Spearman ρ and Kendall τ between |IG| and ground-truth importance.
 
-    sign_rows : list of dicts, each with 'label', 'sign_acc_active',
-                'sign_acc_wt', 'sign_acc_overall', and optionally
-                'noise_level', 'interp', 'fitness_model'.
+    For each non-WT sequence, builds a (L,) vector of abs_gradient values
+    (0 for positions absent from the CSV) and computes rank correlations against
+    the ground-truth importance vector.  This is more informative than the
+    position-aggregate metric because it tests whether the model correctly ranks
+    positions for each individual variant, not just on average.
+
+    Returns
+    -------
+    dict with:
+      pv_gt_spearman_mean/std/median   – distribution of per-sequence Spearman ρ
+      pv_gt_kendall_mean/std/median    – distribution of per-sequence Kendall τ
+      n_pv_gt_sequences                – number of non-WT sequences evaluated
     """
-    if not sign_rows:
-        return
+    gt_vec = gt["importance_vector"]
+    L = gt["sequence_length"]
 
-    # Sort rows the same way as other bar charts: fitness_model → interp → noise_level
-    import pandas as _pd_sa
-    _df = _pd_sa.DataFrame(sign_rows)
-    if "fitness_model" not in _df.columns:
-        _df["fitness_model"] = _df.get("label", "unknown")
-    if "interp" not in _df.columns:
-        _df["interp"] = _df.get("label", "unknown")
-    _df, fm_groups = _sort_df_and_get_groups(_df)
-    sign_rows = _df.to_dict("records")
+    _nan = {
+        "pv_gt_spearman_mean":    float("nan"),
+        "pv_gt_spearman_std":     float("nan"),
+        "pv_gt_spearman_median":  float("nan"),
+        "pv_gt_kendall_mean":     float("nan"),
+        "pv_gt_kendall_std":      float("nan"),
+        "pv_gt_kendall_median":   float("nan"),
+        "n_pv_gt_sequences":      0,
+        "polyala_pv_gt_spearman": float("nan"),
+        "polyala_pv_gt_kendall":  float("nan"),
+    }
 
-    acc_act  = [r["sign_acc_active"]  for r in sign_rows]
-    acc_wt   = [r["sign_acc_wt"]      for r in sign_rows]
-    acc_all  = [r["sign_acc_overall"] for r in sign_rows]
+    if "abs_gradient" not in ig_df.columns or "position" not in ig_df.columns:
+        return _nan
 
-    n     = len(sign_rows)
-    width = 0.25
-    x_pos = _make_x_positions(n, fm_groups)
+    spearman_vals: list[float] = []
+    kendall_vals:  list[float] = []
+    polyala_sp: float = float("nan")
+    polyala_kt: float = float("nan")
 
-    fig, ax = plt.subplots(figsize=(max(8, n * 0.9), 5), constrained_layout=True)
-    b1 = ax.bar(x_pos - width, acc_act, width, label="Active-site (mutated+annotated)", color="steelblue",  alpha=0.85, edgecolor="k", linewidth=0.4)
-    b2 = ax.bar(x_pos,         acc_wt,  width, label="WT residues (unchanged)",         color="darkorange", alpha=0.85, edgecolor="k", linewidth=0.4)
-    b3 = ax.bar(x_pos + width, acc_all, width, label="Overall",                          color="seagreen",   alpha=0.85, edgecolor="k", linewidth=0.4)
+    for seq_name, seq_df in ig_df.groupby("sequence_name"):
+        if _is_wt_sequence_name(seq_name):
+            continue
 
-    for bars in (b1, b2, b3):
-        for bar in bars:
-            h = bar.get_height()
-            if np.isfinite(h):
-                ax.text(bar.get_x() + bar.get_width() / 2, h + 0.01,
-                        f"{h:.2f}", ha="center", va="bottom", fontsize=6, rotation=90)
+        ig_vec_v = np.zeros(L, dtype=float)
+        for _, row in seq_df.iterrows():
+            pos_0 = int(row["position"]) - 1
+            if 0 <= pos_0 < L:
+                ig_vec_v[pos_0] = float(row["abs_gradient"])
 
-    ax.axhline(0.5, color="grey", lw=1.0, linestyle="--", label="chance (0.5)")
-    ax.set_xticks([])
-    ax.set_ylabel("Sign accuracy (fraction correct)")
-    ax.set_ylim(0, 1.32)  # extra headroom for labels + group header
-    ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
-    title_prot = f" [{protein_prefix}]" if protein_prefix else ""
-    ax.set_title(f"Sign Correctness{title_prot}: should mutations at critical sites produce negative IG?")
-    ax.legend(fontsize=7, loc="lower right")
-    ax.yaxis.grid(True, linestyle="--", alpha=0.4)
-    ax.set_axisbelow(True)
-    _apply_group_decorations(ax, fm_groups, x_pos)
+        # If attributions are constant (e.g. all-zero), correlation is
+        # undefined — treat as 0 (no signal) rather than excluding the
+        # sequence, which would inflate metrics.
+        if np.all(ig_vec_v == ig_vec_v[0]):
+            sp_r_val, kt_val = 0.0, 0.0
+            spearman_vals.append(sp_r_val)
+            kendall_vals.append(kt_val)
+        else:
+            sp_r,  _ = spearmanr(ig_vec_v, gt_vec)
+            kt_tau, _ = kendalltau(ig_vec_v, gt_vec)
+            sp_r_val = float(sp_r) if np.isfinite(sp_r) else float("nan")
+            kt_val   = float(kt_tau) if np.isfinite(kt_tau) else float("nan")
+            if np.isfinite(sp_r_val):
+                spearman_vals.append(sp_r_val)
+            if np.isfinite(kt_val):
+                kendall_vals.append(kt_val)
 
-    fname = f"{protein_prefix}_ig_sign_accuracy.png" if protein_prefix else "synthetic_ig_sign_accuracy.png"
-    out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  Saved: {out_path}")
+        if seq_name == "PolyAlanine":
+            polyala_sp = sp_r_val
+            polyala_kt = kt_val
+
+    n = len(spearman_vals)
+    if n == 0:
+        return _nan
+
+    sp_arr = np.array(spearman_vals)
+    kt_arr = np.array(kendall_vals) if kendall_vals else np.full(n, float("nan"))
+    return {
+        "pv_gt_spearman_mean":    float(sp_arr.mean()),
+        "pv_gt_spearman_std":     float(sp_arr.std()),
+        "pv_gt_spearman_median":  float(np.median(sp_arr)),
+        "pv_gt_kendall_mean":     float(kt_arr.mean()),
+        "pv_gt_kendall_std":      float(kt_arr.std()),
+        "pv_gt_kendall_median":   float(np.median(kt_arr)),
+        "n_pv_gt_sequences":      n,
+        "polyala_pv_gt_spearman": polyala_sp,
+        "polyala_pv_gt_kendall":  polyala_kt,
+    }
 
 
 # ---------------------------------------------------------------------------
-# Plotting — cliff damage
+# Per-variant fitness-contribution correlation
 # ---------------------------------------------------------------------------
 
-def plot_cliff_damage(
-    cliff_data: list[dict],
-    output_dir: Path,
-    label: str = "",
-) -> None:
-    """Scatter of mean |IG| at cliff-critical positions vs cumulative damage.
+def compute_per_variant_fitness_contribution_correlation(
+    ig_df: pd.DataFrame,
+    gt: dict,
+    fitness_model: str,
+    wt_seq: str,
+    protein_name: str | None = None,
+) -> dict:
+    """Correlate per-(sequence, mutated-position) signed IG against the
+    *model-aware* fitness contribution at that position.
 
-    One point per analyzed sequence. Points above the cliff threshold are
-    highlighted.
+    **Additive model**
+        fitness_contribution(v, i) = -importance(i) * blosum_penalty(wt[i], mut[i])
+        (analytical formula — exact for the additive model).
+
+    **Epistatic / nonlinear models**
+        fitness_contribution(v, i) = fitness(v) - fitness(v with position i reverted to WT)
+        (finite-difference marginal contribution — exact for any model).
+        For epistatic: captures the additive term *plus* all pairwise interaction terms
+        that involve position i.
+        For nonlinear: correctly reflects cliff-collapse dynamics where critical-position
+        contributions are non-linear and highly context-dependent.
+
+    A well-calibrated IG should be negative (harmful mutations) at positions with
+    large negative fitness contributions, so a positive Spearman ρ indicates
+    correct directional attribution.
+
+    Two modes:
+    - Pooled  — one correlation across all (sequence, mutated-position) pairs.
+    - Per-sequence — each sequence with ≥ 3 mutated positions contributes one
+                     Spearman ρ; the mean/std/median are reported.
+
+    Returns
+    -------
+    dict with:
+      pvfc_pooled_spearman          – pooled Spearman ρ
+      pvfc_pooled_pearson           – pooled Pearson r
+      pvfc_per_seq_spearman_mean/std/median
+      pvfc_n_pairs                  – total (seq, mutated-pos) pairs
+      pvfc_n_sequences              – sequences contributing to per-seq stat
     """
-    if not cliff_data:
-        return
+    importance_vec = gt["importance_vector"]
+    L = gt["sequence_length"]
 
-    damage  = [r["cumulative_damage"]   for r in cliff_data]
-    mean_ig = [r["mean_absig_critical"] for r in cliff_data]
-    above   = [r["above_cliff"]         for r in cliff_data]
-    names   = [r["seq_name"]            for r in cliff_data]
-    threshold = cliff_data[0].get("cliff_threshold", 1.5) if cliff_data else 1.5
+    _nan = {
+        "pvfc_pooled_spearman":             float("nan"),
+        "pvfc_pooled_pearson":              float("nan"),
+        "pvfc_per_seq_spearman_mean":       float("nan"),
+        "pvfc_per_seq_spearman_std":        float("nan"),
+        "pvfc_per_seq_spearman_median":     float("nan"),
+        "pvfc_n_pairs":                     0,
+        "pvfc_n_sequences":                 0,
+        "polyala_pvfc_per_seq_spearman":    float("nan"),
+    }
 
-    colours = ["firebrick" if a else "steelblue" for a in above]
+    if wt_seq is None or "integrated_gradient" not in ig_df.columns:
+        return _nan
 
-    fig, ax = plt.subplots(figsize=(6, 5), constrained_layout=True)
-    ax.scatter(damage, mean_ig, c=colours, s=80, edgecolors="k", linewidths=0.5, zorder=3)
-    for d, ig, n in zip(damage, mean_ig, names):
-        if np.isfinite(ig):
-            ax.annotate(n, (d, ig), textcoords="offset points", xytext=(4, 3), fontsize=7)
-    ax.axvline(threshold, color="grey", linestyle="--", lw=1.2, label=f"cliff threshold = {threshold}")
-    ax.set_xlabel("Cumulative critical damage (importance × BLOSUM penalty)")
-    ax.set_ylabel("Mean |IG| at cliff-critical positions")
-    ax.set_title(f"{label}\nCliff model: |IG| vs cumulative damage at critical sites")
+    # ── Decide computation strategy based on model ──────────────────────────
+    use_finite_diff = fitness_model in ("epistatic", "nonlinear")
+    protein_def = None
+    fitness_fn  = None
+    if use_finite_diff and protein_name is not None:
+        protein_def = _get_synthetic_protein(protein_name)
+        fitness_fn  = _get_fitness_fn(fitness_model)
+    if use_finite_diff and (protein_def is None or fitness_fn is None):
+        # Fall back to additive formula if objects unavailable
+        use_finite_diff = False
 
-    legend_patches = [
-        mpatches.Patch(color="firebrick",  label="above cliff"),
-        mpatches.Patch(color="steelblue",  label="below cliff"),
-    ]
-    ax.legend(handles=legend_patches + [plt.Line2D([0], [0], color="grey", lw=1.2, linestyle="--",
-                                                    label=f"cliff threshold={threshold}")],
-              fontsize=7)
+    all_ig_vals: list[float] = []
+    all_fc_vals: list[float] = []
+    per_seq_spearman: list[float] = []
+    polyala_pvfc_sp: float = float("nan")
 
-    safe_label = re.sub(r"[^a-zA-Z0-9_-]", "_", label)
-    out_path = output_dir / f"{safe_label}_cliff_damage.png"
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  Saved: {out_path}")
+    for seq_name, seq_df in ig_df.groupby("sequence_name"):
+        if _is_wt_sequence_name(seq_name):
+            continue
+
+        # Collect all mutations for this sequence (0-indexed positions)
+        mutations_0: list[tuple[int, str, str]] = []  # (pos_0, wt_aa, mut_aa)
+        for _, row in seq_df.iterrows():
+            pos_0  = int(row["position"]) - 1
+            mut_aa = str(row["amino_acid"])
+            if pos_0 >= L or pos_0 >= len(wt_seq):
+                continue
+            wt_aa = wt_seq[pos_0]
+            if mut_aa != wt_aa:
+                mutations_0.append((pos_0, wt_aa, mut_aa))
+
+        if not mutations_0:
+            continue
+
+        # Build mutant sequence string (needed for fitness_fn)
+        if use_finite_diff:
+            seq_list = list(wt_seq)
+            for pos_0, _, mut_aa in mutations_0:
+                seq_list[pos_0] = mut_aa
+            mut_sequence = "".join(seq_list)
+            # Fitness uses 0-indexed positions in the mutations tuple
+            mutations_0indexed = [(p, w, m) for p, w, m in mutations_0]
+            fitness_full = fitness_fn(mut_sequence, protein_def, mutations_0indexed)
+
+        seq_ig: list[float] = []
+        seq_fc: list[float] = []
+
+        for _, row in seq_df.iterrows():
+            pos_0  = int(row["position"]) - 1
+            mut_aa = str(row["amino_acid"])
+            if pos_0 >= L or pos_0 >= len(wt_seq):
+                continue
+            wt_aa = wt_seq[pos_0]
+            if mut_aa == wt_aa:
+                continue  # WT residue — no mutation contribution
+
+            ig_val = float(row["integrated_gradient"])
+
+            if use_finite_diff:
+                # Marginal contribution: revert position i to WT and recompute fitness
+                mutations_minus_i = [(p, w, m) for p, w, m in mutations_0indexed
+                                     if p != pos_0]
+                seq_minus_i = list(mut_sequence)
+                seq_minus_i[pos_0] = wt_aa
+                fitness_minus_i = fitness_fn(
+                    "".join(seq_minus_i), protein_def, mutations_minus_i
+                )
+                fc = fitness_full - fitness_minus_i  # positive = beneficial removal -> harmful mutation
+            else:
+                # Analytical additive formula
+                importance = float(importance_vec[pos_0])
+                penalty    = _blosum_penalty(wt_aa, mut_aa)
+                if not np.isfinite(penalty):
+                    continue
+                fc = -importance * penalty
+
+            seq_ig.append(ig_val)
+            seq_fc.append(fc)
+            all_ig_vals.append(ig_val)
+            all_fc_vals.append(fc)
+
+        # Per-sequence Spearman (need ≥ 3 distinct mutated positions)
+        if len(seq_ig) >= 3:
+            sp_r, _ = spearmanr(seq_ig, seq_fc)
+            if np.isfinite(sp_r):
+                sp_r_seq = float(sp_r)
+                per_seq_spearman.append(sp_r_seq)
+                if seq_name == "PolyAlanine":
+                    polyala_pvfc_sp = sp_r_seq
+
+    if len(all_ig_vals) < 3:
+        return _nan
+
+    pool_sp, _ = spearmanr(all_ig_vals, all_fc_vals)
+    pool_pe, _ = pearsonr(all_ig_vals, all_fc_vals)
+
+    result: dict = {
+        "pvfc_pooled_spearman": float(pool_sp) if np.isfinite(pool_sp) else float("nan"),
+        "pvfc_pooled_pearson":  float(pool_pe) if np.isfinite(pool_pe) else float("nan"),
+        "pvfc_n_pairs":         len(all_ig_vals),
+        "pvfc_n_sequences":     len(per_seq_spearman),
+    }
+
+    if per_seq_spearman:
+        sp_arr = np.array(per_seq_spearman)
+        result.update({
+            "pvfc_per_seq_spearman_mean":    float(sp_arr.mean()),
+            "pvfc_per_seq_spearman_std":     float(sp_arr.std()),
+            "pvfc_per_seq_spearman_median":  float(np.median(sp_arr)),
+        })
+    else:
+        result.update({
+            "pvfc_per_seq_spearman_mean":    float("nan"),
+            "pvfc_per_seq_spearman_std":     float("nan"),
+            "pvfc_per_seq_spearman_median":  float("nan"),
+        })
+
+    result["polyala_pvfc_per_seq_spearman"] = polyala_pvfc_sp
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1166,6 +1361,9 @@ def evaluate_one(
         "slerp":            "slerp",
         "linear":           "linear",
         "guided_ig":        "guided_ig",
+        "gradient_x_input": "gradient_x_input",
+        "input_difference": "input_difference",
+        "attention_weights": "attention_weights",
     }
     interp = _interp_map.get(dirname.lower(), None)
     if interp is None:
@@ -1274,6 +1472,18 @@ def evaluate_one(
             norm_metrics = {f"norm_{k}": v for k, v in raw.items()
                             if k in ("spearman_r", "kendall_tau", "auroc", "auprc")}
 
+    # [3] Per-variant GT correlation: spearmanr(|IG|_v, gt_importance) for each sequence
+    pv_gt_metrics: dict = {}
+    if ig_df is not None:
+        pv_gt_metrics = compute_per_variant_gt_correlation(ig_df, gt)
+
+    # [4] Per-variant fitness-contribution correlation: signed IG vs -importance*blosum
+    pvfc_metrics: dict = {}
+    if ig_df is not None and wt_seq is not None:
+        pvfc_metrics = compute_per_variant_fitness_contribution_correlation(
+            ig_df, gt, fitness_model, wt_seq, protein_name=protein
+        )
+
     return {
         "results_dir":   str(results_dir),
         "dirname":       dirname,
@@ -1287,6 +1497,8 @@ def evaluate_one(
         **metrics,
         **weighted_acc_metrics,
         **norm_metrics,
+        **pv_gt_metrics,
+        **pvfc_metrics,
         **completeness_metrics,
         **sign_metrics,
         **prop_metrics,
@@ -1343,789 +1555,6 @@ def discover_synthetic_results(root: Path = SYNTHETIC_RESULTS_DIR) -> list[Path]
                 if _has_csv(level3):
                     dirs.append(level3)
     return dirs
-
-
-# ---------------------------------------------------------------------------
-# Plotting
-# ---------------------------------------------------------------------------
-
-# Colormaps assigned to each fitness model; shades vary by interpolation path.
-_FITNESS_MODEL_CMAPS: dict[str, any] = {
-    "additive":  plt.cm.Blues,
-    "epistatic": plt.cm.Oranges,
-    "nonlinear": plt.cm.Greens,
-}
-_DEFAULT_CMAP = plt.cm.Purples
-
-# Shade intensity for each interpolation path within a model-family colormap.
-_INTERP_SHADES: dict[str, float] = {
-    "linear":              0.40,
-    "linearinterpolation": 0.40,
-    "slerp":               0.58,
-    "nearest_neighbor":    0.72,
-    "guided_ig":           0.88,
-}
-
-
-def _assign_colors(df: pd.DataFrame) -> list:
-    """Return one RGBA colour per row.
-
-    Hue = interpolation path (consistent with noise-vs-interp line plots).
-    Lightness = noise level: low noise → light tint, high noise → full saturation.
-    Falls back to fitness-model colourmap when no noise_level column is present.
-    """
-    import matplotlib.colors as mcolors
-
-    # Check whether noise_level varies in this dataframe
-    has_noise = (
-        "noise_level" in df.columns
-        and df["noise_level"].notna().any()
-    )
-    noise_vals = df["noise_level"].values if has_noise else None
-    noise_min  = float(np.nanmin(noise_vals)) if has_noise else 0.0
-    noise_max  = float(np.nanmax(noise_vals)) if has_noise else 1.0
-    noise_range = max(noise_max - noise_min, 1e-6)
-
-    colours = []
-    for i, (_, row) in enumerate(df.iterrows()):
-        interp = str(row.get("interp", "unknown"))
-        base_hex = _INTERP_COLORS.get(interp, "#607D8B")
-        base_rgb = np.array(mcolors.to_rgb(base_hex))
-
-        if has_noise and noise_vals is not None:
-            nl = noise_vals[i]
-            if np.isfinite(nl):
-                # t=0 → full colour (noise=0), t=1 → very light (noise=max)
-                t = 1.0 - (float(nl) - noise_min) / noise_range
-                t = 0.20 + 0.80 * t   # keep minimum lightness so bars are visible
-                colour = tuple(1.0 - t * (1.0 - c) for c in base_rgb) + (1.0,)
-                colours.append(colour)
-                continue
-        # Fallback: use fitness-model colormap as before
-        model = str(row.get("fitness_model", "unknown"))
-        cmap  = _FITNESS_MODEL_CMAPS.get(model, _DEFAULT_CMAP)
-        shade = _INTERP_SHADES.get(interp, 0.55)
-        colours.append(cmap(shade))
-    return colours
-
-
-def _config_legend_handles(df: pd.DataFrame) -> list:
-    """Legend patches: one per unique interp path (full-saturation colour).
-
-    When noise_level varies, adds a second set of ghost patches showing
-    the light→dark scale so the reader understands the shading.
-    """
-    import matplotlib.colors as mcolors
-
-    has_noise = (
-        "noise_level" in df.columns
-        and df["noise_level"].notna().any()
-        and df["noise_level"].nunique() > 1
-    )
-
-    # One full-saturation patch per interp path
-    seen: dict[str, mpatches.Patch] = {}
-    for _, row in df.iterrows():
-        interp = str(row.get("interp", "unknown"))
-        if interp not in seen:
-            base_hex = _INTERP_COLORS.get(interp, "#607D8B")
-            seen[interp] = mpatches.Patch(color=base_hex, label=f"interp: {interp}")
-    handles = list(seen.values())
-
-    if has_noise:
-        # Light-to-dark gradient hint patches
-        handles.append(mpatches.Patch(color="#444444", label="← noise=low (dark)"))
-        handles.append(mpatches.Patch(color="#dddddd", label="→ noise=high (light)"))
-
-    return handles
-
-
-def _sort_df_and_get_groups(df: pd.DataFrame) -> tuple[pd.DataFrame, list[tuple[str, int, int]]]:
-    """Sort *df* by fitness_model → interp → noise_level and return group boundaries.
-
-    Returns
-    -------
-    sorted_df   : reset-indexed copy sorted for grouped display
-    fm_groups   : list of (fitness_model_name, start_idx, end_idx_inclusive)
-    """
-    _fm_order = {"additive": 0, "epistatic": 1, "nonlinear": 2}
-    df = df.copy()
-    df["_fm_sort"] = df["fitness_model"].map(lambda x: _fm_order.get(str(x).lower(), 99))
-    sort_cols = ["_fm_sort", "interp"]
-    if "noise_level" in df.columns:
-        df["noise_level"] = pd.to_numeric(df["noise_level"], errors="coerce")
-        sort_cols.append("noise_level")
-    df = df.sort_values(sort_cols).reset_index(drop=True)
-    df.drop(columns=["_fm_sort"], inplace=True)
-
-    fm_vals = df["fitness_model"].values
-    n = len(fm_vals)
-    groups: list[tuple[str, int, int]] = []
-    i_start = 0
-    for k in range(1, n):
-        if fm_vals[k] != fm_vals[k - 1]:
-            groups.append((str(fm_vals[i_start]), i_start, k - 1))
-            i_start = k
-    groups.append((str(fm_vals[i_start]), i_start, n - 1))
-    return df, groups
-
-
-def _make_x_positions(
-    n: int,
-    fm_groups: list[tuple[str, int, int]],
-    gap: float = 2.0,
-) -> np.ndarray:
-    """Return x-axis positions for *n* bars with extra *gap* between fitness-model groups.
-
-    Within each group bars are spaced 1 unit apart; *gap* extra units are
-    inserted between consecutive groups so they are visually separated.
-    """
-    x = np.zeros(n)
-    cursor = 0.0
-    for g_idx, (_, g_start, g_end) in enumerate(fm_groups):
-        if g_idx > 0:
-            cursor += gap  # extra gap before each new group
-        for i in range(g_start, g_end + 1):
-            x[i] = cursor
-            cursor += 1.0
-    return x
-
-
-def _apply_group_decorations(
-    ax,
-    fm_groups: list[tuple[str, int, int]],
-    x_pos: np.ndarray | None = None,
-) -> None:
-    """Draw vertical separators and fitness-model header labels on *ax*.
-
-    If *x_pos* is provided it is used for correct placement when groups have
-    been given non-uniform x coordinates (i.e. via _make_x_positions).
-    """
-    y_top = ax.get_ylim()[1]
-    for g_idx, (fm_name, g_start, g_end) in enumerate(fm_groups):
-        if x_pos is not None:
-            mid = (x_pos[g_start] + x_pos[g_end]) / 2
-            sep_x = (x_pos[g_start] - 1.0) if g_start > 0 else None  # midpoint between groups
-            if g_start > 0 and x_pos is not None:
-                sep_x = (x_pos[g_start - 1 if g_start > 0 else g_start] + x_pos[g_start]) / 2
-        else:
-            mid = (g_start + g_end) / 2
-            sep_x = g_start - 0.5 if g_start > 0 else None
-        ax.text(mid, y_top * 0.98, fm_name,
-                ha="center", va="top", fontsize=7, fontweight="bold", color="dimgray",
-                bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="lightgray", alpha=0.7))
-        if g_start > 0 and sep_x is not None:
-            ax.axvline(sep_x, color="lightgray", lw=1.2, linestyle="-", zorder=0)
-
-
-def plot_metric_comparison(
-    summary_df: pd.DataFrame,
-    output_dir: Path,
-    protein_prefix: str | None = None,
-) -> None:
-    """Grouped bar charts — one panel per metric, one bar per configuration."""
-    metrics = ["spearman_r", "kendall_tau", "auroc", "auprc", "precision_at_k"]
-    metric_labels = {
-        "spearman_r":      "Spearman ρ",
-        "kendall_tau":     "Kendall τ",
-        "auroc":           "AUROC",
-        "auprc":           "AUPRC",
-        "precision_at_k":  "Precision@K",
-    }
-
-    summary_df = summary_df.copy()
-    summary_df, fm_groups = _sort_df_and_get_groups(summary_df)
-
-    n_configs = len(summary_df)
-    fig, axes = plt.subplots(
-        2, 3,
-        figsize=(max(15, n_configs * 1.0), 10),
-        constrained_layout=True,
-    )
-    axes = axes.flatten()
-    # Hide the 6th panel (only 5 metrics)
-    axes[5].set_visible(False)
-
-    colours = _assign_colors(summary_df)
-    prot_handles = _config_legend_handles(summary_df)
-    x_pos = _make_x_positions(n_configs, fm_groups)
-
-    # Random-chance baselines per metric
-    if "n_annotated" in summary_df.columns and "n_positions" in summary_df.columns:
-        auprc_baseline = float(
-            (summary_df["n_annotated"] / summary_df["n_positions"].replace(0, np.nan)).mean()
-        )
-    else:
-        auprc_baseline = float("nan")
-    # Per-run random baseline for Precision@K
-    if "precision_at_k_random" in summary_df.columns:
-        pak_random_mean = float(summary_df["precision_at_k_random"].mean())
-    else:
-        pak_random_mean = float("nan")
-    _gt_baselines = {
-        "spearman_r":     (0.0,            "random (0)"),
-        "kendall_tau":    (0.0,            "random (0)"),
-        "auroc":          (0.5,            "random (0.5)"),
-        "auprc":          (auprc_baseline, f"random ({auprc_baseline:.2f})"),
-        "precision_at_k": (pak_random_mean, f"random ({pak_random_mean:.2f})"),
-    }
-
-    for panel_i, (ax, metric) in enumerate(zip(axes, metrics)):
-        vals = summary_df[metric].values
-        bars = ax.bar(
-            x_pos, vals,
-            color=colours, edgecolor="black", linewidth=0.5, alpha=0.85,
-        )
-        base_val, base_label = _gt_baselines.get(metric, (float("nan"), ""))
-        extra_handles = []
-        if np.isfinite(base_val):
-            ax.axhline(base_val, color="grey", lw=1.2, linestyle="--")
-            extra_handles.append(
-                plt.Line2D([0], [0], color="grey", lw=1.2, linestyle="--", label=base_label)
-            )
-        if panel_i == 0:
-            ax.legend(handles=prot_handles + extra_handles, fontsize=7, loc="upper right")
-        elif extra_handles:
-            ax.legend(handles=extra_handles, fontsize=7)
-        for bar, v in zip(bars, vals):
-            if np.isfinite(v):
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    bar.get_height() + 0.01,
-                    f"{v:.3f}",
-                    ha="center", va="bottom", fontsize=6, rotation=90,
-                )
-        ax.set_xticks([])
-        ax.set_ylabel(metric_labels[metric], fontsize=9)
-        ax.set_title(metric_labels[metric], fontsize=10, fontweight="bold")
-        y_min = min(0, float(np.nanmin(vals)) - 0.05)
-        # headroom: enough for rotated value labels (~20% of data range above max)
-        y_max = float(np.nanmax(vals))
-        y_range = max(y_max - y_min, 0.1)
-        ax.set_ylim(bottom=y_min, top=y_max + y_range * 0.28)
-        # tight x limits with half-bar padding on each side
-        ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
-        ax.yaxis.grid(True, linestyle="--", alpha=0.4)
-        ax.set_axisbelow(True)
-        _apply_group_decorations(ax, fm_groups, x_pos)
-
-    title_prot = f" [{protein_prefix}]" if protein_prefix else ""
-    fig.suptitle(
-        f"Synthetic IG Validation{title_prot} — Alignment with Ground-Truth Position Importance\n"
-        "(Spearman/Kendall: rank correlation |IG| vs importance; "
-        "AUROC/AUPRC: annotated vs unannotated positions)",
-        fontsize=9,
-    )
-
-    fname = f"{protein_prefix}_ig_validation_metrics.png" if protein_prefix else "synthetic_ig_validation_metrics.png"
-    out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  Saved: {out_path}")
-
-
-def plot_fitness_metric_comparison(
-    summary_df: pd.DataFrame,
-    output_dir: Path,
-    protein_prefix: str | None = None,
-) -> None:
-    """Grouped bar charts comparing |IG| to observed fitness effects.
-
-    Same layout as plot_metric_comparison but uses the fitness_* metric columns.
-    """
-    fitness_metrics = ["fitness_spearman_r", "fitness_kendall_tau", "fitness_auroc", "fitness_auprc", "fitness_precision_at_k"]
-    # Only plot if at least one run has these columns populated
-    available = [m for m in fitness_metrics if m in summary_df.columns and summary_df[m].notna().any()]
-    if not available:
-        print("  [skip] No fitness-based metrics available to plot.")
-        return
-
-    metric_labels = {
-        "fitness_spearman_r":   "Spearman ρ (fitness)",
-        "fitness_kendall_tau":  "Kendall τ (fitness)",
-        "fitness_auroc":        "AUROC (fitness)",
-        "fitness_auprc":        "AUPRC (fitness)",
-        "fitness_precision_at_k": "Precision@K (fitness)",
-    }
-
-    summary_df = summary_df.copy()
-    summary_df, fm_groups = _sort_df_and_get_groups(summary_df)
-
-    n_configs = len(summary_df)
-    n_metrics = len(available)
-    ncols = 2
-    nrows = (n_metrics + 1) // ncols
-    fig, axes = plt.subplots(
-        nrows, ncols,
-        figsize=(max(10, n_configs * 0.7), 5 * nrows),
-        constrained_layout=True,
-        squeeze=False,
-    )
-    axes_flat = axes.flatten()
-
-    colours = _assign_colors(summary_df)
-    prot_handles = _config_legend_handles(summary_df)
-    x_pos = _make_x_positions(n_configs, fm_groups)
-
-    if "fitness_precision_at_k_random" in summary_df.columns:
-        fit_pak_random_mean = float(summary_df["fitness_precision_at_k_random"].mean())
-    else:
-        fit_pak_random_mean = float("nan")
-    _fit_baselines = {
-        "fitness_spearman_r":      (0.0, "random (0)"),
-        "fitness_kendall_tau":     (0.0, "random (0)"),
-        "fitness_auroc":           (0.5, "random (0.5)"),
-        "fitness_auprc":           (0.5, "random (0.5)"),
-        "fitness_precision_at_k":  (fit_pak_random_mean, f"random ({fit_pak_random_mean:.2f})"),
-    }
-
-    for i, (ax, metric) in enumerate(zip(axes_flat, available)):
-        vals = summary_df[metric].values
-        bars = ax.bar(
-            x_pos, vals,
-            color=colours, edgecolor="black", linewidth=0.5, alpha=0.85,
-        )
-        base_val, base_label = _fit_baselines.get(metric, (float("nan"), ""))
-        extra_handles = []
-        if np.isfinite(base_val):
-            ax.axhline(base_val, color="grey", lw=1.2, linestyle="--")
-            extra_handles.append(
-                plt.Line2D([0], [0], color="grey", lw=1.2, linestyle="--", label=base_label)
-            )
-        if i == 0:
-            ax.legend(handles=prot_handles + extra_handles, fontsize=7, loc="upper right")
-        elif extra_handles:
-            ax.legend(handles=extra_handles, fontsize=7)
-        for bar, v in zip(bars, vals):
-            if np.isfinite(v):
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    bar.get_height() + 0.01,
-                    f"{v:.3f}",
-                    ha="center", va="bottom", fontsize=6, rotation=90,
-                )
-        ax.set_xticks([])
-        ax.set_ylabel(metric_labels.get(metric, metric), fontsize=9)
-        ax.set_title(metric_labels.get(metric, metric), fontsize=10, fontweight="bold")
-        y_min = min(0, float(np.nanmin(vals)) - 0.05)
-        y_max = float(np.nanmax(vals))
-        y_range = max(y_max - y_min, 0.1)
-        ax.set_ylim(bottom=y_min, top=y_max + y_range * 0.28)
-        ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
-        ax.yaxis.grid(True, linestyle="--", alpha=0.4)
-        ax.set_axisbelow(True)
-        _apply_group_decorations(ax, fm_groups, x_pos)
-
-    for ax in axes_flat[len(available):]:
-        ax.set_visible(False)
-
-    title_prot = f" [{protein_prefix}]" if protein_prefix else ""
-    fig.suptitle(
-        f"Synthetic IG Validation{title_prot} — Alignment with Observed Fitness Effects\n"
-        "(Spearman/Kendall: rank correlation |IG| vs mean fitness drop per position; "
-        "AUROC/AUPRC: top-50% most deleterious positions as positives)",
-        fontsize=9,
-    )
-
-    fname = f"{protein_prefix}_ig_fitness_metrics.png" if protein_prefix else "synthetic_ig_fitness_metrics.png"
-    out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  Saved: {out_path}")
-
-
-def plot_completeness_summary(
-    summary_df: pd.DataFrame,
-    output_dir: Path,
-    protein_prefix: str | None = None,
-) -> None:
-    """Bar chart of completeness axiom pass-rates and normalized-IG rank metrics.
-
-    Two sub-plots:
-      Left  — fraction of sequences satisfying Σ IG ≈ F(x)−F(x') at 1/5/10% tolerance
-      Right — Spearman ρ on raw |IG| vs. on |IG|/|ΔF| (normalized), to show whether
-              normalizing improves ground-truth alignment.
-    """
-    comp_col = "completeness_frac_pass_5pct"  # primary quality gauge
-    has_completeness = comp_col in summary_df.columns and summary_df[comp_col].notna().any()
-    has_norm = "norm_spearman_r" in summary_df.columns and summary_df["norm_spearman_r"].notna().any()
-
-    if not has_completeness and not has_norm:
-        print("  [skip] No completeness / normalized-IG data to plot.")
-        return
-
-    df, fm_groups = _sort_df_and_get_groups(summary_df)
-    n = len(df)
-    colours = _assign_colors(df)
-    config_handles = _config_legend_handles(df)
-    x_pos = _make_x_positions(n, fm_groups)
-
-    n_panels = int(has_completeness) + int(has_norm)
-    fig, axes = plt.subplots(n_panels, 1, figsize=(max(8, n * 0.9), 5 * n_panels),
-                             constrained_layout=True)
-    if n_panels == 1:
-        axes = [axes]
-
-    panel = 0
-    if has_completeness:
-        ax = axes[panel]; panel += 1
-        tols = [("completeness_frac_pass_1pct",  "ε<1%",  0.55),
-                (comp_col,                        "ε<5%",  0.68),
-                ("completeness_frac_pass_10pct",  "ε<10%", 0.82)]
-        w = 0.22
-        offsets = [-w, 0, w]
-        bar_colors = [plt.cm.Blues(s) for _, _, s in tols]
-        for k, (col, lbl, _) in enumerate(tols):
-            vals = df[col].values if col in df.columns else np.full(n, np.nan)
-            brs = ax.bar(x_pos + offsets[k], vals, w, color=bar_colors[k],
-                         edgecolor="k", linewidth=0.4, alpha=0.85, label=lbl)
-            for bar, v in zip(brs, vals):
-                if np.isfinite(v):
-                    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
-                            f"{v:.2f}", ha="center", va="bottom", fontsize=5, rotation=90)
-        ax.set_xticks([])
-        ax.set_ylabel("Fraction of sequences passing")
-        ax.set_ylim(0, 1.32)  # extra headroom for rotated labels + group header
-        ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
-        title_prot = f" [{protein_prefix}]" if protein_prefix else ""
-        ax.set_title(f"Completeness Axiom Pass-Rate{title_prot}\n(Σ IG ≈ F(x)−F(x′) within tolerance)")
-        ax.legend(handles=config_handles + [mpatches.Patch(color=c, label=l) for c, l in
-                  [(plt.cm.Blues(s), lb) for _, lb, s in tols]], fontsize=7, loc="lower right")
-        ax.yaxis.grid(True, linestyle="--", alpha=0.4)
-        ax.set_axisbelow(True)
-        _apply_group_decorations(ax, fm_groups, x_pos)
-
-        if "n_near_zero_sequences" in df.columns:
-            for idx, (xp, (_, row)) in enumerate(zip(x_pos, df.iterrows())):
-                nz = int(row.get("n_near_zero_sequences", 0))
-                if nz > 0:
-                    ax.text(xp, -0.06, f"⚠{nz}", ha="center", va="top",
-                            fontsize=6, color="firebrick", transform=ax.transData)
-
-    if has_norm:
-        ax = axes[panel]
-        raw_vals  = df["spearman_r"].values  if "spearman_r"  in df.columns else np.full(n, np.nan)
-        norm_vals = df["norm_spearman_r"].values
-        w = 0.35
-        ax.bar(x_pos - w/2, raw_vals,  w, color=colours, edgecolor="k",
-               linewidth=0.4, alpha=0.85, label="raw |IG|")
-        ax.bar(x_pos + w/2, norm_vals, w, color=colours, edgecolor="k",
-               linewidth=0.4, alpha=0.55, label="|IG| / |ΔF| (normalised)")
-        ax.axhline(0, color="grey", lw=0.8, linestyle="--")
-        ax.set_xticks([])
-        ax.set_ylabel("Spearman ρ vs ground-truth importance")
-        y_min = min(0, float(np.nanmin(np.concatenate([raw_vals, norm_vals]))) - 0.05)
-        y_max = float(np.nanmax(np.concatenate([raw_vals, norm_vals])))
-        y_range = max(y_max - y_min, 0.1)
-        ax.set_ylim(bottom=y_min, top=y_max + y_range * 0.28)
-        ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
-        title_prot = f" [{protein_prefix}]" if protein_prefix else ""
-        ax.set_title(f"Raw vs Normalised |IG| Rank Correlation{title_prot}\n"
-                     "(normalise by |F(x)−F(x′)| to compare across sequences)")
-        ax.legend(handles=config_handles, fontsize=7)
-        ax.yaxis.grid(True, linestyle="--", alpha=0.4)
-        ax.set_axisbelow(True)
-        _apply_group_decorations(ax, fm_groups, x_pos)
-
-    fname = f"{protein_prefix}_completeness.png" if protein_prefix else "synthetic_completeness.png"
-    out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  Saved: {out_path}")
-
-
-def plot_precision_at_k(
-    summary_df: pd.DataFrame,
-    output_dir: Path,
-    protein_prefix: str | None = None,
-) -> None:
-    """Bar chart of Precision@K per run, with per-run random baseline markers.
-
-    K = number of annotated positions (ground truth), so the random baseline
-    equals the annotation density (K/L) and varies per protein/run.
-    """
-    col = "precision_at_k"
-    if col not in summary_df.columns or summary_df[col].isna().all():
-        print("  [skip] No precision_at_k data to plot.")
-        return
-
-    df, fm_groups = _sort_df_and_get_groups(summary_df)
-    n = len(df)
-
-    colours = _assign_colors(df)
-    config_handles = _config_legend_handles(df)
-    x_pos = _make_x_positions(n, fm_groups)
-
-    fig, ax = plt.subplots(figsize=(max(8, n * 0.9), 5), constrained_layout=True)
-    vals = df[col].values
-    bars = ax.bar(x_pos, vals, color=colours, edgecolor="black", linewidth=0.5, alpha=0.85)
-
-    for bar, v in zip(bars, vals):
-        if np.isfinite(v):
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
-                    f"{v:.3f}", ha="center", va="bottom", fontsize=6, rotation=90)
-
-    # Per-run random baseline (annotation density = K/L, may differ per run)
-    if "precision_at_k_random" in df.columns:
-        rand_vals = df["precision_at_k_random"].values
-        for xp, rv in zip(x_pos, rand_vals):
-            if np.isfinite(rv):
-                ax.plot(xp, rv, marker="_", color="grey", markersize=12, markeredgewidth=1.5)
-        rand_handle = plt.Line2D(
-            [0], [0], color="grey", marker="_", linestyle="none",
-            markersize=10, markeredgewidth=1.5, label="random (K/L)"
-        )
-        config_handles = config_handles + [rand_handle]
-
-    ax.set_xticks([])
-    ax.set_ylabel("Precision@K  (K = n_annotated)")
-    y_max = float(np.nanmax(vals))
-    ax.set_ylim(0, min(1.0, max(1.0, y_max)) * 1.28)
-    ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
-    title_prot = f" [{protein_prefix}]" if protein_prefix else ""
-    ax.set_title(
-        f"Precision@K{title_prot}\n"
-        "Fraction of top-K |IG| positions that are annotated; K = n_annotated (grey tick = random baseline)"
-    )
-    ax.legend(handles=config_handles, fontsize=7, loc="lower right")
-    ax.yaxis.grid(True, linestyle="--", alpha=0.4)
-    ax.set_axisbelow(True)
-    _apply_group_decorations(ax, fm_groups, x_pos)
-
-    fname = f"{protein_prefix}_precision_at_k.png" if protein_prefix else "synthetic_precision_at_k.png"
-    out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  Saved: {out_path}")
-
-
-# Distinct colors for each interpolation path
-_INTERP_COLORS: dict[str, str] = {
-    "linear":           "#2196F3",   # blue
-    "slerp":            "#FF5722",   # deep orange
-    "nearest_neighbor": "#4CAF50",   # green
-    "guided_ig":        "#9C27B0",   # purple
-}
-_INTERP_MARKERS: dict[str, str] = {
-    "linear":           "o",
-    "slerp":            "s",
-    "nearest_neighbor": "^",
-    "guided_ig":        "D",
-}
-
-
-def plot_noise_vs_interp(
-    summary_df: pd.DataFrame,
-    output_dir: Path,
-    protein: str,
-    fitness_model: str,
-    protein_prefix: str | None = None,
-    split: str = "all",
-) -> None:
-    """Line plots of key metrics vs noise level, coloured by interpolation path.
-
-    For a single (protein, fitness_model) subset, produces a grid of panels —
-    one per metric.  Each interpolation path is a separate line so you can
-    read off:
-      - How does metric degrade as noise increases?
-      - Which interp path is most robust to noise?
-
-    Metrics shown: Spearman ρ (GT), AUROC (GT), AUPRC (GT),
-                   Spearman ρ (fitness), AUROC (fitness),
-                   sign accuracy (active-site), completeness (5% pass-rate),
-                   weighted position accuracy.
-    """
-    if "noise_level" not in summary_df.columns:
-        return
-
-    df = summary_df[
-        (summary_df["protein"] == protein)
-        & (summary_df["fitness_model"] == fitness_model)
-    ].copy()
-    if df.empty:
-        return
-
-    # Drop rows where noise_level is None/NaN
-    df = df[df["noise_level"].notna()]
-    if df.empty:
-        return
-
-    df["noise_level"] = df["noise_level"].astype(float)
-
-    metrics = [
-        ("spearman_r",                "Spearman ρ (GT)",         0.0),
-        ("auroc",                     "AUROC (GT)",               0.5),
-        ("auprc",                     "AUPRC (GT)",               None),
-        ("fitness_spearman_r",        "Spearman ρ (fitness)",    0.0),
-        ("fitness_auroc",             "AUROC (fitness)",          0.5),
-        ("sign_acc_active",           "Sign acc (active-site)",  0.5),
-        ("completeness_frac_pass_5pct", "Completeness (5% pass)", None),
-        ("precision_at_k",            "Precision@K",             None),
-    ]
-    # Keep only metrics that actually exist in the dataframe
-    metrics = [(col, lbl, base) for col, lbl, base in metrics if col in df.columns]
-    if not metrics:
-        return
-
-    # Pre-compute near-zero fraction per (interp, noise_level):
-    #   frac = n_near_zero / (n_completeness_sequences + n_near_zero)
-    # so 0 = fully reliable, 1 = all sequences excluded
-    _has_near_zero = (
-        "n_near_zero_sequences" in df.columns
-        and "n_completeness_sequences" in df.columns
-    )
-
-    n_panels = len(metrics)
-    ncols = 4
-    nrows = (n_panels + ncols - 1) // ncols
-    fig, axes = plt.subplots(
-        nrows, ncols,
-        figsize=(ncols * 4.5, nrows * 3.5),
-        constrained_layout=True,
-    )
-    axes_flat = np.array(axes).flatten()
-
-    interps = sorted(df["interp"].unique())
-    noise_levels = sorted(df["noise_level"].unique())
-
-    for ax_idx, (col, label, baseline) in enumerate(metrics):
-        ax = axes_flat[ax_idx]
-        for interp in interps:
-            sub = df[df["interp"] == interp].sort_values("noise_level")
-            if sub.empty:
-                continue
-            color  = _INTERP_COLORS.get(interp, "#607D8B")
-            marker = _INTERP_MARKERS.get(interp, "o")
-            vals = sub[col].values.astype(float)
-            ax.plot(
-                sub["noise_level"].values, vals,
-                color=color, marker=marker, linewidth=1.8, markersize=6,
-                label=interp, alpha=0.88,
-            )
-
-        if baseline is not None:
-            ax.axhline(baseline, color="grey", lw=1.0, linestyle="--", alpha=0.7)
-        ax.set_xlabel("Noise level", fontsize=8)
-        ax.set_ylabel(label, fontsize=8)
-        ax.set_title(label, fontsize=9, fontweight="bold")
-        ax.set_xticks(noise_levels)
-        ax.set_xticklabels([str(n) for n in noise_levels], fontsize=7, rotation=45)
-        ax.yaxis.grid(True, linestyle=":", alpha=0.5)
-        ax.set_axisbelow(True)
-
-        # ── Secondary axis: near-zero fraction ──────────────────────────
-        if _has_near_zero:
-            ax2 = ax.twinx()
-            for interp in interps:
-                sub = df[df["interp"] == interp].sort_values("noise_level")
-                if sub.empty:
-                    continue
-                total = sub["n_near_zero_sequences"] + sub["n_completeness_sequences"]
-                frac = np.where(
-                    total > 0,
-                    sub["n_near_zero_sequences"].values / total.values,
-                    0.0,
-                )
-                color = _INTERP_COLORS.get(interp, "#607D8B")
-                ax2.plot(
-                    sub["noise_level"].values, frac,
-                    color=color, linewidth=1.0, linestyle=":",
-                    alpha=0.5, marker=None,
-                )
-            ax2.set_ylim(0, 1)
-            ax2.set_ylabel("near-zero frac ↑ = unreliable", fontsize=6, color="dimgrey")
-            ax2.tick_params(axis="y", labelsize=6, colors="dimgrey")
-            ax2.spines["right"].set_color("dimgrey")
-            ax2.spines["right"].set_linestyle(":")
-            # Shade background red when near-zero fraction is high (>0.3)
-            # Use the mean across interps per noise level for the shading
-            mean_frac = (
-                df.groupby("noise_level").apply(
-                    lambda g: (g["n_near_zero_sequences"].sum()
-                               / max((g["n_near_zero_sequences"] + g["n_completeness_sequences"]).sum(), 1))
-                ).reindex(noise_levels).values
-            )
-            for ni, (nl, mf) in enumerate(zip(noise_levels, mean_frac)):
-                if mf > 0.3:
-                    x_lo = nl - (noise_levels[1] - noise_levels[0]) * 0.4 if ni > 0 else nl - 0.02
-                    x_hi = nl + (noise_levels[min(ni + 1, len(noise_levels) - 1)] - nl) * 0.4
-                    ax.axvspan(x_lo, x_hi, color="red", alpha=0.06, zorder=0)
-
-        if ax_idx == 0:
-            leg = ax.legend(title="Interp path", fontsize=7, title_fontsize=7)
-            if _has_near_zero:
-                # Add a manual entry for the near-zero overlay
-                leg.get_frame().set_alpha(0.9)
-                ax.plot([], [], color="dimgrey", linewidth=1.0, linestyle=":",
-                        alpha=0.7, label="near-zero frac (right axis)")
-                ax.legend(title="Interp path", fontsize=7, title_fontsize=7)
-
-    # Hide unused panels
-    for ax in axes_flat[n_panels:]:
-        ax.set_visible(False)
-
-    prot_label = protein_prefix or f"{protein}_{fitness_model}"
-    split_label = f" [{split}]" if split and split != "all" else ""
-    fig.suptitle(
-        f"IG quality vs noise level — {protein} / {fitness_model}{split_label}\n"
-        f"(lines = interpolation paths; dashed grey = random baseline; "
-        f"dotted right axis = near-zero fraction; red shading = >30% unreliable)",
-        fontsize=9,
-    )
-    fname = f"{prot_label}_noise_vs_interp.png"
-    out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  Saved: {out_path}")
-
-
-def plot_per_position_comparison(
-    results_dir: Path,
-    protein: str,
-    gt: dict,
-    ig_vec: np.ndarray,
-    output_dir: Path,
-    label: str = "",
-) -> None:
-    """Bar chart of |IG| vs ground-truth importance per position for one run."""
-    L = gt["sequence_length"]
-    positions = np.arange(1, L + 1)
-    gt_vec = gt["importance_vector"]
-    mask = gt["annotated_mask"]
-
-    fig, axes = plt.subplots(2, 1, figsize=(max(14, L // 3), 6),
-                             sharex=True, constrained_layout=True)
-
-    # Top: IG scores coloured by annotation status
-    colours = np.where(mask, "steelblue", "lightgrey")
-    axes[0].bar(positions, ig_vec, color=colours, edgecolor="none", width=0.8)
-    axes[0].set_ylabel("|IG| (mean abs gradient)", fontsize=8)
-    axes[0].set_title(f"{label} — |IG| per position", fontsize=9)
-    # Legend patches
-    from matplotlib.patches import Patch
-    axes[0].legend(
-        handles=[Patch(color="steelblue", label="annotated"),
-                 Patch(color="lightgrey", label="unannotated")],
-        fontsize=7,
-    )
-
-    # Bottom: ground truth importance
-    gt_colours = np.where(mask, "darkorange", "lightgrey")
-    axes[1].bar(positions, gt_vec, color=gt_colours, edgecolor="none", width=0.8)
-    axes[1].set_ylabel("Ground-truth importance", fontsize=8)
-    axes[1].set_title("Ground-truth importance per position", fontsize=9)
-    axes[1].set_xlabel("Position (1-indexed)", fontsize=8)
-    axes[1].legend(
-        handles=[Patch(color="darkorange", label="annotated"),
-                 Patch(color="lightgrey", label="unannotated")],
-        fontsize=7,
-    )
-
-    safe_label = re.sub(r"[^a-zA-Z0-9_-]", "_", label)
-    out_path = output_dir / f"{safe_label}_per_position.png"
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  Saved: {out_path}")
 
 
 # ---------------------------------------------------------------------------
@@ -2206,6 +1635,8 @@ def main() -> None:
 
     # ── Evaluate each directory ──────────────────────────────────────────────
     rows: list[dict] = []
+    # Track per-position plot paths keyed by (fitness_model, interp) for zipping
+    _per_pos_files: dict[tuple[str, str], list[Path]] = {}
     for d in dirs:
         print(f"Evaluating: {d.name}")
 
@@ -2257,6 +1688,12 @@ def main() -> None:
                         plot_per_position_comparison(
                             d, protein, gt, ig_vec, output_dir,
                             label=per_pos_label)
+                        # Track for per-group zipping
+                        _fm  = row.get("fitness_model", "unknown")
+                        _itp = row.get("interp", d.name) or d.name
+                        _key = (_fm, _itp)
+                        _saved_png = output_dir / f"{re.sub(r'[^a-zA-Z0-9_-]', '_', per_pos_label)}_per_position.png"
+                        _per_pos_files.setdefault(_key, []).append(_saved_png)
                 except Exception as exc:
                     print(f"  [warn] Per-position plot failed: {exc}")
 
@@ -2296,6 +1733,14 @@ def main() -> None:
         "fitness_kendall_tau", "fitness_kendall_p",
         "fitness_auroc", "fitness_auprc", "n_fitness_positions",
         "fitness_precision_at_k", "fitness_precision_at_k_random",
+        # [3] Per-variant GT rank correlation
+        "pv_gt_spearman_mean", "pv_gt_spearman_std", "pv_gt_spearman_median",
+        "pv_gt_kendall_mean", "pv_gt_kendall_std", "pv_gt_kendall_median",
+        "n_pv_gt_sequences",
+        # [4] Per-variant fitness-contribution correlation
+        "pvfc_pooled_spearman", "pvfc_pooled_pearson",
+        "pvfc_per_seq_spearman_mean", "pvfc_per_seq_spearman_std", "pvfc_per_seq_spearman_median",
+        "pvfc_n_pairs", "pvfc_n_sequences",
         "sign_acc_active", "sign_acc_wt", "sign_acc_overall",
         "n_active_mut", "n_wt_positions",
         "linear_spearman_r", "linear_pearson_r", "n_prop_obs",
@@ -2312,17 +1757,20 @@ def main() -> None:
     # ── Print table ──────────────────────────────────────────────────────────
     hdr_cols = [
         ("Directory",    "dirname",             40, ""),
-        ("ρ(GT)",        "spearman_r",           7, "+.3f"),
-        ("τ(GT)",        "kendall_tau",          7, "+.3f"),
-        ("AUROC(GT)",    "auroc",                8,  ".3f"),
-        ("AUPRC(GT)",    "auprc",                8,  ".3f"),
-        ("ρ(fit)",       "fitness_spearman_r",   7, "+.3f"),
-        ("τ(fit)",       "fitness_kendall_tau",  7, "+.3f"),
-        ("AUROC(fit)",   "fitness_auroc",        9,  ".3f"),
-        ("AUPRC(fit)",   "fitness_auprc",        9,  ".3f"),
-        ("SignAcc(act)", "sign_acc_active",      10, ".3f"),
-        ("SignAcc(all)", "sign_acc_overall",     10, ".3f"),
-        ("LinSp",        "linear_spearman_r",    6, "+.3f"),
+        ("ρ(GT)",       "spearman_r",           7, "+.3f"),
+        ("τ(GT)",       "kendall_tau",          7, "+.3f"),
+        ("AUROC(GT)",   "auroc",                8,  ".3f"),
+        ("AUPRC(GT)",   "auprc",                8,  ".3f"),
+        ("ρ(pv-GT)",    "pv_gt_spearman_mean",  9, "+.3f"),
+        ("ρ(fit)",      "fitness_spearman_r",   7, "+.3f"),
+        ("τ(fit)",      "fitness_kendall_tau",  7, "+.3f"),
+        ("AUROC(fit)",  "fitness_auroc",        9,  ".3f"),
+        ("AUPRC(fit)",  "fitness_auprc",        9,  ".3f"),
+        ("ρ(pvfc-pool)","pvfc_pooled_spearman", 13,"+.3f"),
+        ("ρ(pvfc-seq)", "pvfc_per_seq_spearman_mean", 12,"+.3f"),
+        ("SignAcc(act)","sign_acc_active",      10, ".3f"),
+        ("SignAcc(all)","sign_acc_overall",     10, ".3f"),
+        ("LinSp",       "linear_spearman_r",    6, "+.3f"),
     ]
     hdr_cols = [(h, col, w, fmt) for h, col, w, fmt in hdr_cols if col in export_df.columns]
     header = "".join(f"{h:>{w}}  " for h, col, w, fmt in hdr_cols)
@@ -2406,6 +1854,7 @@ def main() -> None:
                 print(f"    Noise-vs-interp plot: {prot} / {fm} (split={split}, {len(fm_df)} runs)")
                 try:
                     plot_noise_vs_interp(fm_df, output_dir, protein=prot, fitness_model=fm, protein_prefix=fm_prefix, split=split)
+                    plot_noise_vs_interp_boxplots(fm_df, output_dir, protein=prot, fitness_model=fm, protein_prefix=fm_prefix, split=split)
                 except Exception as exc:
                     print(f"  [warn] Noise-vs-interp [{fm_prefix}] failed: {exc}")
 
@@ -2420,6 +1869,24 @@ def main() -> None:
         _safe_plots(split_df, combined_prefix)
 
     print(f"\nDone. Output saved to: {output_dir}")
+
+    # ── Zip per-position plots by (fitness_model, interp) group ───────────────────
+    if args.per_position_plots and _per_pos_files:
+        import zipfile
+        print("\nZipping per-position plots by (fitness_model, interp) ...")
+        for (fm, itp), png_paths in sorted(_per_pos_files.items()):
+            zip_name = f"per_position_{fm}_{itp}.zip"
+            zip_path = output_dir / zip_name
+            existing = [p for p in png_paths if p.exists()]
+            if not existing:
+                continue
+            with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                for p in sorted(existing):
+                    zf.write(p, p.name)
+            print(f"  {zip_path.name}  ({len(existing)} files)")
+            for p in existing:
+                p.unlink()
+            print(f"  Deleted {len(existing)} source files")
 
 
 if __name__ == "__main__":

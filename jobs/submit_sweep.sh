@@ -64,7 +64,7 @@ declare -A GPU_TYPE=( [GB1]="h100" [T4Lysozyme]="h100" [p53]="h100" )
 declare -A MEM=(      [GB1]="128G" [T4Lysozyme]="256G"  [p53]="512G" )
 # Default time limits; nearest_neighbor jobs get longer limits (set per-interp below)
 declare -A TIME=(     [GB1]="1:30:00" [T4Lysozyme]="4:00:00" [p53]="6:00:00" )
-declare -A TIME_NN=(  [GB1]="2:30:00" [T4Lysozyme]="5:30:00" [p53]="10:00:00" )
+declare -A TIME_NN=(  [GB1]="2:30:00" [T4Lysozyme]="7:30:00" [p53]="23:59:00" )
 
 # ── Submit ────────────────────────────────────────────────────────────────────
 total=0

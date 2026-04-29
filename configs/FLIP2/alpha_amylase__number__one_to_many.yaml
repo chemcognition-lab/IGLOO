@@ -1,0 +1,53 @@
+# FLIP2 Alpha-amylase — number__one_to_many split
+# Train: lower-order mutants (~87% of data)
+# Test:  higher-order mutants held out to test generalisation (~13% of data)
+# Reference: Dallago et al. 2021 / FLIP2 benchmark
+
+data:
+  name: "alpha_amylase__number__one_to_many"
+  path: "data/FLIP2_processed/alpha_amylase__number__one_to_many_combined.csv"
+  target_column: "quantitative_function"
+  normalization: "z-score"
+  wildtype:
+    method: "variant_column"
+    variant_column: "mutant"
+    wildtype_value: "WT"
+
+training:
+  split_method: "column"       # use the pre-existing 'set' column (train/test)
+  split_column: "set"
+  n_folds: 5
+  seed: 42
+
+model:
+  esm_model_name: "esmc_300m"
+  esm_layer: 33
+  pooling_method: "esm_attention"
+  hidden_dim1: 1024
+  hidden_dim2: 512
+  hidden_dim3: 256
+  hidden_dim4: 128
+  dropout_rate: 0.20
+  learning_rate: 0.0002
+  batch_size: 128
+  epochs: 250
+  loss_type: "huber"
+  final_activation: null
+
+integrated_gradients:
+  method: "embedding"
+  attribution_method: "signed"
+  interpolation_path: "linear"
+  steps: 50
+  batch_size: 10
+
+analysis:
+  sequence_selection:
+    include_extremes: true
+    include_median: true
+    include_top_n: 0
+    include_bottom_n: 0
+    custom_sequences: []
+
+results_dir: "results/FLIP2/alpha_amylase__number__one_to_many"
+force_retrain: false

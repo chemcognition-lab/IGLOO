@@ -163,10 +163,10 @@ class AttentionConvPoolingModel(nn.Module):
         elif self.final_activation == 'sigmoid' and self.target_min is not None and self.target_max is not None:
             out = out * (self.target_max - self.target_min) + self.target_min
         return out
-    
+
 
 # The models below are from the FLIP repository: https://github.com/J-SNACKKB/FLIP/blob/main/baselines/models.py
-# as well as Microsoft's protein sequence model repository: 
+# as well as Microsoft's protein sequence model repository:
 
 
 class MaskedConv1d(nn.Conv1d):
@@ -200,24 +200,26 @@ class MaskedConv1d(nn.Conv1d):
         if input_mask is not None:
             x = x * input_mask
         return super().forward(x.transpose(1, 2)).transpose(1, 2)
-    
+
 
 class Attention1d(nn.Module):
-    
+
     def __init__(self, in_dim):
         super().__init__()
         self.layer = MaskedConv1d(in_dim, 1, 1)
 
     def forward(self, x, input_mask=None):
-        n, ell, _ = x.shape
-        attn = self.layer(x)
-        attn = attn.view(n, -1)
+        n, ell, _ = x.shape                    # x:    (batch, seq_len, d_embedding)
+        attn = self.layer(x)                   # attn: (batch, seq_len, 1)  — scalar score per position
+        attn = attn.view(n, -1)                # attn: (batch, seq_len)
         if input_mask is not None:
             attn = attn.masked_fill_(~input_mask.view(n, -1).bool(), float('-inf'))
+                                               # attn: (batch, seq_len)  — masked positions → -inf
         attn = F.softmax(attn, dim=-1).view(n, -1, 1)
-        out = (attn * x).sum(dim=1)
+                                               # attn: (batch, seq_len, 1)  — softmax over positions
+        out = (attn * x).sum(dim=1)            # out:  (batch, d_embedding) — weighted sum over positions
         return out
-    
+
 
 class ESMAttention1d(nn.Module):
     """Attention pooling over per-residue ESM embeddings followed by a configurable MLP."""
@@ -252,14 +254,17 @@ class ESMAttention1d(nn.Module):
             self.final_act = nn.Identity()
 
     def forward(self, x, input_mask):
+        # x:         (batch, seq_len, d_embedding)
+        # input_mask:(batch, seq_len)
         x = self.attention1d(x, input_mask=input_mask.unsqueeze(-1))
-        x = self.layernorm(x)
-        out1 = self.drop1(self.gelu1(self.fc1(x)))
-        out2 = self.drop2(self.gelu2(self.fc2(out1)))
-        out3 = self.drop3(self.gelu3(self.fc3(out2)))
-        out4 = self.drop4(self.gelu4(self.fc4(out3)))
-        out4 = out4 + self.res_proj(out1)
-        return self.final_act(self.final(out4))
+                                               # x:    (batch, d_embedding)   — attention-pooled
+        x = self.layernorm(x)                  # x:    (batch, d_embedding)
+        out1 = self.drop1(self.gelu1(self.fc1(x)))     # out1: (batch, hidden_dim1)
+        out2 = self.drop2(self.gelu2(self.fc2(out1)))  # out2: (batch, hidden_dim2)
+        out3 = self.drop3(self.gelu3(self.fc3(out2)))  # out3: (batch, hidden_dim3)
+        out4 = self.drop4(self.gelu4(self.fc4(out3)))  # out4: (batch, hidden_dim4)
+        out4 = out4 + self.res_proj(out1)      # out4: (batch, hidden_dim4)  — residual from out1
+        return self.final_act(self.final(out4))# out:  (batch, 1)
 
 class ESMAttention1dMean(nn.Module):
     """Attention1d removed, leaving a basic linear model"""
@@ -268,7 +273,7 @@ class ESMAttention1dMean(nn.Module):
         self.linear = nn.Linear(d_embedding, d_embedding)
         self.relu = nn.ReLU()
         self.final = nn.Linear(d_embedding, 1)
-    
+
     def forward(self, x):
         x = self.relu(self.linear(x))
         x = self.final(x)

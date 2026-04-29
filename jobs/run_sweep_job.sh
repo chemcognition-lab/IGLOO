@@ -47,6 +47,9 @@ export TRANSFORMERS_CACHE="${HF_HOME}"
 EXTRA_ARGS=()
 if [[ "${INTERP}" == "nearest_neighbor" ]]; then
     EXTRA_ARGS+=(integrated_gradients.steps=1100)
+    # Skip the completeness pre-screen (iterates all seqs at 25 steps each)
+    # which dominates wall time for large datasets like p53.
+    EXTRA_ARGS+=("integrated_gradients.completeness_validation.enabled=false")
 fi
 
 python scripts/run_integrated_gradients.py "${BASE_CONFIG}" \

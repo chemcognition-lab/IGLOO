@@ -96,8 +96,9 @@ class IntegratedGradientsRunner:
     """Unified runner for integrated gradients analysis with config support."""
 
 
-    def __init__(self, config_path: str, overrides: list[str] | None = None):
+    def __init__(self, config_path: str, overrides: list[str] | None = None, skip_ig: bool = False):
         """Initialize the runner with a configuration file."""
+        self.skip_ig = skip_ig
         import random
         self.config = load_config(config_path)
         if overrides:
@@ -182,26 +183,51 @@ class IntegratedGradientsRunner:
     def split_data(self):
         """Split the loaded dataset into train+val and held-out test sets.
 
-        Reads ``training.test_fraction`` from the config.  If absent or 0 the
-        method is a no-op and all sequences are used for training (existing
-        behaviour).
+        Three modes are supported, selected by ``training.split_method``:
 
-        For datasets that have a ``variant_type`` column (synthetic data) a
-        stratified split per mutation order (single / double / triple) is used
-        and the wildtype sequence is always kept in train+val.  For all other
-        datasets a simple random split is used.
+        * ``'random'`` (default) — random split controlled by
+          ``training.test_fraction`` and ``training.split_seed``.
+        * ``'column'`` — use a pre-existing column in the data (controlled by
+          ``training.split_column``, default ``'set'``) whose values are
+          ``'train'`` (→ trainval pool) and ``'test'`` (→ held-out set).
+          Useful for FLIP2 and other benchmarks with canonical splits.
+        * ``'none'`` or ``test_fraction == 0`` — no split; all data is used
+          for training (backward-compatible).
         """
         import numpy as np
 
         training_cfg  = self.config.get('training', {})
-        test_fraction = float(training_cfg.get('test_fraction', 0.0))
+        split_method  = training_cfg.get('split_method', 'random').lower()
 
-        if test_fraction <= 0.0:
-            # No split — use all sequences for training (backward compatible)
+        # ── Column-based split (e.g. FLIP2) ──────────────────────────────────
+        if split_method == 'column':
+            col = training_cfg.get('split_column', 'set')
+            if col not in self.df.columns:
+                raise ValueError(
+                    f"split_method='column' requested but column '{col}' not found "
+                    f"in the dataframe. Available columns: {self.df.columns.tolist()}"
+                )
+            all_idx = np.arange(len(self.df))
+            is_test = self.df[col].str.lower() == 'test'
+            self.trainval_idx = all_idx[~is_test]
+            self.test_idx     = all_idx[is_test]
+
+            n_tv   = len(self.trainval_idx)
+            n_test = len(self.test_idx)
+            total  = n_tv + n_test
+            print(f"\nColumn-based split ('{col}' column): "
+                  f"{n_tv} train+val ({n_tv/total*100:.1f}%), "
+                  f"{n_test} held-out test ({n_test/total*100:.1f}%)")
+            return
+
+        # ── No split ─────────────────────────────────────────────────────────
+        test_fraction = float(training_cfg.get('test_fraction', 0.0))
+        if split_method == 'none' or test_fraction <= 0.0:
             self.trainval_idx = np.arange(len(self.sequences))
             self.test_idx     = np.array([], dtype=int)
             return
 
+        # ── Random split ─────────────────────────────────────────────────────
         split_seed = int(training_cfg.get('split_seed', 42))
 
         from igloo.data_processing import split_dataset
@@ -284,6 +310,52 @@ class IntegratedGradientsRunner:
                 print(f"  Training R² = {train_metrics['train_r2']:.4f}")
         else:
             print("✓ Pre-trained model loaded successfully")
+
+    def _save_test_results(self, eval_results, results_dir):
+        """Save test-set metrics and per-sequence predictions to CSV files."""
+        import numpy as np
+        import pandas as pd
+
+        r2, pearson_r, spearman_rho, y_pred_denorm = eval_results
+        name = self.config['data']['name']
+
+        # ── 1. Scalar metrics ─────────────────────────────────────────────────
+        metrics_path = os.path.join(results_dir, f"{name}_test_metrics.csv")
+        pd.DataFrame([{
+            'dataset': name,
+            'r2': r2,
+            'pearson_r': pearson_r,
+            'spearman_rho': spearman_rho,
+            'n_test': len(self.test_idx) if self.test_idx is not None else len(self.sequences),
+        }]).to_csv(metrics_path, index=False)
+        print(f"Test metrics saved to: {metrics_path}")
+
+        # ── 2. Per-sequence predictions ───────────────────────────────────────
+        has_test = self.test_idx is not None and len(self.test_idx) > 0
+        if has_test:
+            seqs   = [self.sequences[i] for i in self.test_idx]
+            actual = self.y_raw[self.test_idx]
+            idx    = list(self.test_idx)
+        else:
+            seqs   = self.sequences
+            actual = self.y_raw
+            idx    = list(range(len(self.sequences)))
+
+        pred_df = pd.DataFrame({
+            'index':     idx,
+            'sequence':  seqs,
+            'actual':    actual,
+            'predicted': y_pred_denorm,
+            'error':     np.abs(np.array(actual) - np.array(y_pred_denorm)),
+        })
+        # Attach variant/mutant column if present
+        variant_col = self.config.get('data', {}).get('wildtype', {}).get('variant_column')
+        if variant_col and variant_col in self.df.columns:
+            pred_df.insert(1, variant_col, self.df[variant_col].iloc[idx].values)
+
+        preds_path = os.path.join(results_dir, f"{name}_test_predictions.csv")
+        pred_df.to_csv(preds_path, index=False)
+        print(f"Test predictions saved to: {preds_path}")
 
     def evaluate_model_performance(self):
         """Evaluate the trained model's performance on the held-out test set.
@@ -585,22 +657,31 @@ class IntegratedGradientsRunner:
             eval_results = self.evaluate_model_performance()
             timing['model_evaluation'] = time.perf_counter() - _t
 
-            # Step 6: Run integrated gradients analysis
-            _t = time.perf_counter()
-            ig_results = self.run_integrated_gradients_analysis(eval_results)
-            timing['integrated_gradients'] = time.perf_counter() - _t
-            # Count analysed sequences (exclude internal keys starting with '_')
-            timing['n_ig_sequences'] = sum(
-                1 for k in (ig_results or {}) if not k.startswith('_')
-            )
+            # Save test metrics and predictions to CSV
+            self._save_test_results(eval_results, results_dir)
 
-            # Step 7: Create visualizations and exports
-            _t = time.perf_counter()
-            if ig_results:
-                self.create_visualizations_and_exports(ig_results, eval_results)
-            # Zip per-sequence plot directories to save inodes/space
-            self._zip_per_sequence_dirs(results_dir)
-            timing['visualizations'] = time.perf_counter() - _t
+            # Step 6: Run integrated gradients analysis (skipped if --skip-ig)
+            if self.skip_ig:
+                print("\n[--skip-ig] Skipping integrated gradients analysis and visualizations.")
+                ig_results = None
+                timing['integrated_gradients'] = 0.0
+                timing['n_ig_sequences'] = 0
+                timing['visualizations'] = 0.0
+            else:
+                _t = time.perf_counter()
+                ig_results = self.run_integrated_gradients_analysis(eval_results)
+                timing['integrated_gradients'] = time.perf_counter() - _t
+                timing['n_ig_sequences'] = sum(
+                    1 for k in (ig_results or {}) if not k.startswith('_')
+                )
+
+                # Step 7: Create visualizations and exports
+                _t = time.perf_counter()
+                if ig_results:
+                    self.create_visualizations_and_exports(ig_results, eval_results)
+                # Zip per-sequence plot directories to save inodes/space
+                self._zip_per_sequence_dirs(results_dir)
+                timing['visualizations'] = time.perf_counter() - _t
 
             timing['end_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             timing['total'] = time.perf_counter() - pipeline_start
@@ -674,6 +755,12 @@ Examples:
     )
 
     parser.add_argument(
+        '--skip-ig',
+        action='store_true',
+        help='Train and evaluate the model only; skip integrated gradients analysis and visualizations'
+    )
+
+    parser.add_argument(
         'overrides',
         nargs='*',
         metavar='key.subkey=value',
@@ -702,7 +789,7 @@ Examples:
             return
 
         # Run analysis
-        runner = IntegratedGradientsRunner(args.config_path, overrides=args.overrides)
+        runner = IntegratedGradientsRunner(args.config_path, overrides=args.overrides, skip_ig=args.skip_ig)
         results = runner.run_complete_analysis()
 
         print("\nAnalysis completed successfully!")
