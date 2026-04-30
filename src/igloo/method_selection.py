@@ -105,27 +105,46 @@ def _method_label(method: str) -> str:
 # (abs-IG track; NDCG + AP@R as primary ranking metrics)
 # ---------------------------------------------------------------------------
 COMPOSITE_METRICS: list[tuple[str, str]] = [
-    ("ndcg",         "NDCG"),
-    ("ap_graded",    "AP@R (graded)"),
-    ("auroc",        "AUROC"),
-    ("pv_ndcg_mean", "Per-variant NDCG"),
-    ("sign_acc",     "Sign accuracy"),
-    ("cat_sep",      "Category separation"),
+    ("ndcg",          "NDCG"),
+    ("ap_graded",     "AP@R (graded)"),
+    ("auroc",         "AUROC"),
+    ("pv_ndcg_mean",  "Per-variant NDCG"),
+    ("sign_acc",      "Sign accuracy"),
+    ("cat_sep",       "Category separation"),
+    ("mutation_ndcg", "Mutation NDCG"),
 ]
 METRIC_KEYS:   list[str]       = [k for k, _ in COMPOSITE_METRICS]
 METRIC_LABELS: dict[str, str]  = {k: lbl for k, lbl in COMPOSITE_METRICS}
 
 # ---------------------------------------------------------------------------
 # Per-protein scenario features (used by the decision tree)
+# Derived from the synthetic_data PROTEINS registry when available;
+# hard-coded fallback values kept for environments without that module.
 # ---------------------------------------------------------------------------
-SCENARIO_FEATURES: dict[str, dict] = {
-    "GB1":        {"sequence_length": 56,  "annotation_density": 4 / 56,
-                   "n_annotated": 4,  "max_category_weight": 1.5},
-    "T4Lysozyme": {"sequence_length": 164, "annotation_density": 7 / 164,
-                   "n_annotated": 7,  "max_category_weight": 5.0},
-    "p53":        {"sequence_length": 393, "annotation_density": 50 / 393,
-                   "n_annotated": 50, "max_category_weight": 5.0},
-}
+try:
+    from src.igloo.synthetic_data import PROTEINS as _PROTEIN_DEFS_FOR_FEATURES  # type: ignore
+    SCENARIO_FEATURES: dict[str, dict] = {
+        name: {
+            "sequence_length":     len(p.sequence),
+            "annotation_density":  len(p.annotations) / max(len(p.sequence), 1),
+            "n_annotated":         len(p.annotations),
+            "max_category_weight": max(p.category_weights.values()) if p.category_weights else 1.0,
+            "has_cliff":           int(any(
+                cat in {"active_site", "metal_binding"}
+                for cat in p.annotations.values()
+            )),
+        }
+        for name, p in _PROTEIN_DEFS_FOR_FEATURES.items()
+    }
+except Exception:
+    SCENARIO_FEATURES = {
+        "GB1":        {"sequence_length": 56,  "annotation_density": 51 / 56,
+                       "n_annotated": 51, "max_category_weight": 1.5,  "has_cliff": 0},
+        "T4Lysozyme": {"sequence_length": 164, "annotation_density": 7 / 164,
+                       "n_annotated": 7,  "max_category_weight": 5.0,  "has_cliff": 1},
+        "p53":        {"sequence_length": 393, "annotation_density": 45 / 393,
+                       "n_annotated": 45, "max_category_weight": 5.0,  "has_cliff": 1},
+    }
 
 
 # ===========================================================================
@@ -193,12 +212,16 @@ def load_all_metrics(
         }
         for key in METRIC_KEYS:
             row[key] = metrics.get(key, float("nan"))
+        row["collapse_frac"] = metrics.get("collapse_frac", float("nan"))
+        row["n_reliable"]    = metrics.get("n_reliable",    float("nan"))
         rows.append(row)
         vals = "  ".join(
             f"{METRIC_LABELS[k]}={row[k]:.3f}" for k in METRIC_KEYS
             if not np.isnan(row[k])
         )
-        print(f"ok  [{vals}]")
+        coll = row["collapse_frac"]
+        n_rel = int(row["n_reliable"]) if not np.isnan(row["n_reliable"]) else "?"
+        print(f"ok  [{vals}]  collapse={coll:.3f}  n_reliable={n_rel}")
 
     if not rows:
         raise RuntimeError("No metrics could be computed for any result directory.")
@@ -277,6 +300,10 @@ def run_friedman(auc_matrix: pd.DataFrame, alpha: float = 0.05) -> dict:
     ``n_scenarios``, ``n_methods``.
     """
     mask  = ~np.any(np.isnan(auc_matrix.values), axis=1)
+    n_dropped = int((~mask).sum())
+    if n_dropped > 0:
+        dropped = auc_matrix.index[~mask].tolist()
+        print(f"  WARNING: Friedman test dropping {n_dropped} incomplete scenario(s): {dropped}")
     clean = auc_matrix.loc[mask]
     if clean.shape[0] < 2 or clean.shape[1] < 2:
         return {"stat": float("nan"), "p": float("nan"), "significant": False,
@@ -297,11 +324,14 @@ def run_friedman(auc_matrix: pd.DataFrame, alpha: float = 0.05) -> dict:
 # ===========================================================================
 
 def kendalls_w(auc_matrix: pd.DataFrame) -> float:
-    """Kendall's coefficient of concordance W across scenarios.
+    """Tie-corrected Kendall's W across scenarios.
 
     Scenarios are the raters, methods are the objects being ranked.
     W = 1 → all scenarios agree on the method ranking.
     W = 0 → no agreement.
+
+    Uses the tie-corrected denominator because min-max normalisation within
+    small method groups frequently produces tied composite scores.
     """
     mask  = ~np.any(np.isnan(auc_matrix.values), axis=1)
     clean = auc_matrix.loc[mask].values    # (n_scenarios, n_methods)
@@ -311,7 +341,13 @@ def kendalls_w(auc_matrix: pd.DataFrame) -> float:
     ranks = np.apply_along_axis(lambda r: rankdata(-r), axis=1, arr=clean)
     R     = ranks.sum(axis=0)
     S     = np.sum((R - R.mean()) ** 2)
-    return float(12 * S / (n ** 2 * (k ** 3 - k)))
+    # Tie correction: T = Σ (t³ − t) summed over all tie groups in each rater
+    T = 0.0
+    for i in range(n):
+        _, counts = np.unique(ranks[i], return_counts=True)
+        T += float(np.sum(counts ** 3 - counts))
+    denom = n ** 2 * (k ** 3 - k) - n * T
+    return float(12 * S / denom) if denom > 0 else float("nan")
 
 
 # ===========================================================================
@@ -321,15 +357,21 @@ def kendalls_w(auc_matrix: pd.DataFrame) -> float:
 def nemenyi_posthoc(auc_matrix: pd.DataFrame) -> pd.DataFrame | None:
     """Pairwise Nemenyi post-hoc test on the AUC matrix.
 
-    Requires ``scikit-posthocs``.  Returns a square p-value DataFrame, or
-    ``None`` if the package is not installed.
+    Requires ``scikit-posthocs``.  Returns a square p-value DataFrame with
+    method names as both index and columns, or ``None`` if the package is
+    not installed.
     """
     if not _HAS_SP:
         print("  [scikit-posthocs not installed — Nemenyi test skipped]")
         return None
-    mask  = ~np.any(np.isnan(auc_matrix.values), axis=1)
-    clean = auc_matrix.loc[mask]
-    return _sp.posthoc_nemenyi_friedman(clean.values)
+    mask    = ~np.any(np.isnan(auc_matrix.values), axis=1)
+    clean   = auc_matrix.loc[mask]
+    methods = list(clean.columns)
+    pv      = _sp.posthoc_nemenyi_friedman(clean.values)
+    # Label rows and columns with method names for safe loc-based indexing
+    pv.index   = methods
+    pv.columns = methods
+    return pv
 
 
 # ===========================================================================
@@ -360,8 +402,11 @@ def fit_noise_decay(df: pd.DataFrame) -> pd.DataFrame:
         valid = np.isfinite(x) & np.isfinite(y)
         x, y = x[valid], y[valid]
 
-        peak       = float(y[0])  if len(y) > 0 else float("nan")
-        floor      = float(y[-1]) if len(y) > 0 else float("nan")
+        # Fallback peak/floor: use the observed value at lowest/highest noise
+        _noise_min_idx = int(np.argmin(x)) if len(x) > 0 else 0
+        _noise_max_idx = int(np.argmax(x)) if len(x) > 0 else 0
+        peak       = float(y[_noise_min_idx]) if len(y) > 0 else float("nan")
+        floor      = float(y[_noise_max_idx]) if len(y) > 0 else float("nan")
         fit_r2     = float("nan")
         decay_rate = float("nan")
 
@@ -376,15 +421,15 @@ def fit_noise_decay(df: pd.DataFrame) -> pd.DataFrame:
                         maxfev=5000,
                     )
                 a_f, b_f, c_f = popt
-                y_pred   = _exp_decay(x, *popt)
-                ss_res   = np.sum((y - y_pred) ** 2)
-                ss_tot   = np.sum((y - y.mean()) ** 2)
+                y_pred     = _exp_decay(x, *popt)
+                ss_res     = np.sum((y - y_pred) ** 2)
+                ss_tot     = np.sum((y - y.mean()) ** 2)
                 fit_r2     = float(1 - ss_res / ss_tot) if ss_tot > 0 else float("nan")
                 decay_rate = float(b_f)
                 peak       = float(a_f + c_f)   # model peak at noise = 0
                 floor      = float(c_f)
             except Exception:
-                pass
+                pass  # keep obs-based fallbacks
 
         records.append({
             "method":      method,
@@ -421,6 +466,7 @@ def build_scenario_feature_df(auc_matrix: pd.DataFrame) -> pd.DataFrame:
             "annotation_density":  base.get("annotation_density",  0.05),
             "n_annotated":         base.get("n_annotated",         5),
             "max_category_weight": base.get("max_category_weight", 2.0),
+            "has_cliff":           base.get("has_cliff",           0),
             "is_epistatic":        int(fm == "epistatic"),
             "is_nonlinear":        int(fm == "nonlinear"),
         })
@@ -451,7 +497,7 @@ def run_decision_tree(
 
     feat_cols = [
         "sequence_length", "annotation_density", "n_annotated",
-        "max_category_weight", "is_epistatic", "is_nonlinear",
+        "max_category_weight", "has_cliff", "is_epistatic", "is_nonlinear",
     ]
     X = feat_df.loc[common, feat_cols].values
     y = best.loc[common].values
@@ -529,24 +575,41 @@ def plot_critical_difference(
                 arrowprops=dict(arrowstyle="<->", color="black", lw=1.5))
     ax.text(1 + cd / 2, -1.15, f"CD={cd:.2f}", ha="center", fontsize=8)
 
-    # Clique bars (not significantly different)
+    # Clique bars (not significantly different) — connected components via union-find
     if nemenyi_pvals is not None:
-        pv_arr = nemenyi_pvals.values
-        drawn: set[frozenset] = set()
+        # Build adjacency: edge (i,j) if methods i,j are NOT significantly different
+        parent = list(range(k))
+
+        def _find(x: int) -> int:
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def _union(a: int, b: int) -> None:
+            parent[_find(a)] = _find(b)
+
         for i in range(k):
             for j in range(i + 1, k):
-                if pv_arr[order[i], order[j]] >= alpha:
-                    group = {i}
-                    for l in range(i, k):
-                        if pv_arr[order[i], order[l]] >= alpha:
-                            group.add(l)
-                    key = frozenset(group)
-                    if key not in drawn and len(group) > 1:
-                        drawn.add(key)
-                        xs    = sorted(avg_ranks[order[g]] for g in group)
-                        y_bar = -0.5 - 0.12 * len(drawn)
-                        ax.plot([xs[0], xs[-1]], [y_bar, y_bar],
-                                lw=3, color="black", alpha=0.6, solid_capstyle="butt")
+                m_i = methods[order[i]]
+                m_j = methods[order[j]]
+                if nemenyi_pvals.loc[m_i, m_j] >= alpha:
+                    _union(i, j)
+
+        # Collect connected components
+        from collections import defaultdict
+        components: dict[int, list[int]] = defaultdict(list)
+        for i in range(k):
+            components[_find(i)].append(i)
+
+        drawn_count = 0
+        for comp in components.values():
+            if len(comp) > 1:
+                xs    = sorted(avg_ranks[order[g]] for g in comp)
+                y_bar = -0.5 - 0.12 * drawn_count
+                ax.plot([xs[0], xs[-1]], [y_bar, y_bar],
+                        lw=3, color="black", alpha=0.6, solid_capstyle="butt")
+                drawn_count += 1
 
     ax.set_title(
         f"Critical-difference diagram  (α={alpha}, n={n} scenarios)",
@@ -592,19 +655,16 @@ def plot_composite_noise_curves(
         ax.set_ylim(-0.05, 1.05)
         ax.grid(True, alpha=0.3)
 
-    # Shared legend
+    # Shared legend outside subplots
     handles = [
         mpatches.Patch(color=_method_color(m), label=_method_label(m))
         for m in methods
     ]
-    for ax_row in axes:
-        for ax in ax_row:
-            if ax.get_visible():
-                ax.legend(handles=handles, fontsize=7, loc="lower left")
-                break
-        else:
-            continue
-        break
+    fig.legend(
+        handles=handles, fontsize=8, loc="lower center",
+        ncol=min(len(methods), 5),
+        bbox_to_anchor=(0.5, -0.02), framealpha=0,
+    )
 
     fig.suptitle(
         "Composite score (NDCG + AP@R + AUROC + pv-NDCG + sign-acc + cat-sep) "
@@ -798,13 +858,17 @@ def save_report(
     nemenyi_pvals: pd.DataFrame | None = None,
     tree_rules: str | None = None,
     threshold: float = 0.6,
+    raw_df: pd.DataFrame | None = None,
 ) -> None:
     """Write a JSON summary report and CSV tables to *output_dir*."""
+    # NOTE: composite AUC values are relative (normalised within each scenario ×
+    # noise block), so they reflect rank differences between methods, not absolute
+    # attribution quality.  Do not compare values across scenarios.
     report: dict = {
         "friedman":                 friedman_res,
         "kendalls_w":               W,
         "concordance_stable":       W >= threshold,
-        "auc_matrix":               auc_matrix.to_dict(),
+        "auc_matrix":               auc_matrix.reset_index().to_dict(orient="records"),
         "best_method_per_scenario": auc_matrix.idxmax(axis=1).to_dict(),
         "avg_auc_per_method":       auc_matrix.mean(axis=0)
                                     .sort_values(ascending=False).to_dict(),
@@ -830,3 +894,14 @@ def save_report(
     if not decay_df.empty:
         decay_df.to_csv(output_dir / "noise_decay.csv", index=False)
         print(f"  Saved: {output_dir / 'noise_decay.csv'}")
+
+    if raw_df is not None and "collapse_frac" in raw_df.columns:
+        collapse_cols = ["protein", "fitness_model", "noise", "method",
+                         "collapse_frac", "n_reliable"]
+        present = [c for c in collapse_cols if c in raw_df.columns]
+        cstats = (
+            raw_df[present]
+            .sort_values(["protein", "fitness_model", "noise", "method"])
+        )
+        cstats.to_csv(output_dir / "collapse_stats.csv", index=False)
+        print(f"  Saved: {output_dir / 'collapse_stats.csv'}")

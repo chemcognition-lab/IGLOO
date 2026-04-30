@@ -1375,12 +1375,14 @@ def kfold_cv_and_train(
     min_epochs  = int(model_config.get('min_epochs', 1))  # floor for avg_best_epoch
 
     # ── Pre-fetch ALL train+val embeddings (uses disk cache) ─────────────
-    print(f"\nPre-fetching embeddings for {len(sequences)} train+val sequences...")
+    # Cache key includes the model name so different pLMs never share embeddings.
+    _model_tag = esm_model_name.lower().replace("-", "_")
+    print(f"\nPre-fetching embeddings for {len(sequences)} train+val sequences (model: {_model_tag})...")
     all_embeddings = get_embeddings(
         sequences,
         layer=model_config['esm_layer'],
         batch_size=batch_size,
-        dataset_name=f"{dataset_name}_integrated_gradients_train",
+        dataset_name=f"{dataset_name}_{_model_tag}_integrated_gradients_train",
         subdir=embeddings_subdir,
         esm_model_name=esm_model_name,
         device=device,

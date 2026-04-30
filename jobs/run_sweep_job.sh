@@ -27,7 +27,7 @@ source IGLOO_env/bin/activate
 SEED="${SEED:-42}"  # default to 42 if not set
 BASE_CONFIG="configs/synthetic/${PROTEIN}_${DATA_MODEL}_config.yaml"
 # Model is shared across interpolation paths for the same (protein, data_model, noise, seed)
-MODEL_DIR="results/synthetic/${PROTEIN}_${DATA_MODEL}/noise_${NOISE}/seed_${SEED}"
+MODEL_DIR="results/synthetic/${PROTEIN}_${DATA_MODEL}/noise_${NOISE}"
 RESULTS_DIR="${MODEL_DIR}/${INTERP}"
 
 echo "=========================================="

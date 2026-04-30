@@ -188,10 +188,17 @@ def discover_result_dirs_multiseed(
 ) -> list[tuple[str, str, float, str, str, Path]]:
     """Walk *root* and return ``(protein, fitness_model, noise, seed, interp, path)`` tuples.
 
-    Expected hierarchy::
+    Supports two directory layouts::
 
+        # New layout (no seed folder):
+        root/{Protein}_{fitness_model}/noise_{level}/{interp}/
+            *_integrated_gradients_results.csv
+
+        # Legacy layout (with seed folder):
         root/{Protein}_{fitness_model}/noise_{level}/seed_{N}/{interp}/
             *_integrated_gradients_results.csv
+
+    The ``seed`` field is set to ``"seed_42"`` for the new layout.
     """
     _SUFFIXES = (
         "_integrated_gradients_results.csv",
@@ -230,13 +237,16 @@ def discover_result_dirs_multiseed(
             for level3 in sorted(level2.iterdir()):
                 if not level3.is_dir():
                     continue
-                if not re.search(r"seed[_]?\d+", level3.name, re.I):
-                    continue
-                seed = level3.name
-                for level4 in sorted(level3.iterdir()):
-                    if not level4.is_dir() or not _has_csv(level4):
-                        continue
-                    results.append((protein, fm, noise, seed, level4.name.lower(), level4))
+                if re.search(r"seed[_]?\d+", level3.name, re.I):
+                    # Legacy layout: noise/seed/interp
+                    seed = level3.name
+                    for level4 in sorted(level3.iterdir()):
+                        if not level4.is_dir() or not _has_csv(level4):
+                            continue
+                        results.append((protein, fm, noise, seed, level4.name.lower(), level4))
+                elif _has_csv(level3):
+                    # New layout: noise/interp (no seed folder)
+                    results.append((protein, fm, noise, "seed_42", level3.name.lower(), level3))
     return results
 
 

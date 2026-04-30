@@ -171,6 +171,7 @@ def main() -> None:
     save_report(
         output_dir, auc_matrix, friedman_res, W, decay_df,
         nemenyi_pvals, tree_rules, args.concordance_threshold,
+        raw_df=df,
     )
     print(f"\nDone. All outputs written to: {output_dir}")
 

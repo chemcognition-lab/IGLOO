@@ -1,0 +1,59 @@
+# GB1 additive — Ankh base pLM
+# Identical to GB1_additive_config.yaml except esm_model_name and results_dir.
+# Token-level IG is not supported for Ankh; method must stay "embedding".
+
+data:
+  name: "GB1_additive"
+  path: "data/synthetic/GB1_additive.csv"
+  target_column: "fitness"
+  normalization: "none"
+  wildtype:
+    method: "sequence"
+    sequence: "MTYKLILNGKTLKGETTTEAVDAATAEKVFKQYANDNGVDGEWTYDDATKTFTVTE"
+
+model:
+  esm_model_name: ankh_base   # ← Ankh base (768-dim)
+  esm_layer: 33               # ignored for Ankh; kept for schema compatibility
+  pooling_method: "esm_attention"
+  hidden_dim1: 512
+  hidden_dim2: 256
+  hidden_dim3: 128
+  hidden_dim4: 64
+  dropout_rate: 0.3
+  learning_rate: 0.001
+  batch_size: 64
+  epochs: 50
+  loss_type: "huber"
+  final_activation: null
+  patience: 15
+  min_epochs: 10
+
+integrated_gradients:
+  method: "embedding"          # token-level IG not supported for Ankh
+  attribution_method: "signed"
+  interpolation_path: "linear"
+  plot_interpolation_umap: false
+  steps: 500
+  batch_size: 10
+
+analysis:
+  sequence_selection:
+    include_extremes: true
+    include_median: true
+    include_top_n: 0
+    include_bottom_n: 0
+    include_all: true
+    custom_sequences: []
+
+results_dir: "results/synthetic/GB1_additive_ankh"
+force_retrain: false
+
+training:
+  seed: 42
+  n_folds: 5
+  test_fraction: 0.20
+  split_seed: 42
+  noise:
+    label_noise_std: 0.0
+    label_noise_seed: 0
+    input_noise_std: 0.0

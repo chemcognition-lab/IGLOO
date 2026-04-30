@@ -38,7 +38,7 @@ integrated_gradients:
   method: "embedding"
   attribution_method: "signed"
   interpolation_path: "linear"
-  steps: 50
+  steps: 500
   batch_size: 10
 
 analysis:
@@ -46,6 +46,7 @@ analysis:
     include_extremes: true
     include_median: true
     include_top_n: 0
+    include_all: true
     include_bottom_n: 0
     custom_sequences: []
 

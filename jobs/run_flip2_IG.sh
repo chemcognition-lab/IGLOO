@@ -27,4 +27,4 @@ echo "  config : ${CONFIG}"
 echo "  GPU    : l40s"
 echo "=========================================="
 
-python scripts/run_train_and_eval.py "${CONFIG}"
+python scripts/run_integrated_gradients.py "${CONFIG}"

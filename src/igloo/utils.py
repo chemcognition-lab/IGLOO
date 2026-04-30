@@ -309,7 +309,8 @@ def evaluate_model_performance(
     print("Getting embeddings for evaluation...")
     embeddings_subdir = 'synthetic' if 'synthetic' in config.get('data', {}).get('path', '') else None
     esm_model_name = model_config.get('esm_model_name', 'esmc_300m')
-    embedding_cache_name = f"{config['data']['name']}_integrated_gradients_{split_name}"
+    _model_tag = esm_model_name.lower().replace("-", "_")
+    embedding_cache_name = f"{config['data']['name']}_{_model_tag}_integrated_gradients_{split_name}"
     all_embeddings = get_embeddings(
         sequences,
         layer=model_config['esm_layer'],

@@ -1419,8 +1419,9 @@ def analyze_sequence_with_integrated_gradients(
         print(f"  (sequence embedding loaded from lookup)")
     else:
         seq_hash = hashlib.md5(sequence.encode()).hexdigest()[:8]
+        _model_tag = getattr(_esm_backend, '_model_name', 'esmc_300m').lower().replace('-', '_') if _esm_backend is not None else 'esmc_300m'
         seq_embedding = get_embeddings(
-            [sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_seq_{seq_hash}',
+            [sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_{_model_tag}_seq_{seq_hash}',
             subdir=embeddings_subdir,
             esm_backend=_esm_backend,
         )
@@ -1430,8 +1431,9 @@ def analyze_sequence_with_integrated_gradients(
         print(f"  (baseline embedding loaded from lookup)")
     else:
         baseline_hash = hashlib.md5(baseline_sequence.encode()).hexdigest()[:8]
+        _model_tag = getattr(_esm_backend, '_model_name', 'esmc_300m').lower().replace('-', '_') if _esm_backend is not None else 'esmc_300m'
         baseline_embedding = get_embeddings(
-            [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_baseline_{baseline_hash}',
+            [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_{_model_tag}_baseline_{baseline_hash}',
             subdir=embeddings_subdir,
             esm_backend=_esm_backend,
         )
@@ -1746,7 +1748,7 @@ def analyze_sequence_with_integrated_gradients(
             save_path=save_plot_path
         )
 
-    # Trim gradients to actual sequence length — DataLoader padding may add extra positions
+    # Trim gradients to actual sequence length (handles padding artefacts).
     seq_len_actual = len(sequence)
     if len(position_gradients) > seq_len_actual:
         position_gradients = position_gradients[:seq_len_actual]
@@ -1837,9 +1839,8 @@ def analyze_sequence_with_token_level_integrated_gradients(
     if alphabet is None:
         raise ValueError(
             "Token-level integrated gradients requires direct access to ESM-2 model "
-            "internals and is not supported with ESM-C.  "
-            "Set 'integrated_gradients.method: embedding' in your config when using "
-            "an ESM-C model."
+            "internals and is not supported with ESM-C or Ankh models.  "
+            "Set 'integrated_gradients.method: embedding' in your config."
         )
 
     print(f"Sequence tokens shape: {seq_tokens.shape}")
@@ -1920,14 +1921,15 @@ def analyze_sequence_with_token_level_integrated_gradients(
     # Use unique dataset names to avoid caching conflicts
     seq_hash = hashlib.md5(sequence.encode()).hexdigest()[:8]
     baseline_hash = hashlib.md5(baseline_sequence.encode()).hexdigest()[:8]
+    _model_tag = getattr(_esm_backend, '_model_name', 'esmc_300m').lower().replace('-', '_') if _esm_backend is not None else 'esmc_300m'
 
     seq_embedding = get_embeddings(
-        [sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_seq_{seq_hash}',
+        [sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_{_model_tag}_seq_{seq_hash}',
         subdir=embeddings_subdir,
         esm_backend=_esm_backend,
     )
     baseline_embedding = get_embeddings(
-        [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_baseline_{baseline_hash}',
+        [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'token_ig_{_model_tag}_baseline_{baseline_hash}',
         subdir=embeddings_subdir,
         esm_backend=_esm_backend,
     )

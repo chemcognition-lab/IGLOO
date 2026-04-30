@@ -186,7 +186,7 @@ def main() -> None:
         help=(
             "Treat results-dir as containing seed_N sub-directories. "
             "Metrics are averaged across seeds and ±1σ error bands are drawn. "
-            "Expected layout: {root}/{Protein}_{fm}/noise_{level}/seed_{N}/{interp}/"
+            "Expected layout: {root}/{Protein}_{fm}/noise_{level}/{interp}/"
         ),
     )
     args = parser.parse_args()
@@ -313,7 +313,8 @@ def main() -> None:
                         f"pv={m['pv_mean']:+.3f}  "
                         f"sign={m['sign_acc']:.3f}  "
                         f"sep={m['cat_sep']:.2f}  "
-                        f"collapse={m['collapse_frac']:.3f}"
+                        f"collapse={m['collapse_frac']:.3f}  "
+                        f"n_reliable={m.get('n_reliable', float('nan'))}"
                     )
                 else:
                     print("computed (split-only)")
@@ -351,6 +352,30 @@ def main() -> None:
                     errors=_errors_for_pfm,
                     metric_family=_mfam,
                 )
+
+    # ── Save collapse stats CSV ──────────────────────────────────────────────
+    import pandas as _pd
+    collapse_rows = []
+    for split in SPLITS:
+        for (protein, fm), interp_data in groups[split].items():
+            for interp, noise_data in interp_data.items():
+                for noise, m in noise_data.items():
+                    if m and "collapse_frac" in m:
+                        collapse_rows.append({
+                            "split":        split if split is not None else "all",
+                            "protein":      protein,
+                            "fitness_model": fm,
+                            "noise":        noise,
+                            "method":       interp,
+                            "collapse_frac": m["collapse_frac"],
+                            "n_reliable":   m.get("n_reliable", float("nan")),
+                        })
+    if collapse_rows:
+        cstats = _pd.DataFrame(collapse_rows).drop_duplicates()
+        cstats = cstats.sort_values(["split", "protein", "fitness_model", "noise", "method"])
+        csv_path = output_dir / "collapse_stats.csv"
+        cstats.to_csv(csv_path, index=False)
+        print(f"  Saved: {csv_path}")
 
     print(f"\nDone. Figures saved to: {output_dir}")
 
