@@ -79,21 +79,31 @@ try:
 except ImportError:
     _HAS_SKLEARN = False
 
-# ── method colour / label maps (from plot module, with fallback) ─────────────
+# ── method colour / label maps + plotting functions (from plot module) ────────
 try:
-    from src.igloo.plot import INTERP_COLORS, INTERP_LABELS  # type: ignore
+    from src.igloo.plot import (  # type: ignore
+        INTERP_COLORS, INTERP_LABELS,
+        plot_critical_difference,
+        plot_composite_noise_curves,
+        plot_auc_heatmap,
+        plot_peak_vs_decay,
+        plot_metric_breakdown as _plot_metric_breakdown_base,
+    )
 except Exception:
     INTERP_COLORS: dict[str, str] = {}
     INTERP_LABELS: dict[str, str] = {}
 
-_FALLBACK_COLORS: list[str] = [
-    "#4C72B0", "#DD8452", "#55A868", "#C44E52",
-    "#8172B3", "#937860", "#DA8BC3", "#8C8C8C",
-]
+    def plot_critical_difference(*a, **kw): raise NotImplementedError  # type: ignore
+    def plot_composite_noise_curves(*a, **kw): raise NotImplementedError  # type: ignore
+    def plot_auc_heatmap(*a, **kw): raise NotImplementedError  # type: ignore
+    def plot_peak_vs_decay(*a, **kw): raise NotImplementedError  # type: ignore
+    def _plot_metric_breakdown_base(*a, **kw): raise NotImplementedError  # type: ignore
 
 
-def _method_color(method: str, palette: list[str] = _FALLBACK_COLORS) -> str:
-    return INTERP_COLORS.get(method, palette[hash(method) % len(palette)])
+def _method_color(method: str) -> str:
+    _fb = ["#4C72B0", "#DD8452", "#55A868", "#C44E52",
+           "#8172B3", "#937860", "#DA8BC3", "#8C8C8C"]
+    return INTERP_COLORS.get(method, _fb[hash(method) % len(_fb)])
 
 
 def _method_label(method: str) -> str:
@@ -521,287 +531,18 @@ def run_decision_tree(
     return rules
 
 
-# ===========================================================================
-# Plotting
-# ===========================================================================
-
-def plot_critical_difference(
-    auc_matrix: pd.DataFrame,
-    nemenyi_pvals: pd.DataFrame | None,
-    output_path: Path,
-    alpha: float = 0.05,
-    dpi: int = 150,
-) -> None:
-    """Critical-difference diagram (Demšar 2006) for the AUC matrix.
-
-    Methods are plotted by average rank (1 = best, left).
-    Horizontal bars connect groups whose pairwise Nemenyi p > *alpha*
-    (i.e. not significantly different from each other).
-    """
-    methods = list(auc_matrix.columns)
-    mask    = ~np.any(np.isnan(auc_matrix.values), axis=1)
-    clean   = auc_matrix.loc[mask].values
-    n, k    = clean.shape
-
-    ranks_per_scenario = np.apply_along_axis(
-        lambda r: rankdata(-r), axis=1, arr=clean
-    )
-    avg_ranks = ranks_per_scenario.mean(axis=0)
-    order     = np.argsort(avg_ranks)    # best → worst
-
-    # q_α (two-tailed, Demšar Table 5)
-    Q_ALPHA   = {0.10: 2.291, 0.05: 2.569, 0.01: 3.143}
-    q         = Q_ALPHA.get(alpha, 2.569)
-    cd        = q * np.sqrt(k * (k + 1) / (6 * n))
-
-    fig, ax   = plt.subplots(figsize=(max(8, k * 1.5), 3.5))
-    ax.set_xlim(0.5, k + 0.5)
-    ax.set_ylim(-1.5, 1.0)
-    ax.set_xlabel("Average rank across scenarios (1 = best)", fontsize=11)
-    ax.set_yticks([])
-    ax.spines[["top", "left", "right"]].set_visible(False)
-    ax.spines["bottom"].set_position(("data", 0))
-
-    for i, idx in enumerate(order):
-        r   = avg_ranks[idx]
-        lbl = _method_label(methods[idx])
-        col = _method_color(methods[idx])
-        ax.plot(r, 0, "o", color=col, ms=8, zorder=3)
-        ax.text(r, 0.15 + 0.25 * (i % 2), lbl,
-                ha="center", va="bottom", fontsize=9, color=col)
-
-    # CD reference bar
-    ax.annotate("", xy=(1 + cd, -0.9), xytext=(1, -0.9),
-                arrowprops=dict(arrowstyle="<->", color="black", lw=1.5))
-    ax.text(1 + cd / 2, -1.15, f"CD={cd:.2f}", ha="center", fontsize=8)
-
-    # Clique bars (not significantly different) — connected components via union-find
-    if nemenyi_pvals is not None:
-        # Build adjacency: edge (i,j) if methods i,j are NOT significantly different
-        parent = list(range(k))
-
-        def _find(x: int) -> int:
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-
-        def _union(a: int, b: int) -> None:
-            parent[_find(a)] = _find(b)
-
-        for i in range(k):
-            for j in range(i + 1, k):
-                m_i = methods[order[i]]
-                m_j = methods[order[j]]
-                if nemenyi_pvals.loc[m_i, m_j] >= alpha:
-                    _union(i, j)
-
-        # Collect connected components
-        from collections import defaultdict
-        components: dict[int, list[int]] = defaultdict(list)
-        for i in range(k):
-            components[_find(i)].append(i)
-
-        drawn_count = 0
-        for comp in components.values():
-            if len(comp) > 1:
-                xs    = sorted(avg_ranks[order[g]] for g in comp)
-                y_bar = -0.5 - 0.12 * drawn_count
-                ax.plot([xs[0], xs[-1]], [y_bar, y_bar],
-                        lw=3, color="black", alpha=0.6, solid_capstyle="butt")
-                drawn_count += 1
-
-    ax.set_title(
-        f"Critical-difference diagram  (α={alpha}, n={n} scenarios)",
-        fontsize=12, pad=10,
-    )
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {output_path}")
-
-
-def plot_composite_noise_curves(
-    df: pd.DataFrame,
-    output_path: Path,
-    dpi: int = 150,
-) -> None:
-    """One subplot per scenario: composite score vs noise level, one line per method."""
-    scenarios = sorted(df["scenario"].unique())
-    methods   = sorted(df["method"].unique())
-    ncols     = min(3, len(scenarios))
-    nrows     = int(np.ceil(len(scenarios) / ncols))
-
-    fig, axes = plt.subplots(nrows, ncols,
-                              figsize=(5 * ncols, 4 * nrows), squeeze=False)
-    for ax_row in axes:
-        for ax in ax_row:
-            ax.set_visible(False)
-
-    for i, scenario in enumerate(scenarios):
-        ax  = axes[i // ncols][i % ncols]
-        ax.set_visible(True)
-        sub = df[df["scenario"] == scenario]
-        for method in methods:
-            m_sub = sub[sub["method"] == method].sort_values("noise")
-            if m_sub.empty:
-                continue
-            ax.plot(m_sub["noise"], m_sub["composite"],
-                    "o-", color=_method_color(method),
-                    label=_method_label(method), lw=1.8, ms=5)
-        ax.set_title(scenario.replace("_", " / "), fontsize=10)
-        ax.set_xlabel("Noise level", fontsize=9)
-        ax.set_ylabel("Composite score", fontsize=9)
-        ax.set_ylim(-0.05, 1.05)
-        ax.grid(True, alpha=0.3)
-
-    # Shared legend outside subplots
-    handles = [
-        mpatches.Patch(color=_method_color(m), label=_method_label(m))
-        for m in methods
-    ]
-    fig.legend(
-        handles=handles, fontsize=8, loc="lower center",
-        ncol=min(len(methods), 5),
-        bbox_to_anchor=(0.5, -0.02), framealpha=0,
-    )
-
-    fig.suptitle(
-        "Composite score (NDCG + AP@R + AUROC + pv-NDCG + sign-acc + cat-sep) "
-        "vs noise",
-        fontsize=11, y=1.01,
-    )
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {output_path}")
-
-
-def plot_auc_heatmap(
-    auc_matrix: pd.DataFrame,
-    output_path: Path,
-    dpi: int = 150,
-) -> None:
-    """Heatmap of AUC-over-noise composite scores (methods as rows, scenarios as columns)."""
-    data = auc_matrix.T    # (methods × scenarios)
-    fig, ax = plt.subplots(
-        figsize=(max(6, len(auc_matrix.index) * 1.1), max(4, len(data.index) * 0.7))
-    )
-    im = ax.imshow(data.values, aspect="auto", cmap="RdYlGn", vmin=0, vmax=1)
-    plt.colorbar(im, ax=ax, label="AUC-over-noise composite score")
-    ax.set_xticks(range(len(data.columns)))
-    ax.set_xticklabels([s.replace("_", "\n") for s in data.columns], fontsize=9)
-    ax.set_yticks(range(len(data.index)))
-    ax.set_yticklabels([_method_label(m) for m in data.index], fontsize=9)
-    for r in range(data.shape[0]):
-        for c in range(data.shape[1]):
-            val = data.values[r, c]
-            if not np.isnan(val):
-                ax.text(c, r, f"{val:.2f}", ha="center", va="center",
-                        fontsize=8, color="black")
-    ax.set_title("AUC over noise — composite score (higher = better)", fontsize=11)
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {output_path}")
-
-
-def plot_peak_vs_decay(
-    decay_df: pd.DataFrame,
-    output_path: Path,
-    dpi: int = 150,
-) -> None:
-    """Scatter: noise decay rate (x) vs peak performance (y), one subplot per scenario.
-
-    Ideal methods appear in the top-left (high peak, slow decay).
-    """
-    scenarios = sorted(decay_df["scenario"].unique())
-    ncols     = min(3, len(scenarios))
-    nrows     = int(np.ceil(len(scenarios) / ncols))
-
-    fig, axes = plt.subplots(nrows, ncols,
-                              figsize=(5 * ncols, 4 * nrows), squeeze=False)
-    for ax_row in axes:
-        for ax in ax_row:
-            ax.set_visible(False)
-
-    for i, scenario in enumerate(scenarios):
-        ax  = axes[i // ncols][i % ncols]
-        ax.set_visible(True)
-        sub = decay_df[decay_df["scenario"] == scenario]
-        for _, row in sub.iterrows():
-            if np.isnan(row["peak"]) or np.isnan(row["decay_rate"]):
-                continue
-            col = _method_color(row["method"])
-            ax.scatter(row["decay_rate"], row["peak"], color=col, s=80, zorder=3)
-            ax.text(row["decay_rate"], row["peak"] + 0.02,
-                    _method_label(row["method"]),
-                    ha="center", va="bottom", fontsize=7, color=col)
-        ax.set_title(scenario.replace("_", " / "), fontsize=10)
-        ax.set_xlabel("Decay rate b  (higher = less robust)", fontsize=9)
-        ax.set_ylabel("Peak performance (noise = 0)", fontsize=9)
-        ax.grid(True, alpha=0.3)
-
-    fig.suptitle(
-        "Peak performance vs noise-decay rate\n"
-        "(top-left = best: high peak AND slow decay)",
-        fontsize=11, y=1.01,
-    )
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {output_path}")
-
-
 def plot_metric_breakdown(
     df: pd.DataFrame,
-    output_path: Path,
+    output_path: "Path",
     dpi: int = 150,
+    normalize: bool = True,
 ) -> None:
-    """Grouped bar chart: normalised per-metric score at noise = 0, per scenario."""
-    methods   = sorted(df["method"].unique())
-    scenarios = sorted(df["scenario"].unique())
-    df0       = df[df["noise"] == df["noise"].min()].copy()
+    """Grouped bar chart: per-metric score at noise = 0, per scenario.
 
-    fig, axes = plt.subplots(
-        len(COMPOSITE_METRICS), 1,
-        figsize=(max(8, len(scenarios) * 1.2), 2.8 * len(COMPOSITE_METRICS)),
-        squeeze=False,
-    )
-    x     = np.arange(len(scenarios))
-    width = 0.8 / max(len(methods), 1)
-
-    for row_i, (key, label) in enumerate(COMPOSITE_METRICS):
-        ax       = axes[row_i][0]
-        norm_col = f"_norm_{key}"
-        for j, method in enumerate(methods):
-            sub  = df0[df0["method"] == method].set_index("scenario")
-            vals = [
-                sub.loc[s, norm_col] if s in sub.index and norm_col in sub.columns
-                else float("nan")
-                for s in scenarios
-            ]
-            ax.bar(
-                x + j * width - 0.4 + width / 2, vals,
-                width=width * 0.9,
-                color=_method_color(method),
-                alpha=0.85,
-                label=_method_label(method),
-            )
-        ax.set_xticks(x)
-        ax.set_xticklabels([s.replace("_", "\n") for s in scenarios], fontsize=8)
-        ax.set_ylabel("Norm. score", fontsize=9)
-        ax.set_title(f"{label} (normalised, noise = 0)", fontsize=10)
-        ax.set_ylim(-0.05, 1.15)
-        ax.grid(axis="y", alpha=0.3)
-        if row_i == 0:
-            ax.legend(fontsize=8, ncol=len(methods))
-
-    fig.suptitle("Per-metric normalised scores at zero noise", fontsize=12, y=1.01)
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Saved: {output_path}")
+    Thin wrapper that supplies ``COMPOSITE_METRICS`` to the implementation in
+    ``src.igloo.plot``.  Pass ``normalize=False`` for raw metric values.
+    """
+    _plot_metric_breakdown_base(df, output_path, COMPOSITE_METRICS, dpi=dpi, normalize=normalize)
 
 
 # ===========================================================================

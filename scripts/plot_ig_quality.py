@@ -2,8 +2,10 @@
 """
 IGLOO Attribution Quality Plotting Script
 ==========================================
-Generates noise-vs-metric figures for IG attribution quality across
+Generates NDCG-based noise-vs-metric figures for IG attribution quality across
 interpolation methods, noise levels, proteins, and fitness models.
+
+Only NDCG-family figures are produced (Spearman ρ figures have been removed).
 
 Mirrors the directory structure expected by evaluate_synthetic_ig_robust.py:
 
@@ -13,17 +15,24 @@ Mirrors the directory structure expected by evaluate_synthetic_ig_robust.py:
                 {interp_method}/            e.g. linear/
                     *_integrated_gradients_results.csv
 
-One figure is produced per (protein × fitness_model) combination showing:
-  Row 0  – Headline metrics: Global Spearman ρ, AUROC, AUPRC, Precision@K
-  Row 1  – Per-variant Spearman ρ (mean±std), Sign accuracy,
-             Category separation ratio, Model collapse fraction
-  Row 2  – Category mean |IG| per interp method (3 subplots) +
-             Δ Spearman vs linear
-  Row 3  – Per-variant ρ violin plots per interp method + metric heatmap
+One figure is produced per (protein × fitness_model × split) combination showing:
+  Row 0  – Headline metrics: Global NDCG, AUROC, AUPRC, AP@R (graded)
+  Row 1  – Per-variant NDCG (mean±std), Sign accuracy
+  Row 2  – Category mean signed IG per interp method (3 subplots) + gradient×input
+  Row 3  – Per-variant NDCG violin plots per interp method + metric heatmap
+  Row 4  – Per-sequence mutation ρ distributions + mean per-sequence mutation NDCG
+  Row 5  – Category separation plots + gradient×input
+
+Metrics caching
+---------------
+On every normal run the computed metrics are saved to a pickle file
+(default: <output-dir>/metrics_cache.pkl). On subsequent runs you can skip
+all metric recomputation with --plot-only, which loads that cache and goes
+straight to figure generation — useful for quickly iterating on plot styling.
 
 Usage
 -----
-    # Auto-discover all results under results/synthetic/
+    # Auto-discover all results under results/synthetic/ (computes + caches metrics)
     python scripts/plot_ig_quality.py
 
     # Filter by protein and/or fitness model
@@ -34,11 +43,14 @@ Usage
         --results-dir /path/to/results/synthetic \\
         --output-dir  /path/to/output/figures
 
-    # Combine filters
-    python scripts/plot_ig_quality.py \\
-        --proteins GB1 T4Lysozyme \\
-        --fitness-models additive nonlinear \\
-        --output-dir results/synthetic/figures
+    # Re-plot from cached metrics without recomputing (fast, for style tweaks)
+    python scripts/plot_ig_quality.py --plot-only
+
+    # Re-plot using a specific cache file
+    python scripts/plot_ig_quality.py --plot-only --cache-file results/synthetic/my_cache.pkl
+
+    # Multi-seed mode: average metrics across seed_N subdirectories
+    python scripts/plot_ig_quality.py --multi-seed
 
 Flag reference
 --------------
@@ -49,11 +61,17 @@ Flag reference
     --min-output-diff FLOAT Threshold for collapsed sequences (default: 0.01)
     --min-count INT         Min sequences per position for reliability mask (default: 5)
     --dpi INT               Figure DPI (default: 150)
+    --multi-seed            Average metrics across seed_N sub-directories; draw ±1σ bands
+    --cache-file PATH       Custom path for the metrics pickle cache
+                            (default: <output-dir>/metrics_cache.pkl)
+    --plot-only             Skip metric computation; load cache and regenerate figures only
 """
 
 from __future__ import annotations
 
 import argparse
+import os
+import pickle
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -189,19 +207,47 @@ def main() -> None:
             "Expected layout: {root}/{Protein}_{fm}/noise_{level}/{interp}/"
         ),
     )
+    parser.add_argument(
+        "--cache-file",
+        default=None,
+        help=(
+            "Path to a pickle file for caching computed metrics. "
+            "On first run metrics are saved here; subsequent runs with "
+            "--plot-only load from this file instead of recomputing."
+        ),
+    )
+    parser.add_argument(
+        "--plot-only",
+        action="store_true",
+        default=False,
+        help="Skip metric computation and load cached metrics from --cache-file.",
+    )
     args = parser.parse_args()
 
     results_root = Path(args.results_dir)
     output_dir   = Path(args.output_dir)
+    cache_file   = Path(args.cache_file) if args.cache_file else output_dir / "metrics_cache.pkl"
 
-    if not results_root.exists():
-        print(f"[ERROR] Results directory does not exist: {results_root}")
-        sys.exit(1)
-
-    print(f"Scanning: {results_root}")
+    # ── Plot-only: load cached metrics and skip all computation ──────────────
+    if args.plot_only:
+        if not cache_file.exists():
+            print(f"[ERROR] --plot-only requested but cache file not found: {cache_file}")
+            sys.exit(1)
+        print(f"Loading cached metrics from: {cache_file}")
+        with open(cache_file, "rb") as _f:
+            _cache = pickle.load(_f)
+        groups      = _cache["groups"]
+        seed_errors = _cache["seed_errors"]
+        SPLITS      = list(groups.keys())
+        # jump straight to figure generation
+    else:
+        if not results_root.exists():
+            print(f"[ERROR] Results directory does not exist: {results_root}")
+            sys.exit(1)
+        print(f"Scanning: {results_root}")
 
     # ── Multi-seed path ──────────────────────────────────────────────────────
-    if args.multi_seed:
+    if args.multi_seed and not args.plot_only:
         ms_entries = discover_result_dirs_multiseed(
             results_root,
             proteins=args.proteins,
@@ -262,7 +308,7 @@ def main() -> None:
                       f"n_seeds={n_seeds}  sp={sp:+.3f}±{sp_std:.3f}")
 
     # ── Single-seed path ─────────────────────────────────────────────────────
-    else:
+    elif not args.plot_only:
         seed_errors = {s: {} for s in [None, "trainval", "test"]}
         entries = discover_result_dirs(
             results_root,
@@ -325,6 +371,13 @@ def main() -> None:
         print("\nNo valid metrics computed.")
         sys.exit(0)
 
+    # ── Save metrics cache ────────────────────────────────────────────────────
+    if not args.plot_only:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        with open(cache_file, "wb") as _f:
+            pickle.dump({"groups": groups, "seed_errors": seed_errors}, _f)
+        print(f"  Cached metrics -> {cache_file}")
+
     # Generate figures — one per (protein, fitness_model, split)
     print(f"\nGenerating figures -> {output_dir}")
     split_labels: dict[str | None, str] = {None: "all", "trainval": "trainval", "test": "test"}
@@ -341,17 +394,16 @@ def main() -> None:
             lbl = split_labels[split]
             print(f"\n  Figure [{lbl}]: {protein} / {fm}")
             _errors_for_pfm = seed_errors.get(split, {}).get((protein, fm)) if args.multi_seed else None
-            for _mfam in ("spearman", "ndcg"):
-                make_figure(
-                    protein=protein,
-                    fitness_model=fm,
-                    data=interp_data,
-                    output_dir=output_dir,
-                    dpi=args.dpi,
-                    split_label=split,
-                    errors=_errors_for_pfm,
-                    metric_family=_mfam,
-                )
+            make_figure(
+                protein=protein,
+                fitness_model=fm,
+                data=interp_data,
+                output_dir=output_dir,
+                dpi=args.dpi,
+                split_label=split,
+                errors=_errors_for_pfm,
+                metric_family="ndcg",
+            )
 
     # ── Save collapse stats CSV ──────────────────────────────────────────────
     import pandas as _pd
