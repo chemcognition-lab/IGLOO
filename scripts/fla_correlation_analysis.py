@@ -200,21 +200,61 @@ def compute_fla_metrics(scenario: str) -> dict:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main() -> None:
-    # 1. Compute FLA metrics (or load cached)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--protein", type=str, default=None,
+                        help="Only process scenarios for this protein (e.g. GB1, T4Lysozyme, p53)")
+    args = parser.parse_args()
+
+    scenarios = (
+        [s for s in SCENARIOS if s.startswith(args.protein + "_")]
+        if args.protein else SCENARIOS
+    )
+
+    # 1. Compute FLA metrics with per-scenario caching
     fla_cache = OUT / "fla_features.csv"
+    scenario_cache_dir = OUT / "scenario_cache"
+    scenario_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check if full cache exists and all scenarios are present
     if fla_cache.exists():
-        print(f"Loading cached FLA features from {fla_cache}")
-        fla_df = pd.read_csv(fla_cache, index_col="scenario")
+        _existing = pd.read_csv(fla_cache, index_col="scenario")
+        if set(scenarios).issubset(set(_existing.index)):
+            print(f"Loading cached FLA features from {fla_cache}")
+            fla_df = _existing
+        else:
+            # Partial cache — reuse per-scenario files
+            print("Full cache incomplete — reusing per-scenario cache files...")
+            fla_df = None
     else:
-        print("Computing FLA features for all 9 scenarios...")
+        fla_df = None
+
+    if fla_df is None:
         rows = []
-        for scenario in SCENARIOS:
-            print(f"\n[{scenario}]")
-            row = compute_fla_metrics(scenario)
+        for scenario in scenarios:
+            per_cache = scenario_cache_dir / f"{scenario}.json"
+            if per_cache.exists():
+                print(f"  [{scenario}] loading from cache")
+                with open(per_cache) as _f:
+                    row = json.load(_f)
+            else:
+                print(f"\n[{scenario}]")
+                row = compute_fla_metrics(scenario)
+                with open(per_cache, "w") as _f:
+                    json.dump({k: (None if (isinstance(v, float) and np.isnan(v)) else v)
+                                for k, v in row.items()}, _f, indent=2)
+                print(f"  Saved per-scenario cache -> {per_cache}")
             rows.append(row)
         fla_df = pd.DataFrame(rows).set_index("scenario")
-        fla_df.to_csv(fla_cache)
-        print(f"\nSaved FLA features to {fla_cache}")
+        # Merge with any existing cached rows from other proteins
+        if fla_cache.exists():
+            _existing = pd.read_csv(fla_cache, index_col="scenario")
+            fla_df = pd.concat([_existing[~_existing.index.isin(fla_df.index)], fla_df])
+        if set(SCENARIOS).issubset(set(fla_df.index)):
+            fla_df.to_csv(fla_cache)
+            print(f"\nSaved full FLA features to {fla_cache}")
+        else:
+            print(f"\nPer-scenario caches saved; full CSV will be written when all proteins complete.")
 
     print("\nFLA features:")
     print(fla_df.to_string())

@@ -8,7 +8,7 @@
 
 #SBATCH --account=aip-bensl
 #SBATCH --cpus-per-task=4
-#SBATCH --time=5:00:00
+#SBATCH --time=1:30:00
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --mem=64G
 #SBATCH --mail-type=END,FAIL

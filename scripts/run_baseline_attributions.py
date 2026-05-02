@@ -671,8 +671,11 @@ class BaselineAttributionsRunner:
         dataset_name    = self.config['data']['name']
         batch_size      = model_cfg.get('batch_size', 16)
 
+        esm_model_name  = model_cfg.get('esm_model_name', 'esmc_300m')
         tv_seqs = self._trainval_sequences()
-        cache_name = f"{dataset_name}_integrated_gradients"
+        # Include model name in cache key so different pLMs use separate caches
+        _cache_prefix = f"{dataset_name}_{esm_model_name}"
+        cache_name = f"{_cache_prefix}_integrated_gradients"
         # get_embeddings will use the cache; only calls esm_backend on misses.
         # We pass None and let it raise if the cache is incomplete — caller
         # should ensure backend is loaded before calling this if misses are expected.
@@ -694,7 +697,7 @@ class BaselineAttributionsRunner:
         # Test set
         if self.test_idx is not None and len(self.test_idx) > 0:
             test_seqs  = [self.sequences[i] for i in self.test_idx]
-            test_cache = f"{dataset_name}_integrated_gradients_test"
+            test_cache = f"{_cache_prefix}_integrated_gradients_test"
             test_emb   = get_embeddings(
                 test_seqs, layer=esm_layer, batch_size=batch_size,
                 dataset_name=test_cache, subdir=embeddings_subdir,

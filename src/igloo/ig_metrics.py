@@ -167,17 +167,25 @@ def discover_result_dirs(
             continue
         if fitness_models and fm      not in fitness_models:
             continue
+        found_noise = False
         for level2 in sorted(level1.iterdir()):
             if not level2.is_dir():
                 continue
             noise_m = re.search(r"noise[_\-]([0-9]*\.?[0-9]+)", level2.name, re.I)
             if not noise_m:
                 continue
+            found_noise = True
             noise = float(noise_m.group(1))
             for level3 in sorted(level2.iterdir()):
                 if not level3.is_dir() or not _has_csv(level3):
                     continue
                 results.append((protein, fm, noise, level3.name.lower(), level3))
+        # Flat layout: root/{Protein}_{fm}/{interp}/ with no noise subdirectory
+        if not found_noise:
+            for level2 in sorted(level1.iterdir()):
+                if not level2.is_dir() or not _has_csv(level2):
+                    continue
+                results.append((protein, fm, 0.0, level2.name.lower(), level2))
     return results
 
 
@@ -259,7 +267,10 @@ def _load_ig_csv(results_dir: Path) -> pd.DataFrame | None:
     candidates = list(results_dir.glob("*_integrated_gradients_results.csv"))
     if not candidates:
         return None
-    return pd.read_csv(candidates[0])
+    try:
+        return pd.read_csv(candidates[0])
+    except Exception:
+        return None
 
 
 def _is_wt(name: str) -> bool:

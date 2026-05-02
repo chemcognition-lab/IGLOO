@@ -7,6 +7,7 @@
 #   bash jobs/submit_sweep.sh                         # submit everything (seed=42)
 #   bash jobs/submit_sweep.sh --dry-run               # print sbatch commands, don't run
 #   bash jobs/submit_sweep.sh --protein=GB1           # submit only one protein
+#   bash jobs/submit_sweep.sh --data-model=nonlinear  # submit only one data model
 #   bash jobs/submit_sweep.sh --seed=0 --seed=1       # multiple seeds (repeat flag)
 #   bash jobs/submit_sweep.sh --seed=0                # single seed override
 #
@@ -19,15 +20,17 @@ set -euo pipefail
 
 DRY_RUN=false
 EMAIL="ranamoneim@gmail.com"  # override with --email=other@address.com
-PROTEIN_FILTER=""  # override with --protein=GB1
-INTERP_FILTER=""   # override with --interp=slerp
-SEED_FILTER=""     # override with --seed=42
+PROTEIN_FILTER=""     # override with --protein=GB1
+DM_FILTER=""          # override with --data-model=nonlinear
+INTERP_FILTER=""      # override with --interp=slerp
+SEED_FILTER=""        # override with --seed=42
 
 for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY_RUN=true ;;
         --email=*) EMAIL="${arg#--email=}" ;;
         --protein=*) PROTEIN_FILTER="${arg#--protein=}" ;;
+        --data-model=*) DM_FILTER="${arg#--data-model=}" ;;
         --interp=*) INTERP_FILTER="${arg#--interp=}" ;;
         --seed=*) SEED_FILTER="${arg#--seed=}" ;;
     esac
@@ -46,7 +49,11 @@ if [[ -n "$PROTEIN_FILTER" ]]; then
 else
     PROTEINS=(GB1 T4Lysozyme p53)
 fi
-DATA_MODELS=(additive epistatic nonlinear)
+if [[ -n "$DM_FILTER" ]]; then
+    DATA_MODELS=("$DM_FILTER")
+else
+    DATA_MODELS=(additive epistatic nonlinear)
+fi
 if [[ -n "$INTERP_FILTER" ]]; then
     INTERP_PATHS=("$INTERP_FILTER")
 else

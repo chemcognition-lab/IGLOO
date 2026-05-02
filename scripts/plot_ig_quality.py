@@ -65,6 +65,10 @@ Flag reference
     --cache-file PATH       Custom path for the metrics pickle cache
                             (default: <output-dir>/metrics_cache.pkl)
     --plot-only             Skip metric computation; load cache and regenerate figures only
+    --name-contains STR     Only include top-level result dirs whose name contains STR.
+                            E.g. --name-contains deep → only GB1_additive_deep etc.
+                            The matched suffix is appended to the fitness-model label
+                            in figure titles and filenames (e.g. "additive_deep").
 """
 
 from __future__ import annotations
@@ -222,6 +226,16 @@ def main() -> None:
         default=False,
         help="Skip metric computation and load cached metrics from --cache-file.",
     )
+    parser.add_argument(
+        "--name-contains",
+        default=None,
+        metavar="STR",
+        help=(
+            "Only include top-level result directories whose name contains STR. "
+            "E.g. --name-contains deep to restrict to GB1_additive_deep etc. "
+            "The matched suffix is appended to the fitness-model label in figures."
+        ),
+    )
     args = parser.parse_args()
 
     results_root = Path(args.results_dir)
@@ -321,6 +335,27 @@ def main() -> None:
 
         print(f"Found {len(entries)} result directories.\n")
 
+        # Apply --name-contains filter and build display fm label
+        def _fm_display(protein: str, fm: str, path: Path) -> str:
+            """Return fitness_model label including any suffix (e.g. 'additive_deep')."""
+            prefix = f"{protein}_{fm}"
+            # Walk up ancestors to find the {Protein}_{fm}{_tag} directory
+            for ancestor in path.parents:
+                if ancestor.name.startswith(prefix):
+                    suffix = ancestor.name[len(prefix):].strip("_")
+                    return f"{fm}_{suffix}" if suffix else fm
+            return fm
+
+        if args.name_contains:
+            entries = [
+                e for e in entries
+                if args.name_contains.lower() in e[4].parent.parent.name.lower()
+            ]
+            if not entries:
+                print(f"No directories matching --name-contains '{args.name_contains}' found.")
+                sys.exit(0)
+            print(f"After --name-contains filter: {len(entries)} directories.\n")
+
         SPLITS: list[str | None] = [None, "trainval", "test"]
         groups: dict[
             str | None,
@@ -328,11 +363,12 @@ def main() -> None:
         ] = {s: {} for s in SPLITS}
 
         for protein, fm, noise, interp, path in entries:
-            key = (protein, fm)
+            fm_lbl = _fm_display(protein, fm, path)
+            key = (protein, fm_lbl)
             for split in SPLITS:
                 groups[split].setdefault(key, {}).setdefault(interp, {})
 
-            print(f"  Computing: {protein}/{fm}/noise={noise}/{interp} ... ", end="", flush=True)
+            print(f"  Computing: {protein}/{fm_lbl}/noise={noise}/{interp} ... ", end="", flush=True)
             _resolved_fn = _FIT_FNS.get(fm)
             _fn_name = getattr(_resolved_fn, "__name__", "additive-approx(fallback)")
             if _resolved_fn is None:
@@ -344,7 +380,7 @@ def main() -> None:
                     path, protein,
                     min_output_diff=args.min_output_diff,
                     min_count=args.min_count,
-                    fitness_model=fm,
+                    fitness_model=fm,  # base fm for computation
                     split_filter=split,
                 )
                 if metrics is not None:
@@ -396,7 +432,7 @@ def main() -> None:
             _errors_for_pfm = seed_errors.get(split, {}).get((protein, fm)) if args.multi_seed else None
             make_figure(
                 protein=protein,
-                fitness_model=fm,
+                fitness_model=fm,  # fm is now the display label (e.g. 'additive_deep')
                 data=interp_data,
                 output_dir=output_dir,
                 dpi=args.dpi,

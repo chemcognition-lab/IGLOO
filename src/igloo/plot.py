@@ -3956,3 +3956,407 @@ def plot_fla_category_heatmap(
         figsize=(max(7, len(cats) * 1.4), max(3.5, len(cat_df) * 0.75 + 1.5)),
         dpi=dpi,
     )
+
+
+# ---------------------------------------------------------------------------
+# Synthetic dataset overview plots
+# ---------------------------------------------------------------------------
+
+#: Colour for each fitness model in synthetic dataset plots.
+_SYNTHETIC_MODEL_COLORS: dict[str, str] = {
+    "additive":  "#2196F3",   # blue
+    "epistatic": "#FF9800",   # orange
+    "nonlinear": "#4CAF50",   # green
+}
+
+#: Colour for each mutation-count tier.
+_MUT_TIER_COLORS: dict[str, str] = {
+    "wildtype": "#607D8B",   # grey-blue
+    "single":   "#1a78c2",   # strong blue
+    "double":   "#2ecc71",   # vivid green
+    "triple":   "#e67e22",   # strong orange
+    "multi":    "#8e24aa",   # purple (≥4 mutations)
+}
+
+#: Display-friendly label for each tier.
+_MUT_TIER_LABELS: dict[str, str] = {
+    "wildtype": "WT",
+    "single":   "Single (1)",
+    "double":   "Double (2)",
+    "triple":   "Triple (3)",
+    "multi":    "Multi (≥4)",
+}
+
+
+def plot_synthetic_dataset_overview(
+    datasets: dict[str, pd.DataFrame],
+    save_path: Optional[str] = None,
+    dpi: int = 200,
+    deep: bool = False,
+) -> None:
+    """
+    Plot an overview of one or more synthetic datasets.
+
+    Each dataset produces **two panels** laid out in a grid:
+
+    * **Left** – Mutation-count bar chart breaking down how many variants are
+      WT / single / double / triple / multi (≥4).
+    * **Right** – Fitness distribution (KDE + rug) coloured by variant tier.
+
+    Parameters
+    ----------
+    datasets:
+        Mapping of ``"<protein>_<model>"`` labels to DataFrames. DataFrames
+        must contain at least the columns ``variant_type``, ``n_mutations``,
+        and ``fitness``.
+    save_path:
+        Where to write the finished figure (PNG). If *None* the figure is
+        displayed interactively.
+    dpi:
+        Resolution for the saved figure.
+    deep:
+        When *True* the title block notes that these are the *deep* (high-order
+        mutation) variants, and the ``multi`` tier is shown prominently.
+    """
+    n_datasets = len(datasets)
+    if n_datasets == 0:
+        return
+
+    ncols = 2  # bar chart | fitness distribution
+    nrows = n_datasets
+
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(10, 3.2 * nrows),
+        squeeze=False,
+    )
+    fig.patch.set_facecolor(FIG_BG)
+
+    sup_suffix = " (deep variants)" if deep else ""
+    fig.suptitle(
+        f"Synthetic dataset overview{sup_suffix}",
+        fontsize=11,
+        fontweight="bold",
+        y=1.01,
+    )
+
+    for row_idx, (label, df) in enumerate(datasets.items()):
+        ax_bar = axes[row_idx][0]
+        ax_fit = axes[row_idx][1]
+        for ax in (ax_bar, ax_fit):
+            ax.set_facecolor(FIG_BG)
+
+        # ── Determine ordered tiers present in this dataset ──────────────
+        all_tiers_ordered = ["wildtype", "single", "double", "triple", "multi"]
+        present_tiers = [t for t in all_tiers_ordered if t in df["variant_type"].values]
+
+        counts = df["variant_type"].value_counts()
+
+        # ── Left panel: stacked/grouped bar of mutation tiers ────────────
+        bar_tiers   = [t for t in present_tiers if t != "wildtype"]
+        bar_heights = [counts.get(t, 0) for t in bar_tiers]
+        bar_colors  = [_MUT_TIER_COLORS.get(t, "#9E9E9E") for t in bar_tiers]
+        bar_labels  = [_MUT_TIER_LABELS.get(t, t) for t in bar_tiers]
+        x_pos = np.arange(len(bar_tiers))
+
+        bars = ax_bar.bar(x_pos, bar_heights, color=bar_colors, edgecolor="white",
+                          linewidth=0.6, width=0.6)
+        ax_bar.set_xticks(x_pos)
+        ax_bar.set_xticklabels(bar_labels, fontsize=7.5)
+        ax_bar.set_ylabel("Count", fontsize=8)
+        ax_bar.set_title(f"{label} – mutation tiers", fontsize=8, fontweight="bold")
+        ax_bar.tick_params(axis="y", labelsize=7)
+        ax_bar.grid(True, axis="y", alpha=0.25)
+        ax_bar.set_axisbelow(True)
+
+        # Annotate bar heights
+        for bar, h in zip(bars, bar_heights):
+            if h > 0:
+                ax_bar.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    h + max(bar_heights) * 0.01,
+                    f"{h:,}",
+                    ha="center", va="bottom", fontsize=6.5,
+                )
+
+        # ── Right panel: fitness KDE per tier ────────────────────────────
+        for tier in present_tiers:
+            sub = df.loc[df["variant_type"] == tier, "fitness"].dropna()
+            if len(sub) < 2:
+                continue
+            color = _MUT_TIER_COLORS.get(tier, "#9E9E9E")
+            tier_label = _MUT_TIER_LABELS.get(tier, tier)
+            sns.kdeplot(
+                sub,
+                ax=ax_fit,
+                color=color,
+                fill=True,
+                alpha=0.25,
+                linewidth=1.5,
+                label=tier_label,
+            )
+            # Rug tick marks at the bottom
+            ax_fit.plot(
+                sub,
+                np.full(len(sub), ax_fit.get_ylim()[0] if ax_fit.get_ylim()[0] != 0 else 0),
+                "|",
+                color=color,
+                alpha=0.15,
+                markersize=3,
+            )
+
+        ax_fit.axvline(
+            df.loc[df["is_wildtype"] == True, "fitness"].iloc[0]
+            if "is_wildtype" in df.columns and df["is_wildtype"].any()
+            else df["fitness"].median(),
+            color="#333333",
+            linewidth=1.2,
+            linestyle="--",
+            alpha=0.7,
+            label="WT fitness",
+        )
+        ax_fit.set_xscale("symlog", linthresh=0.1)
+        ax_fit.set_xlabel("Fitness (symlog scale)", fontsize=8)
+        ax_fit.set_ylabel("Density", fontsize=8)
+        ax_fit.set_title(f"{label} – fitness distribution", fontsize=8, fontweight="bold")
+        ax_fit.tick_params(labelsize=7)
+        ax_fit.legend(fontsize=6.5, framealpha=0.6, loc="upper left")
+        ax_fit.grid(True, axis="y", alpha=0.25)
+
+    plt.tight_layout()
+
+    if save_path:
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
+        print(f"Synthetic dataset overview saved → {save_path}")
+    else:
+        plt.show()
+    plt.close(fig)
+
+
+def load_synthetic_datasets(
+    data_dir: str | Path,
+    proteins: Optional[list[str]] = None,
+    models: Optional[list[str]] = None,
+    deep: bool = False,
+) -> dict[str, pd.DataFrame]:
+    """
+    Load all (or a subset of) synthetic CSV files into a labelled dict.
+
+    Parameters
+    ----------
+    data_dir:
+        Root directory of the synthetic data (the one that contains
+        ``GB1_additive.csv`` etc.).  Pass the *deep/* sub-directory for deep
+        variants.
+    proteins:
+        If given, only load data for these proteins (e.g. ``["GB1", "p53"]``).
+    models:
+        If given, only load these fitness models
+        (e.g. ``["additive", "nonlinear"]``).
+    deep:
+        When *True* the search is restricted to the ``deep/`` sub-directory of
+        *data_dir* (a convenience shortcut).
+
+    Returns
+    -------
+    dict mapping ``"<Protein>_<model>"`` → ``pd.DataFrame``.
+    """
+    data_dir = Path(data_dir)
+    if deep:
+        data_dir = data_dir / "deep"
+
+    _proteins = [p.upper() for p in proteins] if proteins else None
+    _models   = [m.lower() for m in models] if models else None
+
+    datasets: dict[str, pd.DataFrame] = {}
+    for csv_path in sorted(data_dir.glob("*.csv")):
+        stem = csv_path.stem                   # e.g. "GB1_nonlinear"
+        parts = stem.split("_", 1)
+        if len(parts) != 2:
+            continue
+        protein_key, model_key = parts[0].upper(), parts[1].lower()
+        if protein_key == "GROUND":            # skip ground_truth_weights
+            continue
+        if _proteins and protein_key not in _proteins:
+            continue
+        if _models and model_key not in _models:
+            continue
+        df = pd.read_csv(csv_path)
+        datasets[f"{protein_key}_{model_key}"] = df
+
+    return datasets
+
+
+# ---------------------------------------------------------------------------
+# Attribution vs. mutational-coverage comparison
+# ---------------------------------------------------------------------------
+
+def plot_attribution_vs_mutation_coverage(
+    results: dict[str, pd.DataFrame],
+    mut_freq: pd.Series,
+    seq_length: int,
+    ground_truth: Optional[dict] = None,
+    uncovered_threshold_pct: float = 10.0,
+    save_path: Optional[str] = None,
+    dpi: int = 200,
+) -> pd.DataFrame:
+    """
+    Compare per-position attribution importance against training-set mutational
+    frequency, and flag positions with high attribution but no mutational coverage.
+
+    Parameters
+    ----------
+    results:
+        Mapping of ``label → DataFrame`` where each DataFrame is the contents
+        of a ``*_position_importance_summary.csv`` file (columns: ``position``,
+        ``mean_abs_gradient``, ``importance_score``, …).
+    mut_freq:
+        ``pd.Series`` indexed by 1-based position (int) giving the number of
+        variants in the training dataset that carry a mutation at that position.
+    seq_length:
+        Full sequence length (used to build a complete position axis).
+    ground_truth:
+        Optional dict loaded from ``*_ground_truth_weights.json``.  When
+        provided, annotated positions are shaded in the background.
+    uncovered_threshold_pct:
+        Positions whose normalised attribution exceeds this percentile AND
+        whose mutation frequency is zero are flagged as *uncovered hot-spots*.
+    save_path:
+        Where to write the PNG.  Interactive display if *None*.
+    dpi:
+        Resolution for saved figure.
+
+    Returns
+    -------
+    DataFrame of uncovered hot-spot positions (one row per label × position).
+    """
+    all_positions = np.arange(1, seq_length + 1)
+
+    # Normalise mutation frequency to [0, 1]
+    mut_arr = np.array([mut_freq.get(p, 0) for p in all_positions], dtype=float)
+    mut_norm = mut_arr / mut_arr.max() if mut_arr.max() > 0 else mut_arr
+
+    # Ground-truth annotation colours
+    _GT_CATEGORY_COLORS = {
+        "binding_site": "#d73027",
+        "structural":   "#4575b4",
+        "folding":      "#74add1",
+    }
+    gt_annotations: dict[int, str] = {}
+    if ground_truth and "annotations" in ground_truth:
+        gt_annotations = {int(k): v for k, v in ground_truth["annotations"].items()}
+
+    n_methods = len(results)
+    fig_height = 3.5 + 1.8 * n_methods
+    fig, axes = plt.subplots(
+        n_methods + 1, 1,
+        figsize=(max(14, seq_length * 0.22), fig_height),
+        sharex=True,
+        gridspec_kw={"height_ratios": [2.5] + [2.0] * n_methods},
+    )
+    fig.patch.set_facecolor(FIG_BG)
+
+    # ── Top panel: mutational frequency bar ──────────────────────────────
+    ax_mut = axes[0]
+    ax_mut.set_facecolor(FIG_BG)
+
+    # Shade ground-truth regions
+    gt_shaded: dict[str, bool] = {}
+    for pos in all_positions:
+        cat = gt_annotations.get(pos)
+        if cat:
+            color = _GT_CATEGORY_COLORS.get(cat, "#cccccc")
+            ax_mut.axvspan(pos - 0.5, pos + 0.5, color=color, alpha=0.12, linewidth=0)
+            if cat not in gt_shaded:
+                gt_shaded[cat] = True
+
+    ax_mut.bar(all_positions, mut_arr, color="#78909C", alpha=0.75,
+               width=0.8, label="Mutation count")
+    ax_mut.set_ylabel("Mutation\ncount", fontsize=8)
+    ax_mut.set_title("Training-set mutational frequency per position", fontsize=8,
+                     fontweight="bold")
+    ax_mut.tick_params(labelsize=7)
+    ax_mut.grid(True, axis="y", alpha=0.2)
+    ax_mut.set_axisbelow(True)
+
+    if gt_shaded:
+        handles = [
+            mpatches.Patch(color=_GT_CATEGORY_COLORS[c], alpha=0.35, label=c.replace("_", " ").title())
+            for c in gt_shaded
+        ]
+        ax_mut.legend(handles=handles, fontsize=6.5, framealpha=0.6, loc="upper left",
+                      title="Ground truth", title_fontsize=6.5)
+
+    # ── Per-method attribution panels ─────────────────────────────────────
+    uncovered_rows = []
+    threshold_val = np.percentile(
+        np.concatenate([
+            df.set_index("position").reindex(all_positions, fill_value=0)["mean_abs_gradient"].values
+            for df in results.values()
+        ]),
+        100 - uncovered_threshold_pct,
+    )
+
+    method_colors = list(_INTERP_COLORS.values()) + ["#795548", "#00BCD4", "#E91E63"]
+
+    for idx, (label, imp_df) in enumerate(results.items()):
+        ax = axes[idx + 1]
+        ax.set_facecolor(FIG_BG)
+        color = method_colors[idx % len(method_colors)]
+
+        # Reindex to all positions (fill missing with 0)
+        pos_series = (
+            imp_df.set_index("position")
+            .reindex(all_positions, fill_value=0)["mean_abs_gradient"]
+        )
+        attr_arr = pos_series.values.astype(float)
+        attr_norm = attr_arr / attr_arr.max() if attr_arr.max() > 0 else attr_arr
+
+        # Ground-truth shading
+        for pos in all_positions:
+            cat = gt_annotations.get(pos)
+            if cat:
+                ax.axvspan(pos - 0.5, pos + 0.5,
+                           color=_GT_CATEGORY_COLORS.get(cat, "#cccccc"),
+                           alpha=0.10, linewidth=0)
+
+        # Dual: normalised mutation freq (grey fill) + attribution (coloured line)
+        ax.fill_between(all_positions, mut_norm, alpha=0.18, color="#78909C",
+                        label="Mut. freq (norm)")
+        ax.plot(all_positions, attr_norm, color=color, linewidth=1.4,
+                label="Attribution (norm)")
+        ax.scatter(all_positions, attr_norm, color=color, s=12, zorder=3, alpha=0.7)
+
+        # Flag uncovered hot-spots (high attribution, zero mutation count)
+        uncovered_mask = (attr_arr >= threshold_val) & (mut_arr == 0)
+        uncovered_pos = all_positions[uncovered_mask]
+        if len(uncovered_pos) > 0:
+            ax.scatter(uncovered_pos, attr_norm[uncovered_mask],
+                       color="#d73027", s=55, zorder=5, marker="*",
+                       label=f"Uncovered hot-spot ({len(uncovered_pos)})")
+            for pos in uncovered_pos:
+                uncovered_rows.append({"label": label, "position": int(pos),
+                                       "mean_abs_gradient": float(attr_arr[pos - 1]),
+                                       "mutation_count": 0})
+
+        ax.set_ylabel("Norm.\nvalue", fontsize=7.5)
+        ax.set_title(label, fontsize=8, fontweight="bold")
+        ax.tick_params(labelsize=7)
+        ax.set_ylim(-0.02, 1.08)
+        ax.grid(True, axis="y", alpha=0.2)
+        ax.set_axisbelow(True)
+        ax.legend(fontsize=6.5, framealpha=0.6, loc="upper left", ncol=3)
+
+    axes[-1].set_xlabel("Position (1-indexed)", fontsize=8)
+    plt.tight_layout(h_pad=0.5)
+
+    if save_path:
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
+        print(f"Attribution vs. mutation coverage saved → {save_path}")
+    else:
+        plt.show()
+    plt.close(fig)
+
+    return pd.DataFrame(uncovered_rows)

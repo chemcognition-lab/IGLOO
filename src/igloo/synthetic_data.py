@@ -523,13 +523,24 @@ def fitness_nonlinear(
     cliff_drop: float = 3.0,
 ) -> float:
     """
-    Cumulative damage at *critical* (active_site / metal_binding) positions:
+    Cumulative damage at *critical* (highest-importance) positions:
       - Below cliff_threshold → normal additive fitness
       - Above cliff_threshold → sudden stability cliff (fitness collapses)
 
     Non-critical positions still contribute additively.
+
+    "Critical" categories are determined dynamically as those with the maximum
+    importance weight in the protein's category_weights map.  This avoids
+    hard-coding category names (e.g. active_site / metal_binding) that may not
+    exist for every protein (e.g. GB1 has only binding_site / structural / folding).
     """
-    critical_categories = {"active_site", "metal_binding"}
+    if protein.category_weights:
+        max_weight = max(protein.category_weights.values())
+        critical_categories = {
+            cat for cat, w in protein.category_weights.items() if w >= max_weight
+        }
+    else:
+        critical_categories = set()  # fallback: cliff never triggers
 
     critical_damage  = 0.0
     noncritical_loss = 0.0

@@ -12,6 +12,7 @@
 #   bash jobs/submit_sweep_pLM.sh --dry-run               # print commands, don't run
 #   bash jobs/submit_sweep_pLM.sh --protein=GB1           # one protein only
 #   bash jobs/submit_sweep_pLM.sh --plm=ankh_base         # one pLM only
+#   bash jobs/submit_sweep_pLM.sh --data-model=nonlinear  # one data model only
 #   bash jobs/submit_sweep_pLM.sh --interp=linear         # one path only
 #   bash jobs/submit_sweep_pLM.sh --seed=0 --seed=1       # multiple seeds
 #
@@ -26,6 +27,7 @@ set -euo pipefail
 DRY_RUN=false
 EMAIL="ranamoneim@gmail.com"
 PROTEIN_FILTER=""
+DM_FILTER=""
 PLM_FILTER=""
 INTERP_FILTER=""
 SEED_FILTER=""
@@ -35,6 +37,7 @@ for arg in "$@"; do
         --dry-run)      DRY_RUN=true ;;
         --email=*)      EMAIL="${arg#--email=}" ;;
         --protein=*)    PROTEIN_FILTER="${arg#--protein=}" ;;
+        --data-model=*) DM_FILTER="${arg#--data-model=}" ;;
         --plm=*)        PLM_FILTER="${arg#--plm=}" ;;
         --interp=*)     INTERP_FILTER="${arg#--interp=}" ;;
         --seed=*)       SEED_FILTER="${arg#--seed=}" ;;
@@ -55,7 +58,11 @@ else
     PROTEINS=(GB1 T4Lysozyme p53)
 fi
 
-DATA_MODELS=(additive epistatic nonlinear)
+if [[ -n "$DM_FILTER" ]]; then
+    DATA_MODELS=("$DM_FILTER")
+else
+    DATA_MODELS=(additive epistatic nonlinear)
+fi
 
 if [[ -n "$PLM_FILTER" ]]; then
     PLMS=("$PLM_FILTER")
