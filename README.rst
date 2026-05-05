@@ -95,72 +95,22 @@ Each config specifies dataset path, wild-type identification method, ESM layer, 
 
 **Usage**
 -----------
-
-**Train & run IG on a real protein dataset**
-
-.. code-block:: bash
-
-    python scripts/run_integrated_gradients.py --config configs/pafa_config.yaml
-    python scripts/run_integrated_gradients.py --config configs/betalactamase_config_embedding-signed.yaml
-
-    # Validate config without running
-    python scripts/run_integrated_gradients.py --config configs/synthetic/GB1_additive_config.yaml --validate-only
-
 **Generate synthetic benchmarking datasets**
 
 .. code-block:: bash
 
     python scripts/generate_synthetic_datasets.py
 
-**Run the full synthetic IG sweep (SLURM)**
+**Train & run IG on a real protein dataset**
 
 .. code-block:: bash
 
+    python scripts/run_integrated_gradients.py --config configs/ProteinGym/BLAT_ECOLX_Firnberg_2014_config.yaml
 
-**Evaluate and plot synthetic results**
+    # Validate config without running
+    python scripts/run_integrated_gradients.py --config configs/synthetic/GB1_additive_config.yaml --validate-only
 
-.. code-block:: bash
 
-    # Compute IG quality metrics and generate plots for one protein
-    python scripts/evaluate_synthetic_ig.py \
-        --results-dir results/synthetic/GB1_nonlinear \
-        --output-dir results/synthetic/evaluation_plots/GB1_results
-
-    # Regenerate plots only (skip recomputation)
-    python scripts/plot_ig_quality.py --plot-only \
-        --output-dir results/synthetic/evaluation_plots/GB1_results
-
-    # Dataset overview figures (mutation tiers + fitness distributions)
-    python scripts/plot_synthetic_overview.py
-    python scripts/plot_synthetic_overview.py --transparent   # transparent background
-
-**Analyze attribution method quality across scenarios**
-
-.. code-block:: bash
-
-    python scripts/analyze_method_scenario.py --plot-only \
-        --output-dir results/synthetic/method_analysis
-
-**Compare attribution methods (composite score)**
-
-.. code-block:: bash
-
-    python scripts/compare_methods.py
-
-**Baseline attributions**
-
-.. code-block:: bash
-
-    python scripts/run_baseline_attributions.py --config configs/pafa_config.yaml
-
-**IG-colored PDB structures**
-
-.. code-block:: bash
-
-    python scripts/generate_ig_colored_pdbs.py \
-        --ig-csv results/PafA_embedding_magnitude/attributions.csv \
-        --pdb data/PDBs/PafA.pdb \
-        --output results/colored_pdbs/
 
 
 **Key Scripts**
@@ -231,23 +181,6 @@ Each config specifies dataset path, wild-type identification method, ESM layer, 
     ├── FLIP2/
     └── ProteinGym/
 
-
-**Environment Validation**
-----------------------------
-
-.. code-block:: bash
-
-    ./health_check.py
-
-Checks Python version, GPU/CUDA availability, installed packages, and data file integrity.
-
-
-**Documentation**
--------------------
-
-* `Configuration Guide <configs/README.md>`_
-* `Configuration Summary <configs/CONFIGURATION_SUMMARY.md>`_
-* `Results Guide <docs/results_guide.md>`_
 
 
 **License**
