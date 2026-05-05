@@ -11,7 +11,7 @@
         :target: https://github.com/ranaabarghout/IGLOO/blob/main/LICENSE
         :alt: License
 
-A machine learning pipeline for evaluating Integrated Gradients (IG) attribution quality on protein fitness landscapes. IGLOO trains ESM-2-based regression models, computes IG attributions along configurable interpolation paths, and benchmarks the faithfulness of those attributions against known ground-truth mutation effects using synthetic datasets, FLIP2, and ProteinGym DMS assays.
+A systematic pipeline for evaluating Integrated Gradients (IG) attribution quality on protein fitness landscapes. IGLOO trains pLM-based regression models, computes IG attributions along configurable interpolation paths, and benchmarks the faithfulness of those attributions against known ground-truth mutation effects using synthetic datasets, FLIP2, and ProteinGym DMS assays.
 
 **Key Features**
 ------------------
