@@ -36,14 +36,15 @@ matplotlib.rcParams.update({
     "axes.facecolor":      FIG_BG,
     "axes.spines.top":     False,
     "axes.spines.right":   False,
-    "axes.titlesize":      9,
+    "axes.titlesize":      14,
     "axes.titleweight":    "bold",
-    "axes.labelsize":      8,
-    "xtick.labelsize":     8,
-    "ytick.labelsize":     8,
-    "legend.fontsize":     7,
+    "axes.labelsize":      12,
+    "xtick.labelsize":     11,
+    "ytick.labelsize":     11,
+    "legend.fontsize":     11,
     "lines.linewidth":     2.0,
     "lines.markersize":    7,
+    "savefig.transparent": True,
 })
 
 
@@ -124,7 +125,7 @@ def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[
 
         if save_dir:
             out_path = os.path.join(save_dir, f'{_safe_filename(name)}.png')
-            plt.savefig(out_path, dpi=120, bbox_inches='tight')
+            plt.savefig(out_path, dpi=120, bbox_inches='tight', transparent=True)
             saved_paths.append(out_path)
         plt.close(fig)
 
@@ -202,7 +203,7 @@ def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Opti
 
     fig1.tight_layout()
     if save_path:
-        fig1.savefig(save_path, dpi=150, bbox_inches='tight')
+        fig1.savefig(save_path, dpi=150, bbox_inches='tight', transparent=True)
         print(f"Gradient heatmap saved to {save_path}")
     plt.close(fig1)
 
@@ -249,7 +250,7 @@ def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Opti
     if save_path:
         base, ext = os.path.splitext(save_path)
         summary_path = f"{base}_summary{ext}"
-        fig2.savefig(summary_path, dpi=150, bbox_inches='tight')
+        fig2.savefig(summary_path, dpi=150, bbox_inches='tight', transparent=True)
         print(f"Gradient summary heatmap saved to {summary_path}")
     plt.close(fig2)
 
@@ -358,7 +359,7 @@ def plot_variants_vs_wt_gradients(ig_results: dict[str, Any], save_path: Optiona
     fig.suptitle('Gradient Difference from WT\n(representative variants)', fontsize=11)
     plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight', transparent=True)
         print(f"Variants vs WT gradients plot saved to {save_path}")
     plt.close()
 
@@ -381,7 +382,7 @@ def plot_target_distribution(y_values: np.ndarray, title: str, xlabel: str, save
     plt.grid(True)
 
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight', dpi=200)
+        plt.savefig(save_path, bbox_inches='tight', dpi=200, transparent=True)
     plt.close()
 
 
@@ -417,7 +418,7 @@ def plot_predicted_vs_actual(y_true: np.ndarray, y_pred: np.ndarray, title: str,
     plt.ylim(min_val, max_val)
 
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight', dpi=200)
+        plt.savefig(save_path, bbox_inches='tight', dpi=200, transparent=True)
     plt.close()
 
 
@@ -449,7 +450,7 @@ def plot_mutation_landscape(mutation_effects: pd.DataFrame, save_path: Optional[
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
         print(f"Mutation landscape plot saved to {save_path}")
     plt.close()
 
@@ -489,7 +490,7 @@ def plot_sequence_alignment_with_hotspots(sequences: dict[str, str], hotspots: l
     plt.grid(True, alpha=0.3)
 
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
         print(f"Sequence alignment plot saved to {save_path}")
     plt.close()
 
@@ -548,7 +549,7 @@ def plot_training_history(
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
         print(f"Training history plot saved to {save_path}")
 
     plt.show()
@@ -625,7 +626,7 @@ def plot_predicted_vs_actual_batch(
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
         print(f"Batch predicted vs actual plot saved to {save_path}")
 
     plt.show()
@@ -696,7 +697,7 @@ def plot_predicted_vs_actual_single(
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
         print(f"Predicted vs actual plot saved to {save_path}")
 
     plt.show()
@@ -818,7 +819,7 @@ def plot_signed_gradient_effects(
 
     plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight', transparent=True)
         print(f"Signed gradient effects plot saved to {save_path}")
     plt.close()
 
@@ -993,7 +994,7 @@ def plot_averaged_gradient_effects_comparison(
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
         print(f"Averaged gradient effects comparison plot saved to {save_path}")
 
     plt.close()
@@ -1300,7 +1301,7 @@ def create_attribution_colorbar(
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
         print(f"Attribution colorbar saved to: {save_path}")
 
     plt.close()
@@ -1397,7 +1398,7 @@ def plot_attribution_heatmap(
     cbar.set_ticklabels(tick_labels)
 
     fig.tight_layout()
-    fig.savefig(output_path, bbox_inches="tight")
+    fig.savefig(output_path, bbox_inches="tight", transparent=True)
     plt.close(fig)
     return output_path
 
@@ -1524,7 +1525,7 @@ def plot_mutation_frequency_heatmap(
     ax.grid(which='minor', color='white', linestyle='-', linewidth=0.5, alpha=0.7)
 
     plt.tight_layout()
-    plt.savefig(output_path, bbox_inches='tight', dpi=150)
+    plt.savefig(output_path, bbox_inches='tight', dpi=150, transparent=True)
     plt.close()
 
     return output_path
@@ -1605,7 +1606,7 @@ def plot_interpolation_path_umap(
         sns.despine(ax=ax)
         plt.tight_layout()
         if save_path:
-            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            plt.savefig(save_path, dpi=150, bbox_inches='tight', transparent=True)
             print(f"Interpolation UMAP saved to {save_path}")
         plt.close()
         return
@@ -1659,7 +1660,7 @@ def plot_interpolation_path_umap(
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight', transparent=True)
         print(f"Interpolation UMAP saved to {save_path}")
 
     plt.show()
@@ -1734,7 +1735,7 @@ def plot_interpolation_path(
                  ha='center', va='top', fontsize=12)
         fig.subplots_adjust(top=0.83, bottom=0.12, left=0.08, right=0.96)
         if save_path:
-            plt.savefig(save_path, dpi=150)
+            plt.savefig(save_path, dpi=150, transparent=True)
             print(f"Interpolation path figure saved to {save_path}")
         plt.close()
         return
@@ -1841,7 +1842,7 @@ def plot_interpolation_path(
     fig.subplots_adjust(top=0.83, bottom=0.12, left=0.08, right=0.96, wspace=0.45)
 
     if save_path:
-        plt.savefig(save_path, dpi=150)
+        plt.savefig(save_path, dpi=150, transparent=True)
         print(f"Interpolation path figure saved to {save_path}")
     plt.close()
 
@@ -2016,7 +2017,7 @@ def _apply_group_decorations(
             mid = (g_start + g_end) / 2
             sep_x = g_start - 0.5 if g_start > 0 else None
         ax.text(mid, y_top * 0.98, fm_name,
-                ha="center", va="top", fontsize=7, fontweight="bold", color="dimgray",
+                ha="center", va="top", fontsize=9, fontweight="bold", color="dimgray",
                 bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="lightgray", alpha=0.7))
         if g_start > 0 and sep_x is not None:
             ax.axvline(sep_x, color="lightgray", lw=1.2, linestyle="-", zorder=0)
@@ -2077,14 +2078,14 @@ def plot_sign_accuracy_bars(
     ax.set_xlim(x_pos[0] - 0.6, x_pos[-1] + 0.6)
     title_prot = f" [{protein_prefix}]" if protein_prefix else ""
     ax.set_title(f"Sign Correctness{title_prot}: should mutations at critical sites produce negative IG?")
-    ax.legend(fontsize=7, loc="lower right")
+    ax.legend(fontsize=9, loc="lower right")
     ax.yaxis.grid(True, linestyle="--", alpha=0.4)
     ax.set_axisbelow(True)
     _apply_group_decorations(ax, fm_groups, x_pos)
 
     fname = f"{protein_prefix}_ig_sign_accuracy.png" if protein_prefix else "synthetic_ig_sign_accuracy.png"
     out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close()
     print(f"  Saved: {out_path}")
 
@@ -2110,7 +2111,7 @@ def plot_cliff_damage(
     ax.scatter(damage, mean_ig, c=colours, s=80, edgecolors="k", linewidths=0.5, zorder=3)
     for d, ig, n in zip(damage, mean_ig, names):
         if np.isfinite(ig):
-            ax.annotate(n, (d, ig), textcoords="offset points", xytext=(4, 3), fontsize=7)
+            ax.annotate(n, (d, ig), textcoords="offset points", xytext=(4, 3), fontsize=9)
     ax.axvline(threshold, color="grey", linestyle="--", lw=1.2, label=f"cliff threshold = {threshold}")
     ax.set_xlabel("Cumulative critical damage (importance × BLOSUM penalty)")
     ax.set_ylabel("Mean |IG| at cliff-critical positions")
@@ -2122,11 +2123,11 @@ def plot_cliff_damage(
     ]
     ax.legend(handles=legend_patches + [plt.Line2D([0], [0], color="grey", lw=1.2, linestyle="--",
                                                     label=f"cliff threshold={threshold}")],
-              fontsize=7)
+              fontsize=9)
 
     safe_label = re.sub(r"[^a-zA-Z0-9_-]", "_", label)
     out_path = output_dir / f"{safe_label}_cliff_damage.png"
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close()
     print(f"  Saved: {out_path}")
 
@@ -2194,9 +2195,9 @@ def plot_metric_comparison(
                 plt.Line2D([0], [0], color="grey", lw=1.2, linestyle="--", label=base_label)
             )
         if panel_i == 0:
-            ax.legend(handles=prot_handles + extra_handles, fontsize=7, loc="upper right")
+            ax.legend(handles=prot_handles + extra_handles, fontsize=9, loc="upper right")
         elif extra_handles:
-            ax.legend(handles=extra_handles, fontsize=7)
+            ax.legend(handles=extra_handles, fontsize=9)
         _BOUNDED_01 = {"auroc", "auprc", "precision_at_k", "norm_auroc", "norm_auprc"}
         y_min = min(0, float(np.nanmin(vals)) - 0.05)
         y_max = float(np.nanmax(vals))
@@ -2240,7 +2241,7 @@ def plot_metric_comparison(
 
     fname = f"{protein_prefix}_ig_validation_metrics.png" if protein_prefix else "synthetic_ig_validation_metrics.png"
     out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close()
     print(f"  Saved: {out_path}")
 
@@ -2310,9 +2311,9 @@ def plot_fitness_metric_comparison(
                 plt.Line2D([0], [0], color="grey", lw=1.2, linestyle="--", label=base_label)
             )
         if i == 0:
-            ax.legend(handles=prot_handles + extra_handles, fontsize=7, loc="upper right")
+            ax.legend(handles=prot_handles + extra_handles, fontsize=9, loc="upper right")
         elif extra_handles:
-            ax.legend(handles=extra_handles, fontsize=7)
+            ax.legend(handles=extra_handles, fontsize=9)
         _BOUNDED_01 = {"fitness_auroc", "fitness_auprc", "fitness_precision_at_k"}
         y_min = min(0, float(np.nanmin(vals)) - 0.05)
         y_max = float(np.nanmax(vals))
@@ -2359,7 +2360,7 @@ def plot_fitness_metric_comparison(
 
     fname = f"{protein_prefix}_ig_fitness_metrics.png" if protein_prefix else "synthetic_ig_fitness_metrics.png"
     out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close()
     print(f"  Saved: {out_path}")
 
@@ -2419,7 +2420,7 @@ def plot_completeness_summary(
         title_prot = f" [{protein_prefix}]" if protein_prefix else ""
         ax.set_title(f"Completeness Axiom Pass-Rate{title_prot}\n(Σ IG ≈ F(x)−F(x′) within tolerance)")
         ax.legend(handles=config_handles + [mpatches.Patch(color=c, label=l) for c, l in
-                  [(plt.cm.Blues(s), lb) for _, lb, s in tols]], fontsize=7, loc="lower right")
+                  [(plt.cm.Blues(s), lb) for _, lb, s in tols]], fontsize=9, loc="lower right")
         ax.yaxis.grid(True, linestyle="--", alpha=0.4)
         ax.set_axisbelow(True)
         _apply_group_decorations(ax, fm_groups, x_pos)
@@ -2451,14 +2452,14 @@ def plot_completeness_summary(
         title_prot = f" [{protein_prefix}]" if protein_prefix else ""
         ax.set_title(f"Raw vs Normalised |IG| Rank Correlation{title_prot}\n"
                      "(normalise by |F(x)−F(x′)| to compare across sequences)")
-        ax.legend(handles=config_handles, fontsize=7)
+        ax.legend(handles=config_handles, fontsize=9)
         ax.yaxis.grid(True, linestyle="--", alpha=0.4)
         ax.set_axisbelow(True)
         _apply_group_decorations(ax, fm_groups, x_pos)
 
     fname = f"{protein_prefix}_completeness.png" if protein_prefix else "synthetic_completeness.png"
     out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close()
     print(f"  Saved: {out_path}")
 
@@ -2511,14 +2512,14 @@ def plot_precision_at_k(
         f"Precision@K{title_prot}\n"
         "Fraction of top-K |IG| positions that are annotated; K = n_annotated (grey tick = random baseline)"
     )
-    ax.legend(handles=config_handles, fontsize=7, loc="lower right")
+    ax.legend(handles=config_handles, fontsize=9, loc="lower right")
     ax.yaxis.grid(True, linestyle="--", alpha=0.4)
     ax.set_axisbelow(True)
     _apply_group_decorations(ax, fm_groups, x_pos)
 
     fname = f"{protein_prefix}_precision_at_k.png" if protein_prefix else "synthetic_precision_at_k.png"
     out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close()
     print(f"  Saved: {out_path}")
 
@@ -2626,11 +2627,11 @@ def plot_noise_vs_interp(
 
         if baseline is not None:
             ax.axhline(baseline, color="grey", lw=1.0, linestyle="--", alpha=0.7)
-        ax.set_xlabel("Noise level", fontsize=8)
-        ax.set_ylabel(label, fontsize=8)
-        ax.set_title(label, fontsize=9, fontweight="bold")
+        ax.set_xlabel("Noise level", fontsize=10)
+        ax.set_ylabel(label, fontsize=10)
+        ax.set_title(label, fontsize=12, fontweight="bold")
         ax.set_xticks(noise_levels)
-        ax.set_xticklabels([str(n) for n in noise_levels], fontsize=7, rotation=45)
+        ax.set_xticklabels([str(n) for n in noise_levels], fontsize=9, rotation=45)
         ax.yaxis.grid(True, linestyle=":", alpha=0.5)
         ax.set_axisbelow(True)
 
@@ -2670,12 +2671,12 @@ def plot_noise_vs_interp(
                     ax.axvspan(x_lo, x_hi, color="red", alpha=0.06, zorder=0)
 
         if ax_idx == 0:
-            leg = ax.legend(title="Interp path", fontsize=7, title_fontsize=7)
+            leg = ax.legend(title="Interp path", fontsize=9, title_fontsize=9)
             if _has_near_zero:
                 leg.get_frame().set_alpha(0.9)
                 ax.plot([], [], color="dimgrey", linewidth=1.0, linestyle=":",
                         alpha=0.7, label="near-zero frac (right axis)")
-                ax.legend(title="Interp path", fontsize=7, title_fontsize=7)
+                ax.legend(title="Interp path", fontsize=9, title_fontsize=9)
 
     for ax in axes_flat[n_panels:]:
         ax.set_visible(False)
@@ -2691,7 +2692,7 @@ def plot_noise_vs_interp(
     )
     fname = f"{prot_label}_noise_vs_interp.png"
     out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close()
     print(f"  Saved: {out_path}")
 
@@ -2874,11 +2875,11 @@ def plot_noise_vs_interp_boxplots(
         if baseline is not None:
             ax.axhline(baseline, color="grey", lw=1.0, linestyle="--", alpha=0.7)
 
-        ax.set_xlabel("Noise level", fontsize=8)
-        ax.set_ylabel(label.split("\n")[0], fontsize=8)
-        ax.set_title(label, fontsize=8, fontweight="bold")
+        ax.set_xlabel("Noise level", fontsize=10)
+        ax.set_ylabel(label.split("\n")[0], fontsize=10)
+        ax.set_title(label, fontsize=10, fontweight="bold")
         ax.set_xticks(range(n_noise))
-        ax.set_xticklabels([str(nl) for nl in noise_levels], fontsize=7, rotation=45)
+        ax.set_xticklabels([str(nl) for nl in noise_levels], fontsize=9, rotation=45)
         ax.yaxis.grid(True, linestyle=":", alpha=0.5)
         ax.set_axisbelow(True)
 
@@ -2886,8 +2887,8 @@ def plot_noise_vs_interp_boxplots(
             ax.legend(
                 handles=legend_handles,
                 title="Interp path",
-                fontsize=7,
-                title_fontsize=7,
+                fontsize=9,
+                title_fontsize=9,
             )
 
     for ax in axes_flat[n_panels:]:
@@ -2899,11 +2900,11 @@ def plot_noise_vs_interp_boxplots(
         f"IG quality vs noise level — {protein} / {fitness_model}{split_label}\n"
         f"(dots = runs; error bars on per-seq metrics = ±1 SD over sequences; "
         f"★ = PolyAlanine reference; dashed grey = random baseline)",
-        fontsize=9,
+        fontsize=11,
     )
     fname = f"{prot_label}_noise_vs_interp_boxplots.png"
     out_path = output_dir / fname
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close()
     print(f"  Saved: {out_path}")
 
@@ -2950,7 +2951,7 @@ def plot_per_position_comparison(
 
     safe_label = re.sub(r"[^a-zA-Z0-9_-]", "_", label)
     out_path = output_dir / f"{safe_label}_per_position.png"
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.savefig(out_path, dpi=150, bbox_inches="tight", transparent=True)
     plt.close()
     print(f"  Saved: {out_path}")
 
@@ -3002,9 +3003,9 @@ CAT_LABELS = {
 
 def _style_ax(ax: "plt.Axes", title: str, xlabel: str = "Noise level",
               ylabel: str = "", nn_slerp_cutoff: "float | None" = None) -> None:
-    ax.set_title(title, fontsize=9, fontweight="bold")
-    ax.set_xlabel(xlabel, fontsize=8)
-    ax.set_ylabel(ylabel, fontsize=8)
+    ax.set_title(title, fontsize=14, fontweight="bold")
+    ax.set_xlabel(xlabel, fontsize=12)
+    ax.set_ylabel(ylabel, fontsize=12)
     ax.spines[["top", "right"]].set_visible(False)
     ax.set_facecolor(FIG_BG)
     if nn_slerp_cutoff is not None:
@@ -3143,50 +3144,26 @@ def make_figure(
     # ── Row 0: headline metrics ───────────────────────────────────────────────
     ax = fig.add_subplot(gs[0, 0])
     _plot_metric_line(ax, data, _global_key, hline=_sp_hline, **kw)
-    _model_perf_xs: list = []
-    _model_test_ys: list = []
-    _model_val_ys:  list = []
-    for _nd in data.values():
-        for _n, _m in _nd.items():
-            if _n not in _model_perf_xs:
-                _ts = _m.get(_model_test_key, float("nan"))
-                _vs = _m.get(_model_val_key,  float("nan"))
-                if np.isfinite(_ts) or np.isfinite(_vs):
-                    _model_perf_xs.append(_n)
-                    _model_test_ys.append(_ts)
-                    _model_val_ys.append(_vs)
-    if _model_perf_xs:
-        _order = np.argsort(_model_perf_xs)
-        _xs_s  = [_model_perf_xs[i] for i in _order]
-        _ts_s  = [_model_test_ys[i]  for i in _order]
-        _vs_s  = [_model_val_ys[i]   for i in _order]
-        ax.plot(_xs_s, _ts_s, color="black", lw=2.0, ls="--", marker="x", ms=8,
-                label=_model_test_lbl, zorder=10)
-        ax.plot(_xs_s, _vs_s, color="#555",  lw=1.5, ls=":",  marker="+", ms=8,
-                label=_model_val_lbl, zorder=10)
     _style_ax(ax, f"Global {_metric_label}\n({track} vs GT importance)",
               ylabel=f"{_metric_label} (↑ better)")
-    leg = ax.legend(handles=_interp_legend(interps) + [
-        Line2D([0],[0], color="black", lw=2, ls="--", marker="x", ms=8, label=_model_test_lbl),
-        Line2D([0],[0], color="#555",  lw=1.5, ls=":", marker="+", ms=8, label=_model_val_lbl),
-    ], fontsize=7)
+    leg = ax.legend(handles=_interp_legend(interps), fontsize=11)
     leg.get_frame().set_alpha(0.5)
     leg.set_zorder(20)
 
     ax = fig.add_subplot(gs[0, 1])
     _plot_metric_line(ax, data, f"auroc{sfx}", hline=0.5, **kw)
     _style_ax(ax, "AUROC\n(annotated vs background)", ylabel="AUROC (↑ better)")
-    ax.legend(handles=_interp_legend(interps), fontsize=7)
+    ax.legend(handles=_interp_legend(interps), fontsize=11)
 
     ax = fig.add_subplot(gs[0, 2])
     _plot_metric_line(ax, data, f"auprc{sfx}", **kw)
     _style_ax(ax, "AUPRC\n(annotated vs background)", ylabel="AUPRC (↑ better)")
-    ax.legend(handles=_interp_legend(interps), fontsize=7)
+    ax.legend(handles=_interp_legend(interps), fontsize=11)
 
     ax = fig.add_subplot(gs[0, 3])
     _plot_metric_line(ax, data, f"{_prec_k_key}{sfx}", **kw)
     _style_ax(ax, _prec_k_title, ylabel=f"{_prec_k_lbl} (↑ better)")
-    ax.legend(handles=_interp_legend(interps), fontsize=7)
+    ax.legend(handles=_interp_legend(interps), fontsize=11)
 
     # ── Row 1: secondary metrics ──────────────────────────────────────────────
     ax = fig.add_subplot(gs[1, 0:2])
@@ -3213,14 +3190,14 @@ def make_figure(
         ax.axvline(nn_cutoff, color="#888", ls=":", lw=1.2, alpha=0.5)
     _style_ax(ax, f"Per-variant {_metric_label} ({track})\n(mean ± std across sequences)",
               ylabel=f"{_metric_label} (↑ better)")
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=11)
 
     ax = fig.add_subplot(gs[1, 2:4])
     _plot_metric_line(ax, data, "sign_acc", hline=0.5, **kw)
     _style_ax(ax, "Sign accuracy\n(mutated annotated positions)",
               ylabel="Fraction correct (↑ better)")
     ax.set_ylim(0, 1)
-    ax.legend(handles=_interp_legend(interps), fontsize=7)
+    ax.legend(handles=_interp_legend(interps), fontsize=11)
 
     # ── Row 2: category means (signed IG) ────────────────────────────────────
     cat_means_key = f"cat_means{sfx_s}"
@@ -3244,7 +3221,7 @@ def make_figure(
             f"(expected: {_expected_order})",
             ylabel=f"Mean {track_s} ({_top_label} ↑, bg ↓)",
         )
-        ax.legend(fontsize=7)
+        ax.legend(fontsize=11)
 
     _interps_alt = [i for i in ("gradient_x_input", "input_difference") if i in interps]
     _gs_alt = gridspec.GridSpecFromSubplotSpec(
@@ -3270,7 +3247,7 @@ def make_figure(
             f"(expected: {_expected_order})",
             ylabel=f"Mean {track_s}",
         )
-        ax.legend(handles=_cat_legend_handles, fontsize=6)
+        ax.legend(handles=_cat_legend_handles, fontsize=10)
 
     # ── Row 5: category separation ratio (|IG|) ───────────────────────────────
     _ANN_CATS_SEP = [c for c in CATS if c != "background"]
@@ -3305,7 +3282,7 @@ def make_figure(
             f"(mean |IG| / background mean; >1 = above bg)",
             ylabel="Separation ratio (↑ better)",
         )
-        ax.legend(fontsize=7)
+        ax.legend(fontsize=11)
 
     _gs_r5c3 = gridspec.GridSpecFromSubplotSpec(
         max(len(_interps_alt), 1), 1,
@@ -3324,7 +3301,7 @@ def make_figure(
             f"{INTERP_LABELS.get(interp_alt, interp_alt)}\n(sep ratio; >1 = above bg)",
             ylabel="Separation ratio",
         )
-        ax.legend(fontsize=6)
+        ax.legend(fontsize=10)
 
     # ── Row 3: per-variant violin plots + metric heatmap ────────────────────
     cmap_noise     = plt.cm.RdYlBu_r
@@ -3352,7 +3329,7 @@ def make_figure(
         if not _is_ndcg:
             ax.axhline(0, color="grey", ls="--", lw=1, alpha=0.5)
         ax.set_xticks(range(len(sorted_noises)))
-        ax.set_xticklabels([f"{n:.2g}" for n in sorted_noises], fontsize=8)
+        ax.set_xticklabels([f"{n:.2g}" for n in sorted_noises], fontsize=10)
         _style_ax(
             ax,
             f"Per-variant {_metric_label} dist. vs GT ({track})\n{INTERP_LABELS.get(interp, interp)}",
@@ -3362,7 +3339,7 @@ def make_figure(
         if col_idx == 2:
             sm = plt.cm.ScalarMappable(cmap=cmap_noise, norm=noise_norm)
             sm.set_array([])
-            plt.colorbar(sm, ax=ax, fraction=0.04, pad=0.02).set_label("Noise level", fontsize=8)
+            plt.colorbar(sm, ax=ax, fraction=0.04, pad=0.02).set_label("Noise level", fontsize=10)
 
     # Metric heatmap (row 3 col 3)
     ax = fig.add_subplot(gs[3, 3])
@@ -3385,11 +3362,11 @@ def make_figure(
     hm_norm = (hm_data - col_min) / np.where(col_max - col_min > 0, col_max - col_min, 1)
     im = ax.imshow(hm_norm, aspect="auto", cmap="RdYlGn", vmin=0, vmax=1)
     ax.set_xticks(range(len(metric_keys)))
-    ax.set_xticklabels(metric_lbls, fontsize=7, rotation=35, ha="right")
+    ax.set_xticklabels(metric_lbls, fontsize=11, rotation=35, ha="right")
     ax.set_yticks(range(len(row_lbls_hm)))
-    ax.set_yticklabels(row_lbls_hm, fontsize=7)
+    ax.set_yticklabels(row_lbls_hm, fontsize=11)
     ax.set_title("Metric heatmap (column-normalised)\ngreen = best, red = worst",
-                 fontsize=8, fontweight="bold")
+                 fontsize=10, fontweight="bold")
     plt.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
 
     # ── Row 4: per-sequence mutation ρ violins + summary line ────────────────
@@ -3414,18 +3391,18 @@ def make_figure(
         if not _is_ndcg:
             ax.axhline(0, color="grey", ls="--", lw=1, alpha=0.5)
         ax.set_xticks(range(len(sorted_noises)))
-        ax.set_xticklabels([f"{n:.2g}" for n in sorted_noises], fontsize=8)
+        ax.set_xticklabels([f"{n:.2g}" for n in sorted_noises], fontsize=10)
         _style_ax(
             ax,
-            f"Per-sequence mutation ρ distribution\n{INTERP_LABELS.get(interp, interp)}",
+            f"Per-sequence mutation {_metric_label} distribution\n{INTERP_LABELS.get(interp, interp)}",
             xlabel="Noise level",
             ylabel=f"{_metric_label} — LOO damage vs {track} (↑ better)",
         )
-        ax.legend(fontsize=7)
+        ax.legend(fontsize=11)
         if col_idx == 2:
             sm = plt.cm.ScalarMappable(cmap=cmap_noise, norm=noise_norm)
             sm.set_array([])
-            plt.colorbar(sm, ax=ax, fraction=0.04, pad=0.02).set_label("Noise level", fontsize=8)
+            plt.colorbar(sm, ax=ax, fraction=0.04, pad=0.02).set_label("Noise level", fontsize=10)
 
     ax = fig.add_subplot(gs[4, 3])
     _plot_metric_line(ax, data, _mut_sp_key, hline=None if _is_ndcg else 0.0, **kw)
@@ -3434,7 +3411,7 @@ def make_figure(
         f"Mean per-sequence mutation {_metric_label}\n(LOO damage vs {track})",
         ylabel=f"{_metric_label} (↑ better)",
     )
-    ax.legend(handles=_interp_legend(interps), fontsize=7)
+    ax.legend(handles=_interp_legend(interps), fontsize=11)
     if _is_ndcg:
         # Tight autoscale around the actual values — NDCG is always in [0, 1]
         # but typically clusters near 1; let matplotlib pick the range then add padding.
@@ -3455,9 +3432,354 @@ def make_figure(
     _split_suffix = f"_{split_label}" if split_label else ""
     fname    = f"{protein}_{fitness_model}_ig_quality_mixed{_split_suffix}{_fname_mfx}.png"
     out_path = output_dir / fname
-    fig.savefig(out_path, dpi=dpi, bbox_inches="tight", facecolor=FIG_BG)
+    fig.savefig(out_path, dpi=dpi, bbox_inches="tight", transparent=True)
     plt.close(fig)
     print(f"  Saved: {out_path}")
+
+
+# ---------------------------------------------------------------------------
+# Standalone single-panel plots (same aspect ratio as Row-1 subplots)
+# ---------------------------------------------------------------------------
+# The main quality figure is 22×31 with a 6×4 GridSpec.
+# Each 2-column-wide row-1 subplot occupies ~10.5 × 5.0 inches of figure space,
+# so standalone figures use figsize=(11, 5) to match.
+
+def plot_all_standalone(
+    protein: str,
+    fitness_model: str,
+    data: dict,
+    output_dir: "Path",
+    dpi: int = 150,
+    split_label: "str | None" = None,
+    errors: "dict | None" = None,
+    metric_family: str = "ndcg",
+) -> None:
+    """Generate every subplot from make_figure as an individual PNG.
+
+    Each panel uses figsize=(5.5, 5) to match the single-subplot aspect ratio
+    of the compiled 22×31 figure (22 / 4 columns = 5.5 per panel).
+    """
+    from pathlib import Path as _Path
+
+    _is_ndcg       = metric_family == "ndcg"
+    _global_key    = "ndcg"                if _is_ndcg else "spearman"
+    _global_key_s  = "ndcg_signed"         if _is_ndcg else "spearman_signed"
+    _pv_mean_key   = "pv_ndcg_mean"        if _is_ndcg else "pv_mean"
+    _pv_std_key    = "pv_ndcg_std"         if _is_ndcg else "pv_std"
+    _pv_vals_key   = "pv_ndcg_vals"        if _is_ndcg else "pv_vals"
+    _mut_sp_key    = "mutation_ndcg"        if _is_ndcg else "mutation_spearman"
+    _mut_rho_key   = "mutation_ndcg_vals"   if _is_ndcg else "mutation_rho_vals"
+    _fitpv_key_s   = "pv_fitness_ndcg_signed" if _is_ndcg else "pv_fitness_spearman_signed"
+    _prec_k_key    = "ap_graded"            if _is_ndcg else "prec_k"
+    _prec_k_lbl    = "AP@R (graded relevance)" if _is_ndcg else "Precision@K"
+    _metric_label  = "NDCG"                if _is_ndcg else "Spearman ρ"
+    _sp_hline      = None                  if _is_ndcg else 0.0
+    _fname_mfx     = "_ndcg"              if _is_ndcg else ""
+    _ml_abbrev     = "NDCG"               if _is_ndcg else "Spear."
+    _model_test_key = "model_test_ndcg"    if _is_ndcg else "model_test_spearman"
+    _model_val_key  = "model_val_ndcg"     if _is_ndcg else "model_val_spearman"
+    _model_test_lbl = "Model test NDCG"    if _is_ndcg else "Model test ρ"
+    _model_val_lbl  = "Model val NDCG"     if _is_ndcg else "Model val ρ"
+    track   = "|IG|"
+    track_s = "Signed IG"
+    sfx     = ""
+    sfx_s   = "_signed"
+
+    out_dir = _Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    _sp = f"_{split_label}" if split_label else ""
+    _pfx = f"{protein}_{fitness_model}"
+    _sx = f"{_sp}{_fname_mfx}"
+
+    non_linear_noises: list = []
+    for interp, noise_dict in data.items():
+        if interp != "linear":
+            non_linear_noises.extend(noise_dict.keys())
+    nn_cutoff = max(non_linear_noises) if non_linear_noises else None
+    kw = dict(nn_slerp_cutoff=nn_cutoff, errors=errors)
+
+    interps     = sorted(data.keys())
+    interps_r2  = [i for i in ("linear", "nearest_neighbor", "slerp") if i in interps]
+    interps_alt = [i for i in ("gradient_x_input", "input_difference") if i in interps]
+
+    if protein in _PROTEIN_DEFS:
+        cat_weights = _PROTEIN_DEFS[protein].category_weights
+        ann_cats = sorted(cat_weights, key=cat_weights.__getitem__)
+    else:
+        sample_nd = next(iter(data.values()), {})
+        sample_cm = next(iter(sample_nd.values()), {}).get("cat_means_signed", {})
+        ann_cats  = sorted(k for k in sample_cm if k != "background")
+    CATS    = ["background"] + ann_cats
+    top_cat = ann_cats[-1] if ann_cats else "binding_site"
+    _short  = {"background": "bg", "active_site": "active", "metal_binding": "metal",
+               "signalling": "NLS", "binding_site": "binding", "structural": "struct",
+               "folding": "fold"}
+    _expected_order = " < ".join(["bg"] + [_short.get(c, c) for c in ann_cats])
+    _top_label      = _short.get(top_cat, top_cat)
+    _ANN_CATS_SEP   = [c for c in CATS if c != "background"]
+
+    all_noises_g = sorted({n for nd in data.values() for n in nd})
+    cmap_noise   = plt.cm.RdYlBu_r
+    noise_norm   = plt.Normalize(
+        min(all_noises_g) if all_noises_g else 0,
+        max(all_noises_g) if all_noises_g else 1,
+    )
+
+    _cat_legend_handles = [
+        Line2D([0], [0], color=CAT_COLORS[cat], lw=2, label=CAT_LABELS[cat])
+        for cat in CATS
+    ]
+
+    def _save(fig, name):
+        p = out_dir / f"{_pfx}_{name}{_sx}.png"
+        fig.savefig(p, dpi=dpi, bbox_inches="tight", transparent=True)
+        plt.close(fig)
+        print(f"  Saved: {p}")
+
+    def _new():
+        return plt.subplots(figsize=(5.5, 5), facecolor=FIG_BG)
+
+    # ── Export legends as standalone PNGs ────────────────────────────────────
+    # Interp-method legend
+    _leg_fig = plt.figure(figsize=(3.5, 0.45 * (len(interps) + 0.5)), facecolor=FIG_BG)
+    _leg_ax  = _leg_fig.add_subplot(111)
+    _leg_ax.axis("off")
+    _leg_ax.legend(handles=_interp_legend(interps), fontsize=11,
+                   loc="center", framealpha=0.5, title="Interpolation method",
+                   title_fontsize=12)
+    _leg_fig.tight_layout()
+    _leg_path = out_dir / f"{_pfx}_legend_methods{_sp}.png"
+    _leg_fig.savefig(_leg_path, dpi=dpi, bbox_inches="tight", transparent=True)
+    plt.close(_leg_fig)
+    print(f"  Saved: {_leg_path}")
+
+    # Category legend
+    _cat_leg_fig = plt.figure(figsize=(3.5, 0.45 * (len(CATS) + 0.5)), facecolor=FIG_BG)
+    _cat_leg_ax  = _cat_leg_fig.add_subplot(111)
+    _cat_leg_ax.axis("off")
+    _cat_leg_ax.legend(handles=_cat_legend_handles, fontsize=11,
+                       loc="center", framealpha=0.5, title="Residue category",
+                       title_fontsize=12)
+    _cat_leg_fig.tight_layout()
+    _cat_leg_path = out_dir / f"{_pfx}_legend_categories{_sp}.png"
+    _cat_leg_fig.savefig(_cat_leg_path, dpi=dpi, bbox_inches="tight", transparent=True)
+    plt.close(_cat_leg_fig)
+    print(f"  Saved: {_cat_leg_path}")
+
+    def _sep_ratios_for(interp):
+        nd, xs = data.get(interp, {}), sorted(data.get(interp, {}))
+        out = {c: [] for c in _ANN_CATS_SEP}
+        for n in xs:
+            cm = nd[n].get("cat_means", {})
+            bg = cm.get("background", float("nan"))
+            for c in _ANN_CATS_SEP:
+                cv = cm.get(c, float("nan"))
+                out[c].append(cv / bg if (np.isfinite(cv) and np.isfinite(bg) and bg > 0) else float("nan"))
+        return xs, out
+
+    # ── Row 0: headline metrics ───────────────────────────────────────────────
+    # 0a: Global NDCG / Spearman
+    fig, ax = _new()
+    _plot_metric_line(ax, data, _global_key, hline=_sp_hline, **kw)
+    _style_ax(ax, f"Global {_metric_label}\n({track} vs GT importance)", ylabel=f"{_metric_label} (↑ better)")
+    fig.tight_layout()
+    _save(fig, "r0_global_ndcg")
+
+    # 0b: AUROC
+    fig, ax = _new()
+    _plot_metric_line(ax, data, f"auroc{sfx}", hline=0.5, **kw)
+    _style_ax(ax, "AUROC\n(annotated vs background)", ylabel="AUROC (↑ better)")
+    fig.tight_layout()
+    _save(fig, "r0_auroc")
+
+    # 0c: AUPRC
+    fig, ax = _new()
+    _plot_metric_line(ax, data, f"auprc{sfx}", **kw)
+    _style_ax(ax, "AUPRC\n(annotated vs background)", ylabel="AUPRC (↑ better)")
+    fig.tight_layout()
+    _save(fig, "r0_auprc")
+
+    # 0d: AP@R graded
+    fig, ax = _new()
+    _plot_metric_line(ax, data, f"{_prec_k_key}{sfx}", **kw)
+    _style_ax(ax, f"{_prec_k_lbl}\n(graded relevance)", ylabel=f"{_prec_k_lbl} (↑ better)")
+    fig.tight_layout()
+    _save(fig, "r0_ap_graded")
+
+    # ── Row 1: per-variant NDCG (mean±std) and sign accuracy ─────────────────
+    # 1a: PV NDCG
+    fig, ax = _new()
+    for interp, noise_dict in sorted(data.items()):
+        xs   = sorted(noise_dict)
+        ys_m = [noise_dict[n].get(_pv_mean_key, float("nan")) for n in xs]
+        ys_s = [noise_dict[n].get(_pv_std_key,  float("nan")) for n in xs]
+        col  = INTERP_COLORS.get(interp, "#888")
+        mk   = INTERP_MARKERS.get(interp, "o")
+        ax.plot(xs, ys_m, color=col, marker=mk, lw=2.0, ms=7, alpha=0.9,
+                label=INTERP_LABELS.get(interp, interp))
+        ys_lo = [m - s for m, s in zip(ys_m, ys_s)]
+        ys_hi = [m + s for m, s in zip(ys_m, ys_s)]
+        ax.fill_between(xs, ys_lo, ys_hi, alpha=0.12, color=col)
+        if errors is not None:
+            seed_err = [errors.get(interp, {}).get(n, {}).get(_pv_mean_key, 0.0) for n in xs]
+            ax.fill_between(xs, [m - e for m, e in zip(ys_m, seed_err)],
+                            [m + e for m, e in zip(ys_m, seed_err)], alpha=0.25, color=col, linewidth=0)
+    if _sp_hline is not None:
+        ax.axhline(_sp_hline, color="grey", ls="--", lw=1, alpha=0.5)
+    if nn_cutoff:
+        ax.axvline(nn_cutoff, color="#888", ls=":", lw=1.2, alpha=0.5)
+    _style_ax(ax, f"Per-variant {_metric_label} ({track})\n(mean ± std across sequences)",
+              ylabel=f"{_metric_label} (↑ better)")
+    fig.tight_layout()
+    _save(fig, "r1_pv_ndcg")
+
+    # 1b: Sign accuracy
+    fig, ax = _new()
+    _plot_metric_line(ax, data, "sign_acc", hline=0.5, **kw)
+    _style_ax(ax, "Sign accuracy\n(mutated annotated positions)", ylabel="Fraction correct (↑ better)")
+    ax.set_ylim(0, 1)
+    fig.tight_layout()
+    _save(fig, "r1_sign_accuracy")
+
+    # ── Row 2: category means (signed IG) per interpolation ──────────────────
+    for interp in interps_r2 + interps_alt:
+        noise_dict = data.get(interp, {})
+        xs = sorted(noise_dict)
+        fig, ax = _new()
+        for cat in CATS:
+            ys = [noise_dict[n].get(f"cat_means{sfx_s}", {}).get(cat, float("nan")) for n in xs]
+            ax.plot(xs, ys, color=CAT_COLORS[cat], marker=INTERP_MARKERS.get(interp, "o"),
+                    lw=2.0, ms=7, alpha=0.9, label=CAT_LABELS[cat])
+        _style_ax(ax, f"Category mean {track_s} — {INTERP_LABELS.get(interp, interp)}\n"
+                  f"(expected: {_expected_order})",
+                  ylabel=f"Mean {track_s} ({_top_label} ↑, bg ↓)")
+        fig.tight_layout()
+        _save(fig, f"r2_cat_means_{interp}")
+
+    # ── Row 3: per-variant NDCG violin plots ─────────────────────────────────
+    for interp in interps_r2:
+        noise_dict    = data.get(interp, {})
+        sorted_noises = sorted(noise_dict)
+        pv_data = [noise_dict[n].get(_pv_vals_key, [0.0]) for n in sorted_noises]
+        colors  = [cmap_noise(noise_norm(n)) for n in sorted_noises]
+        fig, ax = _new()
+        vp = ax.violinplot(pv_data, positions=range(len(sorted_noises)),
+                           showmedians=True, showextrema=True)
+        for body, col_c in zip(vp["bodies"], colors):
+            body.set_facecolor(col_c); body.set_alpha(0.7)
+        vp["cmedians"].set_color("black"); vp["cmedians"].set_linewidth(2)
+        vp["cbars"].set_color("black"); vp["cmaxes"].set_color("black"); vp["cmins"].set_color("black")
+        means = [float(np.mean(d)) if d else float("nan") for d in pv_data]
+        ax.scatter(range(len(sorted_noises)), means, color="black", zorder=5, s=35)
+        if not _is_ndcg:
+            ax.axhline(0, color="grey", ls="--", lw=1, alpha=0.5)
+        ax.set_xticks(range(len(sorted_noises)))
+        ax.set_xticklabels([f"{n:.2g}" for n in sorted_noises], fontsize=11)
+        sm = plt.cm.ScalarMappable(cmap=cmap_noise, norm=noise_norm)
+        sm.set_array([])
+        plt.colorbar(sm, ax=ax, fraction=0.04, pad=0.02).set_label("Noise level", fontsize=11)
+        _style_ax(ax, f"Per-variant {_metric_label} dist. ({track})\n{INTERP_LABELS.get(interp, interp)}",
+                  xlabel="Noise level", ylabel=f"Per-variant {_metric_label} (↑ better)")
+        fig.tight_layout()
+        _save(fig, f"r3_pv_violin_{interp}")
+
+    # 3d: Metric heatmap
+    metric_keys = [_global_key, f"auroc{sfx}", _pv_mean_key, "sign_acc",
+                   f"cat_sep{sfx}", _fitpv_key_s, _mut_sp_key]
+    metric_lbls = [_metric_label, "AUROC", f"PV {_ml_abbrev}", "Sign acc", "Cat sep",
+                   "Fit-PV", f"Mut {_ml_abbrev}"]
+    all_keys_hm = sorted([(interp, n) for interp, nd in data.items() for n in nd],
+                         key=lambda k: (k[0], k[1]))
+    row_lbls_hm = [f"{INTERP_LABELS.get(k[0], k[0])[:4]} n={k[1]:.2g}" for k in all_keys_hm]
+    hm_data = np.array([[data[k[0]][k[1]].get(m, float("nan")) for m in metric_keys]
+                        for k in all_keys_hm])
+    col_min = np.nanmin(hm_data, axis=0)
+    col_max = np.nanmax(hm_data, axis=0)
+    hm_norm = (hm_data - col_min) / np.where(col_max - col_min > 0, col_max - col_min, 1)
+    n_rows_hm = len(row_lbls_hm)
+    fig, ax = plt.subplots(figsize=(5.5, max(5, n_rows_hm * 0.35 + 1.5)), facecolor=FIG_BG)
+    im = ax.imshow(hm_norm, aspect="auto", cmap="RdYlGn", vmin=0, vmax=1)
+    ax.set_xticks(range(len(metric_keys)))
+    ax.set_xticklabels(metric_lbls, fontsize=11, rotation=35, ha="right")
+    ax.set_yticks(range(n_rows_hm))
+    ax.set_yticklabels(row_lbls_hm, fontsize=11)
+    ax.set_title("Metric heatmap (column-normalised)\ngreen = best, red = worst",
+                 fontsize=11, fontweight="bold")
+    plt.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+    fig.tight_layout()
+    _save(fig, "r3_metric_heatmap")
+
+    # ── Row 4: per-sequence mutation NDCG violin plots ───────────────────────
+    for interp in interps_r2:
+        noise_dict    = data.get(interp, {})
+        sorted_noises = sorted(noise_dict)
+        rho_data = [noise_dict[n].get(_mut_rho_key, [0.0]) for n in sorted_noises]
+        colors   = [cmap_noise(noise_norm(n)) for n in sorted_noises]
+        fig, ax  = _new()
+        valid = [d for d in rho_data if len(d) >= 2]
+        if valid:
+            vp = ax.violinplot(rho_data, positions=range(len(sorted_noises)),
+                               showmedians=True, showextrema=True)
+            for body, col_c in zip(vp["bodies"], colors):
+                body.set_facecolor(col_c); body.set_alpha(0.7)
+            vp["cmedians"].set_color("black"); vp["cmedians"].set_linewidth(2)
+            vp["cbars"].set_color("black"); vp["cmaxes"].set_color("black"); vp["cmins"].set_color("black")
+        means = [float(np.mean(d)) if d else float("nan") for d in rho_data]
+        ax.scatter(range(len(sorted_noises)), means, color="black", zorder=5, s=35, label="mean")
+        if not _is_ndcg:
+            ax.axhline(0, color="grey", ls="--", lw=1, alpha=0.5)
+        ax.set_xticks(range(len(sorted_noises)))
+        ax.set_xticklabels([f"{n:.2g}" for n in sorted_noises], fontsize=11)
+        sm = plt.cm.ScalarMappable(cmap=cmap_noise, norm=noise_norm)
+        sm.set_array([])
+        plt.colorbar(sm, ax=ax, fraction=0.04, pad=0.02).set_label("Noise level", fontsize=11)
+        _style_ax(ax, f"Per-sequence mutation {_metric_label} dist.\n{INTERP_LABELS.get(interp, interp)}",
+                  xlabel="Noise level", ylabel=f"{_metric_label} — LOO damage vs {track} (↑ better)")
+        fig.tight_layout()
+        _save(fig, f"r4_mut_violin_{interp}")
+
+    # 4d: Mean per-sequence mutation NDCG (line)
+    fig, ax = _new()
+    _plot_metric_line(ax, data, _mut_sp_key, hline=None if _is_ndcg else 0.0, **kw)
+    _style_ax(ax, f"Mean per-sequence mutation {_metric_label}\n(LOO damage vs {track})",
+              ylabel=f"{_metric_label} (↑ better)")
+    if _is_ndcg:
+        _all_mv = [nd[n].get(_mut_sp_key, float("nan")) for nd in data.values() for n in nd]
+        _finite = [v for v in _all_mv if np.isfinite(v)]
+        if _finite:
+            _lo, _hi = min(_finite), max(_finite)
+            _pad = max((_hi - _lo) * 0.25, 0.02)
+            ax.set_ylim(max(0.0, _lo - _pad), min(1.0, _hi + _pad))
+    fig.tight_layout()
+    _save(fig, "r4_mean_mut_ndcg")
+
+    # ── Row 5: category separation ratio ─────────────────────────────────────
+    for interp in interps_r2 + interps_alt:
+        xs, ratios = _sep_ratios_for(interp)
+        fig, ax = _new()
+        for cat in _ANN_CATS_SEP:
+            ax.plot(xs, ratios[cat], color=CAT_COLORS[cat],
+                    marker=INTERP_MARKERS.get(interp, "o"), lw=2.0, ms=7, alpha=0.9,
+                    label=CAT_LABELS[cat])
+        ax.axhline(1.0, color="#ADB5BD", ls="--", lw=1, alpha=0.7)
+        _style_ax(ax, f"Category separation — {INTERP_LABELS.get(interp, interp)}\n"
+                  f"(mean |IG| / background; >1 = above bg)",
+                  ylabel="Separation ratio (↑ better)")
+        fig.tight_layout()
+        _save(fig, f"r5_cat_sep_{interp}")
+
+
+# Keep backward-compatible aliases
+def plot_standalone_pv_ndcg(protein, fitness_model, data, output_dir,
+                             dpi=150, split_label=None, errors=None, metric_family="ndcg"):
+    """Deprecated: use plot_all_standalone instead."""
+    plot_all_standalone(protein, fitness_model, data, output_dir, dpi, split_label, errors, metric_family)
+
+
+def plot_standalone_sign_accuracy(protein, fitness_model, data, output_dir,
+                                   dpi=150, split_label=None, errors=None, metric_family="ndcg"):
+    """Deprecated: use plot_all_standalone instead."""
+    pass  # already called by plot_standalone_pv_ndcg via plot_all_standalone
 
 
 # ---------------------------------------------------------------------------
@@ -3534,7 +3856,7 @@ def plot_critical_difference(
         col = _ms_method_color(methods[idx])
         ax.plot(r, 0, "o", color=col, ms=8, zorder=3)
         ax.text(r, 0.15 + 0.25 * (i % 2), lbl,
-                ha="center", va="bottom", fontsize=9, color=col)
+                ha="center", va="bottom", fontsize=11, color=col)
 
     ax.annotate("", xy=(1 + cd, -0.9), xytext=(1, -0.9),
                 arrowprops=dict(arrowstyle="<->", color="black", lw=1.5))
@@ -3579,7 +3901,7 @@ def plot_critical_difference(
     fig.tight_layout()
     out = _Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=dpi, bbox_inches="tight")
+    fig.savefig(out, dpi=dpi, bbox_inches="tight", transparent=True)
     plt.close(fig)
     print(f"  Saved: {out}")
 
@@ -3603,6 +3925,8 @@ def plot_composite_noise_curves(
         for ax in ax_row:
             ax.set_visible(False)
 
+    _has_model_perf = "model_test_spearman" in df.columns
+
     for i, scenario in enumerate(scenarios):
         ax  = axes[i // ncols][i % ncols]
         ax.set_visible(True)
@@ -3620,13 +3944,44 @@ def plot_composite_noise_curves(
         ax.set_ylim(-0.05, 1.05)
         ax.grid(True, alpha=0.3)
 
+        # ── Right y-axis: model test-set Spearman ρ ───────────────────────
+        if _has_model_perf:
+            # Average across methods (model perf is per scenario×noise, not per method)
+            perf = (
+                sub.groupby("noise")["model_test_spearman"]
+                .mean()
+                .reset_index()
+                .sort_values("noise")
+                .dropna(subset=["model_test_spearman"])
+            )
+            if not perf.empty:
+                ax2 = ax.twinx()
+                ax2.plot(
+                    perf["noise"], perf["model_test_spearman"],
+                    "s--", color="#555555", lw=1.5, ms=5,
+                    alpha=0.7, label="Model test ρ", zorder=2,
+                )
+                ax2.set_ylabel("Model test Spearman ρ", fontsize=8, color="#555555")
+                ax2.tick_params(axis="y", labelcolor="#555555", labelsize=7)
+                _rho_vals = perf["model_test_spearman"].values
+                _finite   = _rho_vals[np.isfinite(_rho_vals)]
+                if len(_finite):
+                    _pad = max(0.05, (float(_finite.max()) - float(_finite.min())) * 0.2)
+                    ax2.set_ylim(float(_finite.min()) - _pad, float(_finite.max()) + _pad)
+                ax2.spines["right"].set_color("#555555")
+
     handles = [
         mpatches.Patch(color=_ms_method_color(m), label=_ms_method_label(m))
         for m in methods
     ]
+    if _has_model_perf:
+        handles.append(
+            Line2D([0], [0], color="#555555", lw=1.5, ls="--", marker="s",
+                   ms=5, alpha=0.7, label="Model test ρ (right axis)")
+        )
     fig.legend(
         handles=handles, fontsize=8, loc="lower center",
-        ncol=min(len(methods), 5),
+        ncol=min(len(handles), 6),
         bbox_to_anchor=(0.5, -0.02), framealpha=0,
     )
     fig.suptitle(
@@ -3636,7 +3991,7 @@ def plot_composite_noise_curves(
     fig.tight_layout()
     out = _Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=dpi, bbox_inches="tight")
+    fig.savefig(out, dpi=dpi, bbox_inches="tight", transparent=True)
     plt.close(fig)
     print(f"  Saved: {out}")
 
@@ -3684,7 +4039,7 @@ def plot_auc_heatmap(
     fig.tight_layout()
     out = _Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=dpi, bbox_inches="tight")
+    fig.savefig(out, dpi=dpi, bbox_inches="tight", transparent=True)
     plt.close(fig)
     print(f"  Saved: {out}")
 
@@ -3732,7 +4087,7 @@ def plot_peak_vs_decay(
     fig.tight_layout()
     out = _Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=dpi, bbox_inches="tight")
+    fig.savefig(out, dpi=dpi, bbox_inches="tight", transparent=True)
     plt.close(fig)
     print(f"  Saved: {out}")
 
@@ -3773,8 +4128,14 @@ def plot_metric_breakdown(
         col     = f"_norm_{key}" if normalize else key
         for j, method in enumerate(methods):
             sub  = df0[df0["method"] == method].set_index("scenario")
+            def _scalar(v):
+                import pandas as _pd
+                if isinstance(v, _pd.Series):
+                    return float(v.mean()) if len(v) else float("nan")
+                return float(v)
+
             vals = [
-                sub.loc[s, col] if s in sub.index and col in sub.columns
+                _scalar(sub.loc[s, col]) if s in sub.index and col in sub.columns
                 else float("nan")
                 for s in scenarios
             ]
@@ -3794,6 +4155,8 @@ def plot_metric_breakdown(
         else:
             ax.set_ylabel(label, fontsize=9)
             ax.set_title(f"{label} (raw, noise = 0)", fontsize=10)
+            if key == "cat_sep":
+                ax.set_yscale("log")
         ax.grid(axis="y", alpha=0.3)
         if row_i == 0:
             ax.legend(fontsize=8, ncol=len(methods))
@@ -3803,7 +4166,7 @@ def plot_metric_breakdown(
     fig.tight_layout()
     out = _Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=dpi, bbox_inches="tight")
+    fig.savefig(out, dpi=dpi, bbox_inches="tight", transparent=True)
     plt.close(fig)
     print(f"  Saved: {out}")
 
@@ -3912,7 +4275,7 @@ def plot_fla_correlation_heatmap(
     fig.tight_layout()
     out = _Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=dpi, bbox_inches="tight")
+    fig.savefig(out, dpi=dpi, bbox_inches="tight", transparent=True)
     plt.close(fig)
     print(f"  Saved: {out.name}")
 
@@ -3993,6 +4356,8 @@ def plot_synthetic_dataset_overview(
     save_path: Optional[str] = None,
     dpi: int = 200,
     deep: bool = False,
+    facecolor: str = FIG_BG,
+    transparent: bool = False,
 ) -> None:
     """
     Plot an overview of one or more synthetic datasets.
@@ -4030,7 +4395,8 @@ def plot_synthetic_dataset_overview(
         figsize=(10, 3.2 * nrows),
         squeeze=False,
     )
-    fig.patch.set_facecolor(FIG_BG)
+    _bg = "none" if transparent else facecolor
+    fig.patch.set_facecolor(_bg)
 
     sup_suffix = " (deep variants)" if deep else ""
     fig.suptitle(
@@ -4044,7 +4410,7 @@ def plot_synthetic_dataset_overview(
         ax_bar = axes[row_idx][0]
         ax_fit = axes[row_idx][1]
         for ax in (ax_bar, ax_fit):
-            ax.set_facecolor(FIG_BG)
+            ax.set_facecolor("none" if transparent else facecolor)
 
         # ── Determine ordered tiers present in this dataset ──────────────
         all_tiers_ordered = ["wildtype", "single", "double", "triple", "multi"]
@@ -4127,7 +4493,7 @@ def plot_synthetic_dataset_overview(
 
     if save_path:
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
+        fig.savefig(save_path, dpi=dpi, bbox_inches="tight", transparent=True)
         print(f"Synthetic dataset overview saved → {save_path}")
     else:
         plt.show()
@@ -4240,8 +4606,12 @@ def plot_attribution_vs_mutation_coverage(
     # Ground-truth annotation colours
     _GT_CATEGORY_COLORS = {
         "binding_site": "#d73027",
+        "active_site":  "#d73027",
         "structural":   "#4575b4",
         "folding":      "#74add1",
+        "catalytic":    "#a50026",
+        "interface":    "#f46d43",
+        "allosteric":   "#fee090",
     }
     gt_annotations: dict[int, str] = {}
     if ground_truth and "annotations" in ground_truth:
@@ -4266,7 +4636,7 @@ def plot_attribution_vs_mutation_coverage(
     for pos in all_positions:
         cat = gt_annotations.get(pos)
         if cat:
-            color = _GT_CATEGORY_COLORS.get(cat, "#cccccc")
+            color = _GT_CATEGORY_COLORS.get(cat, "#9E9E9E")
             ax_mut.axvspan(pos - 0.5, pos + 0.5, color=color, alpha=0.12, linewidth=0)
             if cat not in gt_shaded:
                 gt_shaded[cat] = True
@@ -4282,7 +4652,11 @@ def plot_attribution_vs_mutation_coverage(
 
     if gt_shaded:
         handles = [
-            mpatches.Patch(color=_GT_CATEGORY_COLORS[c], alpha=0.35, label=c.replace("_", " ").title())
+            mpatches.Patch(
+                color=_GT_CATEGORY_COLORS.get(c, "#9E9E9E"),
+                alpha=0.35,
+                label=c.replace("_", " ").title(),
+            )
             for c in gt_shaded
         ]
         ax_mut.legend(handles=handles, fontsize=6.5, framealpha=0.6, loc="upper left",
@@ -4318,7 +4692,7 @@ def plot_attribution_vs_mutation_coverage(
             cat = gt_annotations.get(pos)
             if cat:
                 ax.axvspan(pos - 0.5, pos + 0.5,
-                           color=_GT_CATEGORY_COLORS.get(cat, "#cccccc"),
+                           color=_GT_CATEGORY_COLORS.get(cat, "#9E9E9E"),
                            alpha=0.10, linewidth=0)
 
         # Dual: normalised mutation freq (grey fill) + attribution (coloured line)
@@ -4353,7 +4727,7 @@ def plot_attribution_vs_mutation_coverage(
 
     if save_path:
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
+        fig.savefig(save_path, dpi=dpi, bbox_inches="tight", transparent=True)
         print(f"Attribution vs. mutation coverage saved → {save_path}")
     else:
         plt.show()

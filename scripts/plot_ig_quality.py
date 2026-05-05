@@ -82,6 +82,7 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
+matplotlib.rcParams["savefig.transparent"] = True
 
 # ---------------------------------------------------------------------------
 # Project layout
@@ -126,6 +127,7 @@ from src.igloo.plot import (  # noqa: E402
     _plot_metric_line,
     _interp_legend,
     make_figure,
+    plot_all_standalone,
 )
 
 
@@ -328,6 +330,7 @@ def main() -> None:
             results_root,
             proteins=args.proteins,
             fitness_models=args.fitness_models,
+            name_contains=args.name_contains,
         )
         if not entries:
             print("No result directories found. Check your --results-dir and filters.")
@@ -430,9 +433,9 @@ def main() -> None:
             lbl = split_labels[split]
             print(f"\n  Figure [{lbl}]: {protein} / {fm}")
             _errors_for_pfm = seed_errors.get(split, {}).get((protein, fm)) if args.multi_seed else None
-            make_figure(
+            _fig_kwargs = dict(
                 protein=protein,
-                fitness_model=fm,  # fm is now the display label (e.g. 'additive_deep')
+                fitness_model=fm,
                 data=interp_data,
                 output_dir=output_dir,
                 dpi=args.dpi,
@@ -440,6 +443,8 @@ def main() -> None:
                 errors=_errors_for_pfm,
                 metric_family="ndcg",
             )
+            make_figure(**_fig_kwargs)
+            plot_all_standalone(**_fig_kwargs)
 
     # ── Save collapse stats CSV ──────────────────────────────────────────────
     import pandas as _pd

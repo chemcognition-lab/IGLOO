@@ -47,6 +47,7 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
+matplotlib.rcParams["savefig.transparent"] = True
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
@@ -222,8 +223,10 @@ def load_all_metrics(
         }
         for key in METRIC_KEYS:
             row[key] = metrics.get(key, float("nan"))
-        row["collapse_frac"] = metrics.get("collapse_frac", float("nan"))
-        row["n_reliable"]    = metrics.get("n_reliable",    float("nan"))
+        row["collapse_frac"]       = metrics.get("collapse_frac",       float("nan"))
+        row["n_reliable"]          = metrics.get("n_reliable",          float("nan"))
+        row["model_test_spearman"] = metrics.get("model_test_spearman", float("nan"))
+        row["model_test_ndcg"]     = metrics.get("model_test_ndcg",     float("nan"))
         rows.append(row)
         vals = "  ".join(
             f"{METRIC_LABELS[k]}={row[k]:.3f}" for k in METRIC_KEYS
@@ -519,13 +522,14 @@ def run_decision_tree(
     # Feature-importance bar chart
     importances = clf.feature_importances_
     fig, ax     = plt.subplots(figsize=(7, 3.5))
-    cols        = [_FALLBACK_COLORS[i % len(_FALLBACK_COLORS)] for i in range(len(feat_cols))]
+    _fb = ["#4C72B0","#DD8452","#55A868","#C44E52","#8172B3","#937860","#DA8BC3","#8C8C8C","#CCB974","#64B5CD"]
+    cols        = [_fb[i % len(_fb)] for i in range(len(feat_cols))]
     bars        = ax.barh(feat_cols, importances, color=cols)
     ax.set_xlabel("Feature importance", fontsize=11)
     ax.set_title("Decision tree: scenario features predicting the best method", fontsize=11)
     ax.bar_label(bars, fmt="%.3f", padding=3, fontsize=8)
     fig.tight_layout()
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
+    fig.savefig(output_path, dpi=dpi, bbox_inches="tight", transparent=True)
     plt.close(fig)
     print(f"  Saved: {output_path}")
     return rules

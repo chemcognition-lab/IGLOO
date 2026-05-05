@@ -15,6 +15,7 @@
 #   bash jobs/submit_sweep_pLM.sh --data-model=nonlinear  # one data model only
 #   bash jobs/submit_sweep_pLM.sh --interp=linear         # one path only
 #   bash jobs/submit_sweep_pLM.sh --seed=0 --seed=1       # multiple seeds
+#   bash jobs/submit_sweep_pLM.sh --time=0:45:00          # override wall-time for all submitted jobs
 #
 # Per-protein SLURM resources (same tiers as submit_sweep.sh):
 #   GB1        → H100 GPU, 128 GB RAM, 2 h   (3 h for nearest_neighbor)
@@ -31,6 +32,7 @@ DM_FILTER=""
 PLM_FILTER=""
 INTERP_FILTER=""
 SEED_FILTER=""
+TIME_OVERRIDE=""
 
 for arg in "$@"; do
     case "$arg" in
@@ -41,6 +43,7 @@ for arg in "$@"; do
         --plm=*)        PLM_FILTER="${arg#--plm=}" ;;
         --interp=*)     INTERP_FILTER="${arg#--interp=}" ;;
         --seed=*)       SEED_FILTER="${arg#--seed=}" ;;
+        --time=*)       TIME_OVERRIDE="${arg#--time=}" ;;
     esac
 done
 
@@ -134,6 +137,9 @@ for PROTEIN in "${PROTEINS[@]}"; do
                 fi
                 if _is_large_plm "$PLM"; then
                     JOB_TIME="$(_add_half_time "$JOB_TIME")"
+                fi
+                if [[ -n "$TIME_OVERRIDE" ]]; then
+                    JOB_TIME="$TIME_OVERRIDE"
                 fi
 
                 SBATCH_CMD=(

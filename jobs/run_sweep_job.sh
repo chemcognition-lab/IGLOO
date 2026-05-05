@@ -58,5 +58,5 @@ python scripts/run_integrated_gradients.py "${BASE_CONFIG}" \
     training.seed="${SEED}" \
     model_dir="${MODEL_DIR}" \
     results_dir="${RESULTS_DIR}" \
-    force_retrain=true \
+    force_retrain=false \
     "${EXTRA_ARGS[@]+${EXTRA_ARGS[@]}}"

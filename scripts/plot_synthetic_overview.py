@@ -82,6 +82,16 @@ def _parse_args() -> argparse.Namespace:
         default=200,
         help="Resolution (dots per inch) for saved figures.",
     )
+    parser.add_argument(
+        "--white-bg",
+        action="store_true",
+        help="Use a white background instead of the default dark theme.",
+    )
+    parser.add_argument(
+        "--transparent",
+        action="store_true",
+        help="Save with a transparent background.",
+    )
     return parser.parse_args()
 
 
@@ -110,11 +120,17 @@ def main() -> None:
 
     print(f"  Found {len(datasets)} dataset(s): {', '.join(datasets.keys())}")
 
+    _facecolor = "white" if args.white_bg else None
+    _fc_kwargs  = {} if _facecolor is None else {"facecolor": _facecolor}
+    if args.transparent:
+        _fc_kwargs["transparent"] = True
+
     out_standard = output_dir / "dataset_overview.png"
     plot_synthetic_dataset_overview(
         datasets,
         save_path=str(out_standard),
         dpi=args.dpi,
+        **_fc_kwargs,
     )
 
     # ── Deep datasets ────────────────────────────────────────────────────
@@ -137,6 +153,7 @@ def main() -> None:
                     save_path=str(out_deep),
                     dpi=args.dpi,
                     deep=True,
+                    **_fc_kwargs,
                 )
             else:
                 print("  No deep datasets matched the given filters — skipping.")

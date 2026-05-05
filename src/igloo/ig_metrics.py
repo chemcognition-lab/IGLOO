@@ -132,6 +132,7 @@ def discover_result_dirs(
     root: Path,
     proteins: list[str] | None = None,
     fitness_models: list[str] | None = None,
+    name_contains: str | None = None,
 ) -> list[tuple[str, str, float, str, Path]]:
     """Walk *root* and return ``(protein, fitness_model, noise, interp, path)`` tuples.
 
@@ -139,6 +140,14 @@ def discover_result_dirs(
 
         root/{Protein}_{fitness_model}/noise_{level}/{interp}/
             *_integrated_gradients_results.csv
+
+    Parameters
+    ----------
+    name_contains :
+        If given, only top-level directories whose name contains this string
+        are included (e.g. ``"deep"``).  If *None*, only directories whose
+        name is exactly ``{Protein}_{fitness_model}`` are included (no suffix),
+        preventing e.g. ``GB1_additive_deep`` from polluting a standard GB1 run.
     """
     _SUFFIXES = (
         "_integrated_gradients_results.csv",
@@ -167,6 +176,13 @@ def discover_result_dirs(
             continue
         if fitness_models and fm      not in fitness_models:
             continue
+        # Strict name matching: prevent e.g. GB1_additive_deep contaminating GB1_additive
+        if name_contains is not None:
+            if name_contains not in prot_fm:
+                continue
+        else:
+            if prot_fm != f"{protein}_{fm}":
+                continue
         found_noise = False
         for level2 in sorted(level1.iterdir()):
             if not level2.is_dir():

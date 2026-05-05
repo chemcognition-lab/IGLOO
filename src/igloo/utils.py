@@ -1,6 +1,8 @@
 import os
 
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.rcParams["savefig.transparent"] = True
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
@@ -203,7 +205,7 @@ def plot_predicted_vs_actual(y_true, y_pred, save_path, title="Predicted vs Actu
     plt.tight_layout()
 
     # Save the plot
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
     plt.close()
 
     print(f"Predicted vs Actual plot saved to: {save_path}")
