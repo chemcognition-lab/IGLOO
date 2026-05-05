@@ -13,6 +13,11 @@
 
 A systematic pipeline for evaluating Integrated Gradients (IG) attribution quality on protein fitness landscapes. IGLOO trains pLM-based regression models, computes IG attributions along configurable interpolation paths, and benchmarks the faithfulness of those attributions against known ground-truth mutation effects using synthetic datasets, FLIP2, and ProteinGym DMS assays.
 
+.. image:: assets/IGLOO_F2.png
+        :alt: IGLOO overview figure
+        :align: center
+        :width: 100%
+
 **Key Features**
 ------------------
 
