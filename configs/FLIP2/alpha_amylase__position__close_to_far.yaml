@@ -1,0 +1,54 @@
+# FLIP2 Alpha-amylase — position__close_to_far split
+# Train: mutations at positions close to the active site (~48% of data)
+# Test:  mutations at positions far from the active site (~52% of data)
+# Reference: Dallago et al. 2021 / FLIP2 benchmark
+
+data:
+  name: "alpha_amylase__position__close_to_far"
+  path: "data/FLIP2_processed/alpha_amylase__position__close_to_far_combined.csv"
+  target_column: "quantitative_function"
+  normalization: "z-score"
+  wildtype:
+    method: "variant_column"
+    variant_column: "mutant"
+    wildtype_value: "WT"
+
+training:
+  split_method: "column"       # use the pre-existing 'set' column (train/test)
+  split_column: "set"
+  n_folds: 5
+  seed: 42
+
+model:
+  esm_model_name: "esmc_300m"
+  esm_layer: 33
+  pooling_method: "mean"
+  hidden_dim1: 1024
+  hidden_dim2: 512
+  hidden_dim3: 256
+  hidden_dim4: 128
+  dropout_rate: 0.25
+  learning_rate: 0.0002
+  batch_size: 128
+  epochs: 250
+  loss_type: "huber"
+  final_activation: null
+
+integrated_gradients:
+  method: "embedding"
+  attribution_method: "signed"
+  interpolation_path: "linear"
+  steps: 500
+  batch_size: 10
+
+analysis:
+  sequence_selection:
+    include_extremes: true
+    include_median: true
+    include_top_n: 0
+    include_all: true
+    include_bottom_n: 0
+    custom_sequences: []
+
+results_dir: "results/FLIP2/alpha_amylase__position__close_to_far"
+force_retrain: false

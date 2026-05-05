@@ -136,6 +136,8 @@ IGLOO_env/
 /results/betalactamase_token_signed/
 /results/results_xgb/
 /results/synthetic/
+/results/FLIP2/
+/results/ProteinGym/
 # Keep these tracked: betalactamase_embedding_signed, ERBC_embedding_signed, PafA_embedding_signed
 
 # Logs

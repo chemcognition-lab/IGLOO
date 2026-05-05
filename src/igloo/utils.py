@@ -1,6 +1,8 @@
 import os
 
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.rcParams["savefig.transparent"] = True
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
@@ -203,7 +205,7 @@ def plot_predicted_vs_actual(y_true, y_pred, save_path, title="Predicted vs Actu
     plt.tight_layout()
 
     # Save the plot
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
     plt.close()
 
     print(f"Predicted vs Actual plot saved to: {save_path}")
@@ -309,7 +311,8 @@ def evaluate_model_performance(
     print("Getting embeddings for evaluation...")
     embeddings_subdir = 'synthetic' if 'synthetic' in config.get('data', {}).get('path', '') else None
     esm_model_name = model_config.get('esm_model_name', 'esmc_300m')
-    embedding_cache_name = f"{config['data']['name']}_integrated_gradients_{split_name}"
+    _model_tag = esm_model_name.lower().replace("-", "_")
+    embedding_cache_name = f"{config['data']['name']}_{_model_tag}_integrated_gradients_{split_name}"
     all_embeddings = get_embeddings(
         sequences,
         layer=model_config['esm_layer'],

@@ -318,7 +318,7 @@ def plot_attribution_landscape(
     plt.tight_layout()
     
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
         print(f"Attribution landscape saved to {save_path}")
     
     plt.show()

@@ -7,7 +7,9 @@ and predict the effects using trained models.
 
 from typing import Optional
 
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.rcParams["savefig.transparent"] = True
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -297,7 +299,7 @@ def plot_mutation_landscape(
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
         print(f"Mutation landscape plot saved to {save_path}")
 
     plt.show()

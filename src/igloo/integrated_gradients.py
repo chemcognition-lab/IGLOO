@@ -41,9 +41,10 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
     alphabet  = esm_backend.alphabet  # None for ESM-C
 
     # Guard: token-level IG requires ESM-2
-    if ig_method == 'token' and esm_backend.family == 'esmc':
+    if ig_method == 'token' and esm_backend.family != 'esm2':
         raise ValueError(
-            "Token-level integrated gradients is not supported with ESM-C models. "
+            f"Token-level integrated gradients is not supported with "
+            f"{esm_backend.family!r} models (ESM-2 only). "
             "Set 'integrated_gradients.method: embedding' in your config."
         )
     attribution_method = ig_config.get('attribution_method', 'magnitude')
@@ -58,7 +59,8 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
     _lookup_seqs = trainval_sequences if trainval_sequences is not None else sequences
     print(f"Building sequence embedding lookup from training cache ({len(_lookup_seqs)} sequences)...")
     esm_layer = model_config['esm_layer']
-    _train_cache_name = f"{config['data']['name']}_integrated_gradients"
+    _model_tag = model_config.get('esm_model_name', 'esmc_300m').lower().replace("-", "_")
+    _train_cache_name = f"{config['data']['name']}_{_model_tag}_integrated_gradients"
     train_emb_np = get_embeddings(
         _lookup_seqs,
         layer=esm_layer,
@@ -72,7 +74,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
     # Also pull in test-set embeddings from their evaluation cache.
     if test_sequences:
         print(f"  Adding test-set embeddings to lookup ({len(test_sequences)} sequences)...")
-        _test_cache_name = f"{config['data']['name']}_integrated_gradients_test"
+        _test_cache_name = f"{config['data']['name']}_{_model_tag}_integrated_gradients_test"
         test_emb_np = get_embeddings(
             test_sequences,
             layer=esm_layer,
@@ -170,6 +172,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 embeddings_subdir=embeddings_subdir,
                 interpolation_path=interpolation_path,
                 plot_interpolation_umap=plot_umap,
+                nn_waypoints=ig_config.get('nn_waypoints', 10),
                 interpolation_umap_save_path=(
                     os.path.join(results_dir, f"{name}_interpolation_umap.png")
                     if plot_umap else None

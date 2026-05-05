@@ -13,7 +13,9 @@ import os
 import sys
 from pathlib import Path
 
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.rcParams["savefig.transparent"] = True
 import pandas as pd
 import yaml
 from Bio import PDB
@@ -352,8 +354,7 @@ def generate_color_legend(output_dir, dataset_name, df=None, normalization_metho
     except UserWarning:
         # Ignore tight layout warnings for colorbar-only figures
         pass
-    plt.savefig(legend_path, dpi=dpi, bbox_inches='tight',
-                facecolor='white', edgecolor='none')
+    plt.savefig(legend_path, dpi=dpi, bbox_inches='tight', transparent=True)
     plt.close(fig)
 
     print(f"Generated color legend: {legend_path}")

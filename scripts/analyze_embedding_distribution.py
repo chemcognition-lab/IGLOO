@@ -77,7 +77,9 @@ import sys
 import warnings
 from pathlib import Path
 
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.rcParams["savefig.transparent"] = True
 import numpy as np
 import torch
 from scipy.linalg import sqrtm
@@ -216,7 +218,7 @@ def plot_data_distribution(pooled_embs: np.ndarray, dataset_name: str,
 
     plt.tight_layout()
     path = os.path.join(output_dir, f'{dataset_name}_pairwise_distances.png')
-    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.savefig(path, dpi=150, bbox_inches='tight', transparent=True)
     plt.close()
     print(f"  Saved: {path}")
 
@@ -243,7 +245,7 @@ def plot_data_distribution(pooled_embs: np.ndarray, dataset_name: str,
     fig.suptitle(f'{dataset_name}: Sample of {n_dim_show} Embedding Dimensions', fontsize=10)
     plt.tight_layout()
     path = os.path.join(output_dir, f'{dataset_name}_dimension_histograms.png')
-    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.savefig(path, dpi=150, bbox_inches='tight', transparent=True)
     plt.close()
     print(f"  Saved: {path}")
 
@@ -261,7 +263,7 @@ def plot_data_distribution(pooled_embs: np.ndarray, dataset_name: str,
     ax.legend()
     plt.tight_layout()
     path = os.path.join(output_dir, f'{dataset_name}_embedding_norms.png')
-    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.savefig(path, dpi=150, bbox_inches='tight', transparent=True)
     plt.close()
     print(f"  Saved: {path}")
 
@@ -351,7 +353,7 @@ def plot_all_dimensions_kde(pooled_embs: np.ndarray, dataset_name: str,
 
     plt.tight_layout()
     path = os.path.join(output_dir, f'{dataset_name}_all_dims_kde.png')
-    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.savefig(path, dpi=150, bbox_inches='tight', transparent=True)
     plt.close()
     print(f"  Saved: {path}")
 
@@ -569,7 +571,7 @@ def compute_and_plot_fed(real_pooled: np.ndarray, path_pooled: np.ndarray,
 
     plt.tight_layout()
     path = os.path.join(output_dir, f'{dataset_name}_FED_{interpolation_method}.png')
-    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.savefig(path, dpi=150, bbox_inches='tight', transparent=True)
     plt.close()
     print(f"  Saved: {path}")
 
@@ -613,7 +615,7 @@ def compute_and_plot_fed(real_pooled: np.ndarray, path_pooled: np.ndarray,
     plt.tight_layout()
     perdim_path = os.path.join(output_dir,
                                f'{dataset_name}_perdim_mean_std_{interpolation_method}.png')
-    plt.savefig(perdim_path, dpi=150, bbox_inches='tight')
+    plt.savefig(perdim_path, dpi=150, bbox_inches='tight', transparent=True)
     plt.close()
     print(f"  Saved: {perdim_path}")
 
@@ -729,7 +731,7 @@ def plot_fed_boxplot(
 
     plt.tight_layout()
     out_path = os.path.join(output_dir, f'{dataset_name}_FED_boxplot.png')
-    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.savefig(out_path, dpi=150, bbox_inches='tight', transparent=True)
     plt.close()
     print(f"  Saved: {out_path}")
 
@@ -919,7 +921,7 @@ def plot_individual_paths_pca(
 
     out_path = os.path.join(output_dir,
                             f'{dataset_name}_individual_paths_{interpolation_method}.png')
-    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.savefig(out_path, dpi=150, bbox_inches='tight', transparent=True)
     plt.close()
     print(f"  Saved: {out_path}")
 
@@ -1115,7 +1117,7 @@ def plot_als(als_result: dict, dataset_name: str, output_dir: str,
 
     plt.tight_layout()
     path = os.path.join(output_dir, f'{dataset_name}_ALS_{interpolation_method}.png')
-    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.savefig(path, dpi=150, bbox_inches='tight', transparent=True)
     plt.close()
     print(f"  Saved: {path}")
 
@@ -1240,7 +1242,7 @@ def plot_methods_comparison_pca(
 
     plt.tight_layout()
     out_path = os.path.join(output_dir, f'{dataset_name}_paths_method_comparison.png')
-    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.savefig(out_path, dpi=150, bbox_inches='tight', transparent=True)
     plt.close()
     print(f"  Saved: {out_path}")
 

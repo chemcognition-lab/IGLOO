@@ -367,11 +367,57 @@ def _mutate_sequence(
     return "".join(seq), mutations
 
 
-def _sample_n_mutations(rng: np.random.Generator, n_variants: int) -> list[int]:
+# ---------------------------------------------------------------------------
+# Named mutation profiles
+# ---------------------------------------------------------------------------
+
+_MUTATION_PROFILES: dict[str, dict[int, float]] = {
+    # Classic: dominated by singles, sparse doubles/triples
+    "standard": {1: 0.70, 2: 0.20, 3: 0.10},
+    # "Deep" / high-order: sporadic distribution up to 10 mutations per variant
+    # Peaks at 3–5 mutations; very few singles or extreme (>8) mutants.
+    "deep": {
+        1: 0.05, 2: 0.10, 3: 0.18, 4: 0.20, 5: 0.18,
+        6: 0.12, 7: 0.08, 8: 0.05, 9: 0.03, 10: 0.01,
+    },
+}
+
+
+def _sample_n_mutations(
+    rng: np.random.Generator,
+    n_variants: int,
+    mutation_profile: str | dict[int, float] | None = None,
+) -> list[int]:
+    """Sample per-variant mutation counts from a named profile or custom weight dict.
+
+    Parameters
+    ----------
+    rng              : NumPy random generator
+    n_variants       : how many counts to draw
+    mutation_profile : one of:
+        - None / "standard" → 70% single, 20% double, 10% triple (default)
+        - "deep"            → sporadic higher-order (1–10 mutations, peaks ~4)
+        - dict[int, float]  → custom {n_mutations: probability}, must sum to 1
     """
-    Sample mutation counts: 70% single, 20% double, 10% triple.
-    """
-    counts = rng.choice([1, 2, 3], size=n_variants, p=[0.70, 0.20, 0.10])
+    if mutation_profile is None or mutation_profile == "standard":
+        weights = _MUTATION_PROFILES["standard"]
+    elif isinstance(mutation_profile, str):
+        if mutation_profile not in _MUTATION_PROFILES:
+            raise ValueError(
+                f"Unknown mutation_profile '{mutation_profile}'. "
+                f"Choose from {list(_MUTATION_PROFILES.keys())} or pass a dict."
+            )
+        weights = _MUTATION_PROFILES[mutation_profile]
+    else:
+        weights = dict(mutation_profile)  # user-supplied dict
+
+    orders = list(weights.keys())
+    probs  = list(weights.values())
+    total  = sum(probs)
+    if abs(total - 1.0) > 1e-6:
+        probs = [p / total for p in probs]  # auto-normalise
+
+    counts = rng.choice(orders, size=n_variants, p=probs)
     return counts.tolist()
 
 
@@ -477,13 +523,24 @@ def fitness_nonlinear(
     cliff_drop: float = 3.0,
 ) -> float:
     """
-    Cumulative damage at *critical* (active_site / metal_binding) positions:
+    Cumulative damage at *critical* (highest-importance) positions:
       - Below cliff_threshold → normal additive fitness
       - Above cliff_threshold → sudden stability cliff (fitness collapses)
 
     Non-critical positions still contribute additively.
+
+    "Critical" categories are determined dynamically as those with the maximum
+    importance weight in the protein's category_weights map.  This avoids
+    hard-coding category names (e.g. active_site / metal_binding) that may not
+    exist for every protein (e.g. GB1 has only binding_site / structural / folding).
     """
-    critical_categories = {"active_site", "metal_binding"}
+    if protein.category_weights:
+        max_weight = max(protein.category_weights.values())
+        critical_categories = {
+            cat for cat, w in protein.category_weights.items() if w >= max_weight
+        }
+    else:
+        critical_categories = set()  # fallback: cliff never triggers
 
     critical_damage  = 0.0
     noncritical_loss = 0.0
@@ -552,6 +609,7 @@ class SyntheticDatasetGenerator:
         n_variants: int | None = None,
         seed: int = 42,
         exhaustive_singles: bool = False,
+        mutation_profile: str | dict | None = None,
     ) -> pd.DataFrame:
         """
         Generate a synthetic dataset (noiseless fitness values).
@@ -568,6 +626,11 @@ class SyntheticDatasetGenerator:
         exhaustive_singles  : if True, enumerate ALL L×19 single mutants before
                               filling remaining budget with random doubles/triples;
                               recommended for small proteins (e.g. GB1, 56 aa)
+        mutation_profile    : controls the distribution of mutation counts per variant.
+                              One of:
+                                - None / "standard" → 70% single, 20% double, 10% triple
+                                - "deep"            → sporadic high-order (1–10 muts)
+                                - dict[int, float]  → custom {n_muts: probability}
 
         Returns
         -------
@@ -579,7 +642,8 @@ class SyntheticDatasetGenerator:
 
         n_variants = n_variants if n_variants is not None else self.protein.default_n_variants
         df = self._generate_one(model=model, n_variants=n_variants, seed=seed,
-                                exhaustive_singles=exhaustive_singles)
+                                exhaustive_singles=exhaustive_singles,
+                                mutation_profile=mutation_profile)
 
         # Cache
         self._generated[model] = df
@@ -591,6 +655,7 @@ class SyntheticDatasetGenerator:
         n_variants: int | None = None,
         seed: int = 42,
         exhaustive_singles: bool = False,
+        mutation_profile: str | dict | None = None,
     ) -> dict[str, pd.DataFrame]:
         """
         Generate all three dataset types (noiseless).
@@ -600,13 +665,15 @@ class SyntheticDatasetGenerator:
         n_variants         : defaults to protein.default_n_variants when None
         exhaustive_singles : enumerate all L×19 single mutants (recommended for
                              small proteins like GB1)
+        mutation_profile   : see ``generate()`` for full documentation
 
         Returns dict: model_name → DataFrame.
         """
         n_variants = n_variants if n_variants is not None else self.protein.default_n_variants
         return {
             model: self._generate_one(model=model, n_variants=n_variants, seed=seed,
-                                      exhaustive_singles=exhaustive_singles)
+                                      exhaustive_singles=exhaustive_singles,
+                                      mutation_profile=mutation_profile)
             for model in _FITNESS_MODELS
         }
 
@@ -616,6 +683,7 @@ class SyntheticDatasetGenerator:
         n_variants: int | None = None,
         seed: int = 42,
         exhaustive_singles: bool = False,
+        mutation_profile: str | dict | None = None,
     ) -> list[str]:
         """
         Generate all datasets (noiseless) and save as CSVs + ground-truth JSON.
@@ -629,6 +697,7 @@ class SyntheticDatasetGenerator:
         n_variants         : defaults to protein.default_n_variants when None
         exhaustive_singles : enumerate all L×19 single mutants before filling
                              remaining budget with random doubles/triples
+        mutation_profile   : see ``generate()`` for full documentation
 
         Returns list of saved file paths.
         """
@@ -637,7 +706,8 @@ class SyntheticDatasetGenerator:
         saved   = []
 
         all_data = self.generate_all(n_variants=n_variants, seed=seed,
-                                     exhaustive_singles=exhaustive_singles)
+                                     exhaustive_singles=exhaustive_singles,
+                                     mutation_profile=mutation_profile)
 
         for model, df in all_data.items():
             fname = out_dir / f"{self.protein.name}_{model}.csv"
@@ -675,6 +745,7 @@ class SyntheticDatasetGenerator:
         n_variants: int,
         seed: int,
         exhaustive_singles: bool = False,
+        mutation_profile: str | dict | None = None,
     ) -> pd.DataFrame:
         rng    = np.random.default_rng(seed)
         wt_seq = self.protein.sequence
@@ -726,7 +797,7 @@ class SyntheticDatasetGenerator:
                             break
                     _append_mutant(mutations)
         else:
-            mut_counts = _sample_n_mutations(rng, n_variants)
+            mut_counts = _sample_n_mutations(rng, n_variants, mutation_profile)
             for n_mut in mut_counts:
                 # Retry up to 10 times to get a unique sequence
                 for _ in range(10):

@@ -2,7 +2,9 @@ import hashlib
 import os
 from typing import Any, Optional
 
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.rcParams["savefig.transparent"] = True
 import numpy as np
 import torch
 from scipy.stats import spearmanr
@@ -119,7 +121,7 @@ def _create_epoch_plot(model, train_loader, val_loader, train_targets, val_targe
     # Save plot with hashed filename
     filename = f"epoch_{epoch+1:03d}_{file_hash}_pred_vs_actual.png"
     filepath = os.path.join(results_dir, filename)
-    plt.savefig(filepath, dpi=150, bbox_inches='tight')
+    plt.savefig(filepath, dpi=150, bbox_inches='tight', transparent=True)
     plt.close()
 
     # Print brief progress info
@@ -537,7 +539,7 @@ def train_model_with_embeddings(
 
         # Save the plot
         loss_plot_path = os.path.join(results_dir, f'{dataset_name}_loss_vs_epoch.png')
-        plt.savefig(loss_plot_path, dpi=150, bbox_inches='tight')
+        plt.savefig(loss_plot_path, dpi=150, bbox_inches='tight', transparent=True)
         plt.close()
         print(f"Loss vs epoch plot saved to: {loss_plot_path}")
 
@@ -769,7 +771,7 @@ def train_and_evaluate(
     if results_dir:
         plt.savefig(
             os.path.join(results_dir, f'PafA_training_loss_curve_fold{fold_idx+1}.png'),
-            bbox_inches='tight', dpi=200
+            bbox_inches='tight', dpi=200, transparent=True
         )
     plt.close()
 
@@ -837,7 +839,7 @@ def train_and_evaluate(
     if results_dir:
         plt.savefig(
             os.path.join(results_dir, f'PafA_pred_vs_actual_fold{fold_idx+1}.png'),
-            bbox_inches='tight', dpi=200
+            bbox_inches='tight', dpi=200, transparent=True
         )
     plt.close()
 
@@ -1375,12 +1377,14 @@ def kfold_cv_and_train(
     min_epochs  = int(model_config.get('min_epochs', 1))  # floor for avg_best_epoch
 
     # ── Pre-fetch ALL train+val embeddings (uses disk cache) ─────────────
-    print(f"\nPre-fetching embeddings for {len(sequences)} train+val sequences...")
+    # Cache key includes the model name so different pLMs never share embeddings.
+    _model_tag = esm_model_name.lower().replace("-", "_")
+    print(f"\nPre-fetching embeddings for {len(sequences)} train+val sequences (model: {_model_tag})...")
     all_embeddings = get_embeddings(
         sequences,
         layer=model_config['esm_layer'],
         batch_size=batch_size,
-        dataset_name=f"{dataset_name}_integrated_gradients_train",
+        dataset_name=f"{dataset_name}_{_model_tag}_integrated_gradients_train",
         subdir=embeddings_subdir,
         esm_model_name=esm_model_name,
         device=device,
@@ -1510,7 +1514,7 @@ def kfold_cv_and_train(
         loss_curve_path = os.path.join(
             results_dir, f"{dataset_name}_cv_loss_curves.png"
         )
-        fig.savefig(loss_curve_path, dpi=150, bbox_inches='tight')
+        fig.savefig(loss_curve_path, dpi=150, bbox_inches='tight', transparent=True)
         plt.close(fig)
         print(f"CV loss curves → {loss_curve_path}")
 
@@ -1534,7 +1538,7 @@ def kfold_cv_and_train(
         learning_rate=learning_rate,
         num_epochs=avg_best_epoch,
         device=device,
-        dataset_name=f"{dataset_name}_integrated_gradients",
+        dataset_name=f"{dataset_name}_{_model_tag}_integrated_gradients",
         loss_type=loss_type,
         results_dir=results_dir,
         save_path=save_path,

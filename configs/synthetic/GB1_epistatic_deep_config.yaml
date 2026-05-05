@@ -1,0 +1,63 @@
+# GB1 epistatic — "deep" (high-order) mutation landscape
+# Dataset generated with --mutation-profile deep:
+#   sporadic distribution over 1–10 mutations, peaking at 3–5.
+# Use this config after generating data/synthetic/deep/GB1_epistatic.csv:
+#   python scripts/generate_synthetic_datasets.py \
+#       --proteins GB1 --models epistatic \
+#       --mutation-profile deep --output-dir data/synthetic/deep
+
+data:
+  name: "GB1_epistatic_deep"
+  path: "data/synthetic/deep/GB1_epistatic.csv"
+  target_column: "fitness"
+  normalization: "none"
+  wildtype:
+    method: "sequence"
+    sequence: "MTYKLILNGKTLKGETTTEAVDAATAEKVFKQYANDNGVDGEWTYDDATKTFTVTE"
+
+model:
+  esm_model_name: esmc_300m
+  esm_layer: 33
+  pooling_method: "esm_attention"
+  hidden_dim1: 512
+  hidden_dim2: 256
+  hidden_dim3: 128
+  hidden_dim4: 64
+  dropout_rate: 0.3
+  learning_rate: 0.001
+  batch_size: 64
+  epochs: 50
+  loss_type: "huber"
+  final_activation: null
+  patience: 15
+  min_epochs: 10
+
+integrated_gradients:
+  method: "embedding"
+  attribution_method: "signed"
+  interpolation_path: "linear"
+  plot_interpolation_umap: false
+  steps: 500
+  batch_size: 10
+
+analysis:
+  sequence_selection:
+    include_extremes: true
+    include_median: true
+    include_top_n: 0
+    include_bottom_n: 0
+    include_all: true
+    custom_sequences: []
+
+results_dir: "results/synthetic/GB1_epistatic_deep"
+force_retrain: false
+
+training:
+  seed: 42
+  n_folds: 5
+  test_fraction: 0.20
+  split_seed: 42
+  noise:
+    label_noise_std: 0.0
+    label_noise_seed: 0
+    input_noise_std: 0.0

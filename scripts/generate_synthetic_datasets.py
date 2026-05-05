@@ -116,6 +116,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Random seed for reproducibility. Default: 42.",
     )
     p.add_argument(
+        "--mutation-profile",
+        default="standard",
+        metavar="PROFILE",
+        help=(
+            "Mutation-count distribution for randomly sampled variants. "
+            "Built-in options: 'standard' (70%% single / 20%% double / 10%% triple, default), "
+            "'deep' (sporadic 1-10 mutations, peaks at 3-5). "
+            "Also accepts a JSON dict like '{\"1\":0.1,\"2\":0.2,\"3\":0.7}'. "
+            "Ignored when --exhaustive-singles is set (extra variants use doubles/triples)."
+        ),
+    )
+    p.add_argument(
         "--list",
         action="store_true",
         help="List available proteins and exit.",
@@ -224,10 +236,21 @@ def main() -> int:
             if model not in _FITNESS_MODELS:
                 print(f"  [WARN] Unknown model '{model}', skipping.")
                 continue
+            # Resolve mutation profile (may be a JSON dict string)
+            import json as _json
+            _mp = args.mutation_profile
+            if _mp and _mp not in ("standard", "deep"):
+                try:
+                    _mp = {int(k): float(v) for k, v in _json.loads(_mp).items()}
+                except Exception as exc:
+                    print(f"  [ERROR] Could not parse --mutation-profile as JSON dict: {exc}")
+                    return 1
+
             df = gen.generate(
                 model=model,
                 n_variants=nv,
                 seed=args.seed,
+                mutation_profile=_mp,
             )
             fname = out_dir / f"{protein_name}_{model}.csv"
             df.to_csv(fname, index=False)
