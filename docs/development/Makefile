@@ -10,12 +10,13 @@
 
 # Variables
 PYTHON := python
-PIP := pip
+PIP := $(PYTHON) -m pip
 PYTEST := pytest
 PROJECT_NAME := igloo
 VENV_NAME := venv_igloo
 CONDA_ENV := igloo
 DOCKER_IMAGE := igloo:latest
+REQUIREMENTS_DIR := docs/config
 
 # Colors for output
 BLUE := \033[0;34m
@@ -26,19 +27,19 @@ NC := \033[0m # No Color
 
 # Helper function to print colored output
 define print_success
-	@echo "$(GREEN)[SUCCESS]$(NC) $(1)"
+	echo "$(GREEN)[SUCCESS]$(NC) $(1)"
 endef
 
 define print_info
-	@echo "$(BLUE)[INFO]$(NC) $(1)"
+	echo "$(BLUE)[INFO]$(NC) $(1)"
 endef
 
 define print_warning
-	@echo "$(YELLOW)[WARNING]$(NC) $(1)"
+	echo "$(YELLOW)[WARNING]$(NC) $(1)"
 endef
 
 define print_error
-	@echo "$(RED)[ERROR]$(NC) $(1)"
+	echo "$(RED)[ERROR]$(NC) $(1)"
 endef
 
 # =============================================================================
@@ -86,7 +87,7 @@ install: ## Install the package for production use
 install-dev: ## Install the package for development
 	@$(call print_info,"Installing $(PROJECT_NAME) for development...")
 	$(PIP) install --upgrade pip setuptools wheel
-	$(PIP) install -r requirements_dev.txt
+	$(PIP) install -r $(REQUIREMENTS_DIR)/requirements_dev.txt
 	$(PIP) install -e .
 	@$(call print_success,"Development installation complete!")
 
@@ -301,14 +302,14 @@ clean-all: clean clean-pyc clean-test docs-clean ## Remove all artifacts
 
 install-pre-commit: ## Install pre-commit hooks
 	@$(call print_info,"Installing pre-commit hooks...")
-	pre-commit install
+	$(PYTHON) -m pre_commit install
 	@$(call print_success,"Pre-commit hooks installed!")
 
 update-deps: ## Update all dependencies
 	@$(call print_info,"Updating dependencies...")
 	$(PIP) install --upgrade pip setuptools wheel
-	$(PIP) install --upgrade -r requirements.txt
-	$(PIP) install --upgrade -r requirements_dev.txt
+	$(PIP) install --upgrade -r $(REQUIREMENTS_DIR)/requirements.txt
+	$(PIP) install --upgrade -r $(REQUIREMENTS_DIR)/requirements_dev.txt
 	@$(call print_success,"Dependencies updated!")
 
 freeze-deps: ## Freeze current dependencies
