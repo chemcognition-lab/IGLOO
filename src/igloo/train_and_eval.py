@@ -1049,7 +1049,8 @@ def train_or_load_model(config, sequences, y, results_dir, device):
                     'hidden_dim3': model_config['hidden_dim3'],
                     'hidden_dim4': model_config['hidden_dim4'],
                     'dropout_rate': model_config['dropout_rate'],
-                    'pooling_method': model_config['pooling_method']
+                    'pooling_method': model_config['pooling_method'],
+                    'model_head': model_config.get('model_head', 'mlp'),
                 }
 
                 print("Comparing model configurations:")
@@ -1059,7 +1060,7 @@ def train_or_load_model(config, sequences, y, results_dir, device):
                 # Check if config matches
                 config_matches = True
                 for key in ['input_dim', 'L', 'hidden_dim1', 'hidden_dim2',
-                           'hidden_dim3', 'hidden_dim4', 'dropout_rate', 'pooling_method']:
+                           'hidden_dim3', 'hidden_dim4', 'dropout_rate', 'pooling_method', 'model_head']:
                     current_val = current_config_values.get(key)
                     saved_val = saved_config.get(key)
                     if current_val != saved_val:
@@ -1077,7 +1078,8 @@ def train_or_load_model(config, sequences, y, results_dir, device):
                         'hidden_dim4': model_config['hidden_dim4'],
                         'dropout_rate': model_config['dropout_rate'],
                         'final_activation': model_config.get('final_activation'),
-                        'pooling_method': model_config['pooling_method']
+                        'pooling_method': model_config['pooling_method'],
+                        'model_head': model_config.get('model_head', 'mlp'),
                     }
 
                     final_model = create_model(model_cfg, device)
@@ -1133,7 +1135,8 @@ def train_or_load_model(config, sequences, y, results_dir, device):
                 'hidden_dim4': model_config['hidden_dim4'],
                 'dropout_rate': model_config['dropout_rate'],
                 'final_activation': model_config.get('final_activation'),
-                'pooling_method': model_config['pooling_method']
+                'pooling_method': model_config['pooling_method'],
+                'model_head': model_config.get('model_head', 'mlp'),
             }
             model = create_model(model_cfg, device)
 
@@ -1406,6 +1409,7 @@ def kfold_cv_and_train(
         'dropout_rate':    model_config['dropout_rate'],
         'final_activation': model_config.get('final_activation'),
         'pooling_method':  pooling_method,
+        'model_head':      model_config.get('model_head', 'mlp'),
     }
 
     # ── K-fold CV ─────────────────────────────────────────────────────────

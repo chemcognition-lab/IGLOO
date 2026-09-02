@@ -1,0 +1,62 @@
+# Reduced-model variant of GB1_additive_config.yaml: same attention pooling,
+# but a single linear layer instead of the 4-layer MLP head (model.model_head:
+# "linear" -- see ESMAttentionLinear in src/igloo/models.py). 700,290 params
+# -> 3,842 params. Everything else (data, IG settings, training schedule,
+# noise sweep grid) is identical so results are directly comparable.
+
+data:
+  name: "GB1_additive"
+  path: "data/synthetic/GB1_additive.csv"
+  target_column: "fitness"
+  normalization: "none"   # fitness is already WT-normalised (WT=1.0)
+  wildtype:
+    method: "sequence"
+    sequence: "MTYKLILNGKTLKGETTTEAVDAATAEKVFKQYANDNGVDGEWTYDDATKTFTVTE"
+
+model:
+  esm_layer: 33
+  pooling_method: "esm_attention"
+  model_head: "linear"   # "mlp" (default, ESMAttention1d) | "linear" (ESMAttentionLinear)
+  hidden_dim1: 512        # unused by model_head=linear, kept for config-schema compatibility
+  hidden_dim2: 256
+  hidden_dim3: 128
+  hidden_dim4: 64
+  dropout_rate: 0.3
+  learning_rate: 0.001
+  batch_size: 64
+  epochs: 50
+  loss_type: "huber"
+  final_activation: null
+  patience: 15          # early-stopping patience (epochs without val improvement)
+  min_epochs: 10        # floor on avg_best_epoch used for the final model
+  # esm_model_name: esm2_t33_650M_UR50D
+
+integrated_gradients:
+  method: "embedding"
+  attribution_method: "signed"
+  interpolation_path: "linear"  # 'linear' | 'slerp' | 'nearest_neighbor' | 'guided_ig'
+  plot_interpolation_umap: false   # UMAP projection of interpolation path; saved to results_dir
+  steps: 500
+  batch_size: 10
+
+analysis:
+  sequence_selection:
+    include_extremes: true
+    include_median: true
+    include_top_n: 0
+    include_bottom_n: 0
+    include_all: true
+    custom_sequences: []
+
+results_dir: "results/synthetic_reduced_model/GB1_additive_LINEAR"
+force_retrain: false
+
+training:
+  seed: 42
+  n_folds: 5
+  test_fraction: 0.20
+  split_seed: 42
+  noise:
+    label_noise_std: 0.0    # σ in raw target units; 0 = no noise
+    label_noise_seed: 0     # RNG seed for reproducibility
+    input_noise_std: 0.0    # σ for per-batch embedding augmentation; 0 = off

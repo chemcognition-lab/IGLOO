@@ -26,8 +26,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
-from sklearn.metrics import average_precision_score, roc_auc_score
+from scipy.stats import pearsonr, spearmanr
+from sklearn.metrics import average_precision_score, mean_absolute_error, r2_score, roc_auc_score
 
 # ---------------------------------------------------------------------------
 # Project-layout helpers
@@ -440,13 +440,42 @@ def compute_metrics_for_dir(
     am_r       = am[reliable]
 
     # ── Rank metrics helper ───────────────────────────────────────────────────
-    def _rank_metrics(scores: np.ndarray) -> tuple[float, float, float, float, float, float]:
-        """Return (spearman, auroc, auprc, prec_k, ndcg, ap_graded)."""
+    def _rank_metrics(scores: np.ndarray) -> tuple[float, float, float, float, float, float, float, float, float]:
+        """Return (spearman, auroc, auprc, prec_k, ndcg, ap_graded, pearson_r, mae_z, r2_z).
+
+        ``pearson_r`` is a regression-style companion to ``spearman``: both
+        compare ``scores`` (|IG| or signed IG, pooled per position) against
+        ``iv_r`` (the ground-truth importance weight per position), but
+        Pearson also asks whether attribution *magnitude* scales linearly
+        with true importance, not just whether the relative order matches.
+        Pearson is still scale/offset-invariant though (a dilated, shifted
+        copy of ``iv_r`` scores r=1.0) -- it is NOT a true magnitude-agreement
+        test. ``mae_z``/``r2_z`` are: z-score ``scores`` and ``iv_r``
+        independently (they live on incommensurable scales, so a raw
+        MSE/MAE would be meaningless), then take MAE and R² of ``scores`` as
+        a *prediction* of ``iv_r`` -- R² here is against the y=x identity
+        line (sklearn's standard prediction-vs-truth R²), not the best-fit
+        regression line, so unlike Pearson r² it is sensitive to a
+        magnitude/shape mismatch even when the two are perfectly linearly
+        correlated at some other slope.
+        """
         sp = (
             float(spearmanr(scores, iv_r)[0])
             if n_reliable >= 10 and iv_r.std() > 0 and scores.std() > 0
             else float("nan")
         )
+        pr = (
+            float(pearsonr(scores, iv_r)[0])
+            if n_reliable >= 10 and iv_r.std() > 0 and scores.std() > 0
+            else float("nan")
+        )
+        if n_reliable >= 10 and iv_r.std() > 0 and scores.std() > 0:
+            z_scores = (scores - scores.mean()) / scores.std()
+            z_iv     = (iv_r   - iv_r.mean())   / iv_r.std()
+            mae_z = float(mean_absolute_error(z_iv, z_scores))
+            r2_z  = float(r2_score(z_iv, z_scores))
+        else:
+            mae_z = r2_z = float("nan")
         if am_r.sum() > 0 and am_r.sum() < len(am_r):
             au = float(roc_auc_score(am_r.astype(int), scores))
             ap = float(average_precision_score(am_r.astype(int), scores))
@@ -460,10 +489,10 @@ def compute_metrics_for_dir(
         iv_r_ann = np.where(am_r, iv_r, 0.0)  # zero background for NDCG/AP@R
         nd = _ndcg_1d(iv_r_ann, scores)
         ag = _ap_graded(iv_r_ann, scores)
-        return sp, au, ap, pk, nd, ag
+        return sp, au, ap, pk, nd, ag, pr, mae_z, r2_z
 
-    sp_r,  auroc,   auprc,   prec_k,   ndcg_r,   ap_graded   = _rank_metrics(ig_r)
-    sp_rs, auroc_s, auprc_s, prec_k_s, ndcg_rs,  ap_graded_s = _rank_metrics(ig_r_s)
+    (sp_r,  auroc,   auprc,   prec_k,   ndcg_r,   ap_graded,   pearson_r,   mae_z,   r2_z)   = _rank_metrics(ig_r)
+    (sp_rs, auroc_s, auprc_s, prec_k_s, ndcg_rs,  ap_graded_s, pearson_r_s, mae_z_s, r2_z_s) = _rank_metrics(ig_r_s)
 
     # ── Category means ────────────────────────────────────────────────────────
     def _cat_means_for(vec: np.ndarray) -> tuple[dict[str, float], float]:
@@ -556,6 +585,21 @@ def compute_metrics_for_dir(
             return float("nan")
         return float(spearmanr(fx, fy)[0])
 
+    def _vec_magnitude(pairs: list[tuple[float, float]]) -> tuple[float, float]:
+        """Z-score-then-MAE/R² companion to ``_vec_spearman``, pooled across
+        all sequences' mutations (not per-sequence -- too few points per
+        sequence for a stable R²). fx = LOO fitness contribution (the
+        ground-truth relevance), fy = |IG| or signed IG."""
+        if len(pairs) < 5:
+            return float("nan"), float("nan")
+        fx = np.array([p[0] for p in pairs])
+        fy = np.array([p[1] for p in pairs])
+        if fx.std() == 0 or fy.std() == 0:
+            return float("nan"), float("nan")
+        zx = (fx - fx.mean()) / fx.std()
+        zy = (fy - fy.mean()) / fy.std()
+        return float(mean_absolute_error(zx, zy)), float(r2_score(zx, zy))
+
     pv_fitness_spearman        = _vec_spearman(pv_fitness_pairs)
     pv_fitness_spearman_signed = _vec_spearman(pv_fitness_pairs_signed)
     pv_fitness_ndcg            = _vec_spearman(pv_ndcg_fitness_pairs)
@@ -580,6 +624,8 @@ def compute_metrics_for_dir(
     mutation_pairs_signed:     list[tuple[float, float]] = []
     mutation_rho_vals:         list[float] = []
     mutation_rho_vals_signed:  list[float] = []
+    mutation_pearson_vals:         list[float] = []
+    mutation_pearson_vals_signed:  list[float] = []
     mutation_ndcg_vals:        list[float] = []
     mutation_ndcg_vals_signed: list[float] = []
 
@@ -633,6 +679,16 @@ def compute_metrics_for_dir(
                     r = float(spearmanr(cx, ig_track)[0])
                     if np.isfinite(r):
                         rho_list.append(r)
+                # Pearson companion to the rank correlation above: does |IG|/
+                # signed IG scale linearly with the LOO fitness delta, not
+                # just agree in relative order.
+                for ig_track, pearson_list in [
+                    (np.array(seq_ig_abs), mutation_pearson_vals),
+                    (np.array(seq_ig_raw), mutation_pearson_vals_signed),
+                ]:
+                    pr_val = float(pearsonr(cx, ig_track)[0])
+                    if np.isfinite(pr_val):
+                        pearson_list.append(pr_val)
             _cx_clip = np.clip(cx, 0, None)
             if _cx_clip.sum() > 0:
                 for ig_track, ndcg_list in [
@@ -645,6 +701,8 @@ def compute_metrics_for_dir(
 
     mutation_spearman        = _vec_spearman(mutation_pairs)
     mutation_spearman_signed = _vec_spearman(mutation_pairs_signed)
+    mutation_mae_z,   mutation_r2_z   = _vec_magnitude(mutation_pairs)
+    mutation_mae_z_s, mutation_r2_z_s = _vec_magnitude(mutation_pairs_signed)
     if mutation_pairs:
         _m_c  = np.array([p[0] for p in mutation_pairs])
         _m_ia = np.array([p[1] for p in mutation_pairs])
@@ -709,6 +767,9 @@ def compute_metrics_for_dir(
     return {
         # Abs IG track
         "spearman":             sp_r,
+        "pearson_r":            pearson_r,
+        "mae_z":                mae_z,
+        "r2_z":                 r2_z,
         "ndcg":                 ndcg_r,
         "auroc":                auroc,
         "auprc":                auprc,
@@ -726,12 +787,18 @@ def compute_metrics_for_dir(
         "pv_fitness_ndcg":      pv_fitness_ndcg,
         "pv_fitness_pairs":     pv_fitness_pairs,
         "mutation_spearman":    mutation_spearman,
+        "mutation_mae_z":       mutation_mae_z,
+        "mutation_r2_z":        mutation_r2_z,
         "mutation_ndcg":        mutation_ndcg,
         "mutation_pairs":       mutation_pairs,
         "mutation_rho_vals":    mutation_rho_vals,
+        "mutation_pearson_vals": mutation_pearson_vals,
         "mutation_ndcg_vals":   mutation_ndcg_vals,
         # Signed IG track
         "spearman_signed":              sp_rs,
+        "pearson_r_signed":             pearson_r_s,
+        "mae_z_signed":                 mae_z_s,
+        "r2_z_signed":                  r2_z_s,
         "ndcg_signed":                  ndcg_rs,
         "auroc_signed":                 auroc_s,
         "auprc_signed":                 auprc_s,
@@ -749,9 +816,12 @@ def compute_metrics_for_dir(
         "pv_fitness_ndcg_signed":       pv_fitness_ndcg_signed,
         "pv_fitness_pairs_signed":      pv_fitness_pairs_signed,
         "mutation_spearman_signed":     mutation_spearman_signed,
+        "mutation_mae_z_signed":        mutation_mae_z_s,
+        "mutation_r2_z_signed":         mutation_r2_z_s,
         "mutation_ndcg_signed":         mutation_ndcg_signed,
         "mutation_pairs_signed":        mutation_pairs_signed,
         "mutation_rho_vals_signed":     mutation_rho_vals_signed,
+        "mutation_pearson_vals_signed": mutation_pearson_vals_signed,
         "mutation_ndcg_vals_signed":    mutation_ndcg_vals_signed,
         # Shared
         "sign_acc":             sign_acc,

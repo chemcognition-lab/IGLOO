@@ -163,3 +163,22 @@ setup_windows.bat
 
 generate_MLSB_figure.py
 ig_heatmap.png
+# --- Noise-peak investigation (see docs/REPRODUCTION.md) ---
+# Result artifacts follow the same convention as /results/synthetic/: regenerable, not tracked
+/results/synthetic_reduced_model/
+
+# Colab playground bundles: notebooks + code are tracked, but the vendored
+# checkpoints / IG CSVs / embedding caches are regenerable (44 MB total)
+/colab/data/
+/colab_standalone/data/
+/colab_standalone/results/
+/colab_standalone/__pycache__/
+colab_standalone.zip
+# Vendored copies of src/igloo + scripts, assembled by scripts/build_colab_bundle.sh.
+# Tracking them would guarantee drift from the canonical package.
+/colab_standalone/src/
+/colab_standalone/scripts/
+
+# Local working dirs
+/plan/
+/temp/

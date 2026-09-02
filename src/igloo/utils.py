@@ -10,7 +10,7 @@ import torch
 from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
-from src.igloo.models import AttentionConvPoolingModel, ESMAttention1d, LinearRegressionModel, MeanPoolingModel
+from src.igloo.models import AttentionConvPoolingModel, ESMAttention1d, ESMAttentionLinear, LinearRegressionModel, MeanPoolingModel
 
 from .data_processing import CustomDataset, batch_pad_and_normalize
 from .embedding import get_embeddings
@@ -269,6 +269,16 @@ def create_model(config, device):
             L, input_dim,
             final_activation=config['final_activation'],
             target_min=None, target_max=None
+        )
+    elif pooling_method == 'esm_attention' and config.get('model_head', 'mlp') == 'linear':
+        # Same attention pooling and (x, input_mask) calling convention as the
+        # 'esm_attention' branch below -- every pooling_method == 'esm_attention'
+        # dispatch site elsewhere in the codebase (input_mask passing, etc.)
+        # stays correct unchanged -- but a single linear layer instead of the
+        # 4-layer MLP head. See ESMAttentionLinear docstring.
+        model = ESMAttentionLinear(
+            d_embedding=input_dim,
+            final_activation=config['final_activation'],
         )
     elif pooling_method == 'esm_attention':
         model = ESMAttention1d(

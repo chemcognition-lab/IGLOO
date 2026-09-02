@@ -160,15 +160,35 @@ class IntegratedGradientsRunner:
         A fixed ``label_noise_seed`` (default 0) is used so runs are
         reproducible; set it to different values to sample different noise
         realisations.
+
+        If ``training.noise.shuffle_labels`` is true, labels are instead
+        fully permuted across sequences (same seed via ``label_noise_seed``),
+        which destroys any real sequence-fitness relationship rather than
+        just degrading its SNR. Unlike additive Gaussian noise at any finite
+        std -- which a model can still partially learn through given enough
+        training data -- this gives an exact "complete random model" negative
+        control: test-set model_test_spearman is expected to be ~0 by
+        construction. Takes precedence over label_noise_std if both are set.
         """
         import numpy as np
 
         noise_cfg  = self.config.get('training', {}).get('noise', {})
+        seed = int(noise_cfg.get('label_noise_seed', 0))
+
+        if bool(noise_cfg.get('shuffle_labels', False)):
+            rng  = np.random.default_rng(seed)
+            perm = rng.permutation(len(self.y_raw))
+            self.y_raw = self.y_raw[perm]
+            self.y     = self.y[perm]
+            print(f"Labels fully shuffled (seed={seed}) — complete-random-model "
+                  f"baseline; sequence-fitness relationship destroyed for all "
+                  f"{len(self.y_raw)} sequences")
+            return
+
         noise_std  = float(noise_cfg.get('label_noise_std', 0.0))
         if noise_std <= 0.0:
             return
 
-        seed = int(noise_cfg.get('label_noise_seed', 0))
         rng  = np.random.default_rng(seed)
         epsilon = rng.standard_normal(len(self.y_raw)).astype(np.float32) * noise_std
 

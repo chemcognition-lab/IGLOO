@@ -266,6 +266,30 @@ class ESMAttention1d(nn.Module):
         out4 = out4 + self.res_proj(out1)      # out4: (batch, hidden_dim4)  — residual from out1
         return self.final_act(self.final(out4))# out:  (batch, 1)
 
+class ESMAttentionLinear(nn.Module):
+    """Attention pooling (same Attention1d as ESMAttention1d) directly followed
+    by a single linear layer -- no hidden MLP, no residual connection."""
+    def __init__(self, d_embedding, final_activation=None):
+        super().__init__()
+        self.attention1d = Attention1d(in_dim=d_embedding)
+        self.layernorm = nn.LayerNorm(d_embedding)
+        self.final = nn.Linear(d_embedding, 1)
+        if final_activation == 'tanh':
+            self.final_act = nn.Tanh()
+        elif final_activation == 'sigmoid':
+            self.final_act = nn.Sigmoid()
+        else:
+            self.final_act = nn.Identity()
+
+    def forward(self, x, input_mask):
+        # x:         (batch, seq_len, d_embedding)
+        # input_mask:(batch, seq_len)
+        x = self.attention1d(x, input_mask=input_mask.unsqueeze(-1))
+                                               # x:    (batch, d_embedding)   — attention-pooled
+        x = self.layernorm(x)                  # x:    (batch, d_embedding)
+        return self.final_act(self.final(x))   # out:  (batch, 1)
+
+
 class ESMAttention1dMean(nn.Module):
     """Attention1d removed, leaving a basic linear model"""
     def __init__(self, d_embedding): # [batch x embedding (1280)]  --> [batch x 1]
