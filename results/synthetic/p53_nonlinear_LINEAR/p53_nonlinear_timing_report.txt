@@ -2,8 +2,8 @@
 PIPELINE TIMING REPORT
 ============================================================
 Dataset      : p53_nonlinear
-Started at   : 2026-04-12 09:56:01
-Finished at  : 2026-04-12 13:29:06
+Started at   : 2026-04-16 11:05:11
+Finished at  : 2026-04-16 12:38:29
 Device       : cuda
 ------------------------------------------------------------
 Step                                       Duration
@@ -11,10 +11,10 @@ Step                                       Duration
   Data loading & preparation                   0.1s
   Wildtype sequence preparation                0.0s
   Embedding retrieval (if needed)              0.0s
-  Model training / loading               3h 26m 30s
-  Model evaluation                           5m 16s
-  Integrated gradients (3 sequence(s))         2.1s
-  Visualizations & exports                   1m 16s
+  Model training / loading               1h 32m 55s
+  Model evaluation                             7.6s
+  Integrated gradients (4 sequence(s))         7.4s
+  Visualizations & exports                     8.1s
 ------------------------------------------------------------
-  TOTAL                                  3h 33m 05s
+  TOTAL                                  1h 33m 18s
 ============================================================

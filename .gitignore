@@ -134,7 +134,11 @@ ENV/
 /results/betalactamase_token_magnitude/
 /results/betalactamase_token_signed/
 /results/results_xgb/
+/results/synthetic/
 # Keep these tracked: betalactamase_embedding_signed, ERBC_embedding_signed, PafA_embedding_signed
+
+# Logs
+/jobs/logs/
 
 # Configuration files that have been organized into docs/config/
 # pyproject.toml needs to stay in root for pip install -e . to work

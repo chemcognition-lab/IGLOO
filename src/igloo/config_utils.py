@@ -107,6 +107,13 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
                 'custom_sequences': []
             }
         },
+        'training': {
+            'noise': {
+                'label_noise_std': 0.0,   # σ in raw target units; 0 = no noise
+                'label_noise_seed': 0,    # RNG seed for reproducibility
+                'input_noise_std': 0.0,   # σ for per-batch embedding augmentation; 0 = off
+            }
+        },
         'force_retrain': False
     }
 
@@ -309,6 +316,26 @@ def select_sequences_for_analysis(df, y_raw: list, wt_seq: str,
         elif 'index' in custom:
             idx = custom['index']
             sequences_to_analyze.append((custom['name'], sequences[idx], wt_seq))
+
+    # include_all: add every sequence in the dataset (deduplicating against already-selected)
+    if selection_config.get('include_all', False):
+        already_seqs = {seq for _, seq, _ in sequences_to_analyze}
+        # Try to find a human-readable name column (mutation_string preferred)
+        name_col = None
+        for candidate in ('mutation_string', 'name', 'variant_id', 'id'):
+            if candidate in df.columns:
+                name_col = candidate
+                break
+        for i, seq in enumerate(df_sequences):
+            if seq in already_seqs:
+                continue
+            if name_col is not None:
+                row_name = str(df.iloc[i][name_col])
+            else:
+                row_name = f'seq_{i}'
+            sequences_to_analyze.append((row_name, seq, wt_seq))
+            already_seqs.add(seq)
+        print(f"include_all: {len(sequences_to_analyze)} total sequences queued for IG analysis.")
 
     return sequences_to_analyze
 

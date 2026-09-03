@@ -157,8 +157,16 @@ def _load_position_importance(results_dir: Path, dataset_name: str | None = None
     return pd.read_csv(path)
 
 
-def _load_per_variant_gradients(results_dir: Path, dataset_name: str | None = None) -> pd.DataFrame | None:
+def _load_per_variant_gradients(
+    results_dir: Path,
+    dataset_name: str | None = None,
+    split_filter: str | None = None,
+) -> pd.DataFrame | None:
     """Load the per-variant integrated_gradients_results.csv from *results_dir*.
+
+    If *split_filter* is 'trainval' or 'test', only rows whose sequence_name
+    contains the matching ``[trainval]``/``[test]`` tag are included before
+    aggregation.
 
     Returns aggregated (position, mean_abs_gradient) or None.
     """
@@ -171,7 +179,12 @@ def _load_per_variant_gradients(results_dir: Path, dataset_name: str | None = No
     if not path.exists():
         return None
     df = pd.read_csv(path)
-    # Aggregate abs_gradient by position across all sequences
+    if split_filter and split_filter in ("trainval", "test") and "sequence_name" in df.columns:
+        mask = df["sequence_name"].apply(lambda n: _extract_split_tag(n) == split_filter)
+        df = df[mask]
+        if df.empty:
+            return None
+    # Aggregate abs_gradient by position across all (filtered) sequences
     agg = (
         df.groupby("position")["abs_gradient"]
         .mean()
@@ -193,15 +206,37 @@ def _load_detailed_ig(results_dir: Path) -> pd.DataFrame | None:
     return pd.read_csv(candidates[0])
 
 
+def _is_wt_sequence_name(name: str) -> bool:
+    """Return True for WT sequence names including tagged variants like 'WT[trainval]'."""
+    s = str(name)
+    return s == "WT" or s.lower().startswith("wt[")
+
+
+def _extract_split_tag(name: str) -> str:
+    """Extract split label ('trainval', 'test', or 'all') from a sequence name.
+
+    Sequence names produced by run_integrated_gradients.py look like:
+        'WT[trainval]', 'W43Y;G38R[test]', 'PolyAlanine', 'seq_0[trainval]', etc.
+    Returns 'trainval', 'test', or 'all' (when no tag is present).
+    """
+    m = re.search(r'\[(trainval|test)\]', str(name), re.IGNORECASE)
+    return m.group(1).lower() if m else "all"
+
+
 def _get_wt_sequence(ig_df: pd.DataFrame) -> str | None:
     """Reconstruct the wildtype sequence from the IG results dataframe.
 
-    The IG result for the 'WT' sequence has amino_acid = wt residue at each position.
-    Returns a 0-indexed string of length L, or None.
+    Handles both plain 'WT' and tagged names such as 'WT[trainval]'.
+    When multiple WT-like entries exist, uses the one with the most position
+    rows (most complete).  Returns a 0-indexed string of length L, or None.
     """
-    wt_rows = ig_df[ig_df["sequence_name"] == "WT"].sort_values("position")
-    if wt_rows.empty:
+    wt_mask = ig_df["sequence_name"].apply(_is_wt_sequence_name)
+    wt_df   = ig_df[wt_mask]
+    if wt_df.empty:
         return None
+    # Pick the WT entry with the most rows (most positional coverage)
+    best_name = wt_df["sequence_name"].value_counts().idxmax()
+    wt_rows = wt_df[wt_df["sequence_name"] == best_name].sort_values("position")
     return "".join(wt_rows["amino_acid"].tolist())
 
 
@@ -285,6 +320,129 @@ def compute_metrics(
 
 
 # ---------------------------------------------------------------------------
+# Fitness-based metrics (position-level: |IG| vs mean fitness effect)
+# ---------------------------------------------------------------------------
+
+def compute_fitness_based_metrics(
+    ig_vec: np.ndarray,
+    protein: str,
+    fitness_model: str,
+    wt_seq: str | None,
+) -> dict:
+    """Correlate |IG| per position with the mean fitness effect of mutations
+    at that position across the full synthetic dataset.
+
+    For each position i we compute:
+        mean_fitness_effect[i] = mean( fitness(seq) - fitness(WT) )
+                                  over all sequences in the CSV that carry a
+                                  mutation at position i.
+
+    We then correlate *ig_vec* (|IG| per position) with
+    *-mean_fitness_effect* (so that "more deleterious" = higher value, matching
+    the expectation that high |IG| ↔ high importance / deleterious mutations).
+
+    AUROC / AUPRC treat the most deleterious half of **observed** positions as
+    positives (score = |IG|).
+
+    Returns
+    -------
+    dict with keys:
+      fitness_spearman_r, fitness_spearman_p,
+      fitness_kendall_tau, fitness_kendall_p,
+      fitness_auroc, fitness_auprc,
+      n_fitness_positions  – number of positions with ≥1 observed mutation
+    """
+    _nan = {
+        "fitness_spearman_r":   float("nan"),
+        "fitness_spearman_p":   float("nan"),
+        "fitness_kendall_tau":  float("nan"),
+        "fitness_kendall_p":    float("nan"),
+        "fitness_auroc":        float("nan"),
+        "fitness_auprc":        float("nan"),
+        "n_fitness_positions":  0,
+    }
+
+    data_df = _load_data_csv(protein, fitness_model)
+    if data_df is None:
+        return _nan
+    if "SEQ" not in data_df.columns or "fitness" not in data_df.columns:
+        return _nan
+    if wt_seq is None:
+        return _nan
+
+    L = len(ig_vec)
+
+    # WT fitness: the row whose sequence exactly matches wt_seq
+    wt_rows = data_df[data_df["SEQ"] == wt_seq]
+    if wt_rows.empty:
+        # Fall back: row with no mutations (mutation_string empty / NaN)
+        for col in ("mutation_string", "mutations", "num_mutations"):
+            if col in data_df.columns:
+                wt_rows = data_df[
+                    data_df[col].isna() | (data_df[col].astype(str).isin(["", "WT", "wt", "0"]))
+                ]
+                if not wt_rows.empty:
+                    break
+    wt_fitness = float(wt_rows["fitness"].iloc[0]) if not wt_rows.empty else float(data_df["fitness"].max())
+
+    # Accumulate fitness effects per position
+    pos_effects: list[list[float]] = [[] for _ in range(L)]
+    for seq_str, fit in zip(data_df["SEQ"], data_df["fitness"]):
+        seq_str = str(seq_str)
+        if len(seq_str) != len(wt_seq):
+            continue
+        delta = float(fit) - wt_fitness
+        for i, (s, w) in enumerate(zip(seq_str, wt_seq)):
+            if i >= L:
+                break
+            if s != w:
+                pos_effects[i].append(delta)
+
+    # Mean fitness effect per position; NaN where no mutations observed
+    mean_effect = np.array([
+        float(np.mean(v)) if v else float("nan")
+        for v in pos_effects
+    ])
+
+    # Only positions with at least one observed mutation
+    observed = np.isfinite(mean_effect)
+    n_obs = int(observed.sum())
+    if n_obs < 3:
+        return {**_nan, "n_fitness_positions": n_obs}
+
+    ig_obs  = ig_vec[observed]
+    eff_obs = mean_effect[observed]   # typically negative (mutations harmful)
+
+    # Positive correlation: high |IG| ↔ large fitness drop → use -effect
+    harm_obs = -eff_obs
+
+    sp_r, sp_p   = spearmanr(ig_obs, harm_obs)
+    kt_tau, kt_p = kendalltau(ig_obs, harm_obs)
+
+    # AUROC/AUPRC: top-50% most deleterious positions as positives
+    threshold = np.median(eff_obs)
+    y_true  = (eff_obs < threshold).astype(int)   # below median = more harmful
+    y_score = ig_obs
+
+    if y_true.sum() == 0 or y_true.sum() == len(y_true):
+        auroc = float("nan")
+        auprc = float("nan")
+    else:
+        auroc = roc_auc_score(y_true, y_score)
+        auprc = average_precision_score(y_true, y_score)
+
+    return {
+        "fitness_spearman_r":  float(sp_r),
+        "fitness_spearman_p":  float(sp_p),
+        "fitness_kendall_tau": float(kt_tau),
+        "fitness_kendall_p":   float(kt_p),
+        "fitness_auroc":       float(auroc),
+        "fitness_auprc":       float(auprc),
+        "n_fitness_positions": n_obs,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Sign-correctness metrics
 # ---------------------------------------------------------------------------
 
@@ -321,8 +479,12 @@ def compute_sign_correctness(
     all_total      = 0
 
     for seq_name, seq_df in ig_df.groupby("sequence_name"):
-        if seq_name == "WT":
+        if _is_wt_sequence_name(seq_name):
             continue
+        # Per-sequence IG threshold: median |IG| across all positions
+        abs_ig_vals = seq_df["integrated_gradient"].abs().values
+        ig_threshold = float(np.median(abs_ig_vals)) if len(abs_ig_vals) > 0 else 0.0
+
         for _, row in seq_df.iterrows():
             pos_0  = int(row["position"]) - 1
             ig_val = float(row["integrated_gradient"])
@@ -334,15 +496,16 @@ def compute_sign_correctness(
 
             if is_mutated:
                 # Both annotated and unannotated mutations should produce negative IG
-                correct = (ig_val < 0)
+                # Only count when |IG| exceeds threshold (not noise)
+                correct = (ig_val < -ig_threshold)
                 all_correct += int(correct)
                 all_total   += 1
                 if is_annotated:
                     active_correct += int(correct)
                     active_total   += 1
             else:
-                # WT residue → expect non-negative
-                correct = (ig_val >= 0)
+                # WT residue → expect non-negative / below noise threshold
+                correct = (ig_val >= -ig_threshold)
                 wt_correct += int(correct)
                 wt_total   += 1
                 all_correct += int(correct)
@@ -356,6 +519,163 @@ def compute_sign_correctness(
         "sign_acc_overall": _safe_div(all_correct, all_total),
         "n_active_mut":     active_total,
         "n_wt_positions":   wt_total,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Practical IG interpretation checks
+# ---------------------------------------------------------------------------
+
+# Near-zero output-difference threshold: |F(x) - F(x')| below this value
+# makes attributions numerically unreliable (division-by-zero regime).
+_NEAR_ZERO_THRESHOLD = 0.01
+
+
+def compute_completeness_stats(ig_df: pd.DataFrame) -> dict:
+    """Check the IG completeness axiom: Σ_i IG_i ≈ F(x) − F(x').
+
+    For each non-WT sequence the relative completeness error is:
+        ε = |Σ IG_i − outputDiff| / max(|outputDiff|, 1e-8)
+
+    Sequences with |outputDiff| < _NEAR_ZERO_THRESHOLD are flagged as
+    numerically unstable and reported separately.
+
+    Returns
+    -------
+    dict with:
+      completeness_mean_rel_error  – mean ε over stable sequences
+      completeness_median_rel_error
+      completeness_frac_pass_1pct  – fraction with ε < 0.01
+      completeness_frac_pass_5pct  – fraction with ε < 0.05
+      completeness_frac_pass_10pct – fraction with ε < 0.10
+      n_completeness_sequences     – number of stable sequences evaluated
+      n_near_zero_sequences        – sequences with |outputDiff| < threshold
+                                     (attributions unreliable, excluded above)
+    """
+    _nan = {
+        "completeness_mean_rel_error":   float("nan"),
+        "completeness_median_rel_error": float("nan"),
+        "completeness_frac_pass_1pct":   float("nan"),
+        "completeness_frac_pass_5pct":   float("nan"),
+        "completeness_frac_pass_10pct":  float("nan"),
+        "n_completeness_sequences":      0,
+        "n_near_zero_sequences":         0,
+    }
+
+    need_cols = {"integrated_gradient", "effect_vs_baseline"}
+    if not need_cols.issubset(ig_df.columns):
+        return _nan
+
+    errors = []
+    n_near_zero = 0
+
+    for seq_name, seq_df in ig_df.groupby("sequence_name"):
+        if _is_wt_sequence_name(seq_name):
+            continue
+        output_diff = float(seq_df["effect_vs_baseline"].iloc[0])
+        if abs(output_diff) < _NEAR_ZERO_THRESHOLD:
+            n_near_zero += 1
+            continue   # [4] unstable — skip
+        sum_ig = float(seq_df["integrated_gradient"].sum())
+        rel_err = abs(sum_ig - output_diff) / abs(output_diff)
+        errors.append(rel_err)
+
+    n = len(errors)
+    if n == 0:
+        return {**_nan, "n_near_zero_sequences": n_near_zero}
+
+    err_arr = np.array(errors)
+    return {
+        "completeness_mean_rel_error":   float(err_arr.mean()),
+        "completeness_median_rel_error": float(np.median(err_arr)),
+        "completeness_frac_pass_1pct":   float((err_arr < 0.01).mean()),
+        "completeness_frac_pass_5pct":   float((err_arr < 0.05).mean()),
+        "completeness_frac_pass_10pct":  float((err_arr < 0.10).mean()),
+        "n_completeness_sequences":      n,
+        "n_near_zero_sequences":         n_near_zero,
+    }
+
+
+def compute_normalized_position_scores(
+    ig_df: pd.DataFrame,
+    L: int,
+) -> np.ndarray | None:
+    """Compute position-level |IG| normalized by |F(x) − F(x')| per sequence.
+
+    For each non-WT sequence: norm_ig[pos] = IG[pos] / |F(x) - F(x')|.
+    Sequences with |F(x) - F(x')| < threshold are excluded (near-zero, unstable).
+    The result is the mean of |norm_ig| over all stable sequences, per position.
+
+    Returns (L,) array, or None if no stable sequences.
+    """
+    need_cols = {"integrated_gradient", "effect_vs_baseline", "position"}
+    if not need_cols.issubset(ig_df.columns):
+        return None
+
+    accumulator = np.zeros(L, dtype=float)
+    count       = np.zeros(L, dtype=int)
+
+    for seq_name, seq_df in ig_df.groupby("sequence_name"):
+        if _is_wt_sequence_name(seq_name):
+            continue
+        output_diff = float(seq_df["effect_vs_baseline"].iloc[0])
+        if abs(output_diff) < _NEAR_ZERO_THRESHOLD:
+            continue   # unstable — skip
+        for _, row in seq_df.iterrows():
+            pos_0 = int(row["position"]) - 1
+            if 0 <= pos_0 < L:
+                norm_val = abs(float(row["integrated_gradient"])) / abs(output_diff)
+                accumulator[pos_0] += norm_val
+                count[pos_0]       += 1
+
+    valid = count > 0
+    if not valid.any():
+        return None
+    result = np.where(valid, accumulator / np.maximum(count, 1), 0.0)
+    return result
+
+def compute_weighted_position_accuracy(
+    ig_vec: np.ndarray,
+    gt_importance: np.ndarray,
+    annotated_mask: np.ndarray,
+) -> dict:
+    """Importance-weighted accuracy for identifying annotated positions via |IG|.
+
+    A position is predicted as "important" when |IG| exceeds the median |IG|
+    across all positions (data-driven, per-run threshold).  Accuracy is weighted
+    by ground-truth importance relative to the background level so that highly
+    important positions contribute more to the score.
+
+    Parameters
+    ----------
+    ig_vec         : (L,) array of |IG| values, one per position.
+    gt_importance  : (L,) ground-truth importance vector.
+    annotated_mask : (L,) bool array; True = functionally annotated.
+
+    Returns
+    -------
+    dict with keys:
+      weighted_pos_acc – importance-weighted identification accuracy (0–1)
+      ig_threshold     – per-run |IG| threshold used (median |IG|)
+      unweighted_pos_acc – plain fraction correct (for reference)
+    """
+    ig_threshold = float(np.median(np.abs(ig_vec)))
+    pred_positive = np.abs(ig_vec) > ig_threshold   # predicted important
+    gt_positive   = annotated_mask                  # ground-truth important
+
+    # Importance weights: annotated positions have weight ∝ importance, others = 1
+    weights = gt_importance / BACKGROUND_IMPORTANCE  # unannotated ≈ 1, annotated > 1
+    weights = np.maximum(weights, 1.0)               # floor at 1
+
+    correct = (pred_positive == gt_positive)
+    w_total = float(weights.sum())
+    weighted_acc   = float((weights * correct).sum()) / w_total if w_total > 0 else float("nan")
+    unweighted_acc = float(correct.mean())
+
+    return {
+        "weighted_pos_acc":   weighted_acc,
+        "unweighted_pos_acc": unweighted_acc,
+        "ig_threshold":       ig_threshold,
     }
 
 
@@ -381,7 +701,7 @@ def compute_linear_proportionality(
     exp_vals  = []  # expected ∝ -(importance * BLOSUM_penalty)
 
     for seq_name, seq_df in ig_df.groupby("sequence_name"):
-        if seq_name == "WT":
+        if _is_wt_sequence_name(seq_name):
             continue
         for _, row in seq_df.iterrows():
             pos_0  = int(row["position"]) - 1
@@ -460,7 +780,7 @@ def compute_epistatic_recovery(
     non_interacting_absigs = []
 
     for seq_name, seq_df in ig_df.groupby("sequence_name"):
-        if seq_name == "WT":
+        if _is_wt_sequence_name(seq_name):
             continue
         # Positions that are mutated AND annotated in this sequence
         mut_ann_positions: list[int] = []   # 0-indexed
@@ -541,7 +861,7 @@ def compute_cliff_analysis(
 
     cliff_rows = []
     for seq_name, seq_df in ig_df.groupby("sequence_name"):
-        if seq_name == "WT":
+        if _is_wt_sequence_name(seq_name):
             continue
         # Compute cumulative critical damage for this sequence
         cumulative_damage = 0.0
@@ -583,6 +903,7 @@ def compute_cliff_analysis(
 def plot_sign_accuracy_bars(
     sign_rows: list[dict],
     output_dir: Path,
+    protein_prefix: str | None = None,
 ) -> None:
     """Bar chart of sign accuracy for each results directory.
 
@@ -617,12 +938,14 @@ def plot_sign_accuracy_bars(
     ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=7)
     ax.set_ylabel("Sign accuracy (fraction correct)")
     ax.set_ylim(0, 1.15)
-    ax.set_title("Sign Correctness: should mutations at critical sites produce negative IG?")
+    title_prot = f" [{protein_prefix}]" if protein_prefix else ""
+    ax.set_title(f"Sign Correctness{title_prot}: should mutations at critical sites produce negative IG?")
     ax.legend(fontsize=7, loc="lower right")
     ax.yaxis.grid(True, linestyle="--", alpha=0.4)
     ax.set_axisbelow(True)
 
-    out_path = output_dir / "synthetic_ig_sign_accuracy.png"
+    fname = f"{protein_prefix}_ig_sign_accuracy.png" if protein_prefix else "synthetic_ig_sign_accuracy.png"
+    out_path = output_dir / fname
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"  Saved: {out_path}")
@@ -685,8 +1008,16 @@ def plot_cliff_damage(
 def evaluate_one(
     results_dir: Path,
     use_per_variant: bool = False,
+    split_filter: str | None = None,
 ) -> dict | None:
     """Evaluate a single results directory.
+
+    Args:
+        results_dir: Path to the results directory.
+        use_per_variant: Use per-variant CSV instead of pre-aggregated summary.
+        split_filter: If 'trainval' or 'test', restrict per-sequence metrics
+            to that split.  Position-level metrics (spearman_r, AUROC, …) are
+            only split when *use_per_variant* is True.  Pass None for 'all'.
 
     Returns a flat dict of metadata + metrics, or None if data is missing.
     """
@@ -734,9 +1065,10 @@ def evaluate_one(
 
     # ── Load IG position scores ──────────────────────────────────────────────
     if use_per_variant:
-        pos_df = _load_per_variant_gradients(results_dir)
+        pos_df = _load_per_variant_gradients(results_dir, split_filter=split_filter)
         score_col = "mean_abs_gradient"
     else:
+        # Pre-aggregated summary has no split info; only split ig_df-based metrics below
         pos_df = _load_position_importance(results_dir)
         score_col = "mean_abs_gradient"
 
@@ -758,9 +1090,23 @@ def evaluate_one(
     # ── Compute core metrics ─────────────────────────────────────────────────
     metrics = compute_metrics(ig_vec, gt_vec, mask)
 
+    # ── Weighted position identification accuracy ────────────────────────────
+    weighted_acc_metrics = compute_weighted_position_accuracy(ig_vec, gt_vec, mask)
+
     # ── Detailed per-sequence IG for advanced metrics ────────────────────────
-    ig_df = _load_detailed_ig(results_dir)
-    wt_seq = _get_wt_sequence(ig_df) if ig_df is not None else None
+    ig_df_full = _load_detailed_ig(results_dir)
+    # Always reconstruct WT from the full (unfiltered) dataframe
+    wt_seq = _get_wt_sequence(ig_df_full) if ig_df_full is not None else None
+
+    # Apply split filter to the per-sequence IG dataframe
+    ig_df = ig_df_full
+    if ig_df is not None and split_filter and split_filter in ("trainval", "test"):
+        mask_split = ig_df["sequence_name"].apply(
+            lambda n: _extract_split_tag(n) == split_filter
+        )
+        ig_df = ig_df[mask_split]
+        if ig_df.empty:
+            ig_df = None  # nothing in this split
 
     # 1. Sign correctness
     sign_metrics: dict = {}
@@ -783,6 +1129,31 @@ def evaluate_one(
         data_df = _load_data_csv(protein, fitness_model)
         cliff_result = compute_cliff_analysis(ig_df, gt, protein, data_df)
 
+    # 5. Fitness-based metrics — |IG| vs mean fitness effect per position
+    fitness_metrics = compute_fitness_based_metrics(ig_vec, protein, fitness_model, wt_seq)
+
+    # ── Practical IG interpretation checks ──────────────────────────────────
+    # [1] Completeness axiom: Σ IG_i ≈ F(x) - F(x')
+    completeness_metrics: dict = {}
+    if ig_df is not None:
+        completeness_metrics = compute_completeness_stats(ig_df)
+        n_near_zero = completeness_metrics.get("n_near_zero_sequences", 0)
+        if n_near_zero > 0:
+            print(
+                f"  [warn] {n_near_zero} sequences have |F(x)-F(x')| < {_NEAR_ZERO_THRESHOLD}"
+                f" — attributions numerically unstable, excluded from completeness/normalized metrics."
+            )
+
+    # [2] Normalized position scores: IG_i / |F(x) - F(x')| for cross-sample comparison
+    # Re-run rank-correlation & classification metrics on the normalized scores.
+    norm_metrics: dict = {}
+    if ig_df is not None:
+        norm_ig_vec = compute_normalized_position_scores(ig_df, L)
+        if norm_ig_vec is not None:
+            raw = compute_metrics(norm_ig_vec, gt_vec, mask)
+            norm_metrics = {f"norm_{k}": v for k, v in raw.items()
+                            if k in ("spearman_r", "kendall_tau", "auroc", "auprc")}
+
     return {
         "results_dir":   str(results_dir),
         "dirname":       dirname,
@@ -791,10 +1162,15 @@ def evaluate_one(
         "ig_method":     ig_method,
         "attribution":   attribution,
         "interp":        interp,
+        "split":         split_filter if split_filter else "all",
         **metrics,
+        **weighted_acc_metrics,
+        **norm_metrics,
+        **completeness_metrics,
         **sign_metrics,
         **prop_metrics,
         **epi_metrics,
+        **fitness_metrics,
         "_cliff_rows":      cliff_result["cliff_rows"],
         "_cliff_threshold": cliff_result["cliff_threshold"],
     }
@@ -823,9 +1199,58 @@ def discover_synthetic_results(root: Path = SYNTHETIC_RESULTS_DIR) -> list[Path]
 # Plotting
 # ---------------------------------------------------------------------------
 
+# Colormaps assigned to each fitness model; shades vary by interpolation path.
+_FITNESS_MODEL_CMAPS: dict[str, any] = {
+    "additive":  plt.cm.Blues,
+    "epistatic": plt.cm.Oranges,
+    "nonlinear": plt.cm.Greens,
+}
+_DEFAULT_CMAP = plt.cm.Purples
+
+# Shade intensity for each interpolation path within a model-family colormap.
+_INTERP_SHADES: dict[str, float] = {
+    "linear":              0.40,
+    "linearinterpolation": 0.40,
+    "slerp":               0.58,
+    "nearest_neighbor":    0.72,
+    "guided_ig":           0.88,
+}
+
+
+def _assign_colors(df: pd.DataFrame) -> list:
+    """Return one RGBA colour per row based on (fitness_model, interp) combination.
+
+    Each fitness model maps to a colormap family; the interpolation path
+    selects a specific shade within that family.
+    """
+    colours = []
+    for _, row in df.iterrows():
+        model  = str(row.get("fitness_model", "unknown"))
+        interp = str(row.get("interp", "unknown"))
+        cmap   = _FITNESS_MODEL_CMAPS.get(model, _DEFAULT_CMAP)
+        shade  = _INTERP_SHADES.get(interp, 0.55)
+        colours.append(cmap(shade))
+    return colours
+
+
+def _config_legend_handles(df: pd.DataFrame) -> list:
+    """One legend Patch per unique (fitness_model, interp) combination present in df."""
+    seen: dict[tuple, mpatches.Patch] = {}
+    for _, row in df.iterrows():
+        model  = str(row.get("fitness_model", "unknown"))
+        interp = str(row.get("interp", "unknown"))
+        key    = (model, interp)
+        if key not in seen:
+            cmap  = _FITNESS_MODEL_CMAPS.get(model, _DEFAULT_CMAP)
+            shade = _INTERP_SHADES.get(interp, 0.55)
+            seen[key] = mpatches.Patch(color=cmap(shade), label=f"{model} / {interp}")
+    return list(seen.values())
+
+
 def plot_metric_comparison(
     summary_df: pd.DataFrame,
     output_dir: Path,
+    protein_prefix: str | None = None,
 ) -> None:
     """Grouped bar charts — one panel per metric, one bar per configuration."""
     metrics = ["spearman_r", "kendall_tau", "auroc", "auprc"]
@@ -838,7 +1263,8 @@ def plot_metric_comparison(
 
     # Create a display label per row
     def _label(row):
-        parts = [row["protein"], row["fitness_model"]]
+        parts = [] if protein_prefix else [row["protein"]]
+        parts.append(row["fitness_model"])
         if row["ig_method"] != "unknown":
             parts.append(row["ig_method"])
         if row["attribution"] != "unknown":
@@ -858,19 +1284,42 @@ def plot_metric_comparison(
     )
     axes = axes.flatten()
 
-    palette = plt.cm.tab20.colors
-    colours = [palette[i % len(palette)] for i in range(n_configs)]
+    colours = _assign_colors(summary_df)
+    prot_handles = _config_legend_handles(summary_df)
 
-    for ax, metric in zip(axes, metrics):
+    # Random-chance baselines per metric
+    # AUPRC baseline = fraction of positives (annotated / total positions)
+    if "n_annotated" in summary_df.columns and "n_positions" in summary_df.columns:
+        auprc_baseline = float(
+            (summary_df["n_annotated"] / summary_df["n_positions"].replace(0, np.nan)).mean()
+        )
+    else:
+        auprc_baseline = float("nan")
+    _gt_baselines = {
+        "spearman_r":  (0.0,                   "random (0)"),
+        "kendall_tau": (0.0,                   "random (0)"),
+        "auroc":       (0.5,                   "random (0.5)"),
+        "auprc":       (auprc_baseline,        f"random ({auprc_baseline:.2f})"),
+    }
+
+    for i, (ax, metric) in enumerate(zip(axes, metrics)):
         vals = summary_df[metric].values
         bars = ax.bar(
             range(n_configs), vals,
             color=colours, edgecolor="black", linewidth=0.5, alpha=0.85,
         )
-        # Reference line (AUROC/AUPRC random baseline)
-        if metric in ("auroc",):
-            ax.axhline(0.5, color="grey", lw=1.2, linestyle="--", label="random (0.5)")
-            ax.legend(fontsize=7)
+        # Random baseline for every metric
+        base_val, base_label = _gt_baselines.get(metric, (float("nan"), ""))
+        extra_handles = []
+        if np.isfinite(base_val):
+            ax.axhline(base_val, color="grey", lw=1.2, linestyle="--")
+            extra_handles.append(
+                plt.Line2D([0], [0], color="grey", lw=1.2, linestyle="--", label=base_label)
+            )
+        if i == 0:
+            ax.legend(handles=prot_handles + extra_handles, fontsize=7, loc="upper right")
+        elif extra_handles:
+            ax.legend(handles=extra_handles, fontsize=7)
         # Annotate value above each bar
         for bar, v in zip(bars, vals):
             if np.isfinite(v):
@@ -888,14 +1337,302 @@ def plot_metric_comparison(
         ax.yaxis.grid(True, linestyle="--", alpha=0.4)
         ax.set_axisbelow(True)
 
+    title_prot = f" [{protein_prefix}]" if protein_prefix else ""
     fig.suptitle(
-        "Synthetic IG Validation — Alignment with Ground-Truth Position Importance\n"
+        f"Synthetic IG Validation{title_prot} — Alignment with Ground-Truth Position Importance\n"
         "(Spearman/Kendall: rank correlation |IG| vs importance; "
         "AUROC/AUPRC: annotated vs unannotated positions)",
         fontsize=9,
     )
 
-    out_path = output_dir / "synthetic_ig_validation_metrics.png"
+    fname = f"{protein_prefix}_ig_validation_metrics.png" if protein_prefix else "synthetic_ig_validation_metrics.png"
+    out_path = output_dir / fname
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved: {out_path}")
+
+
+def plot_fitness_metric_comparison(
+    summary_df: pd.DataFrame,
+    output_dir: Path,
+    protein_prefix: str | None = None,
+) -> None:
+    """Grouped bar charts comparing |IG| to observed fitness effects.
+
+    Same layout as plot_metric_comparison but uses the fitness_* metric columns.
+    """
+    fitness_metrics = ["fitness_spearman_r", "fitness_kendall_tau", "fitness_auroc", "fitness_auprc"]
+    # Only plot if at least one run has these columns populated
+    available = [m for m in fitness_metrics if m in summary_df.columns and summary_df[m].notna().any()]
+    if not available:
+        print("  [skip] No fitness-based metrics available to plot.")
+        return
+
+    metric_labels = {
+        "fitness_spearman_r":  "Spearman ρ (fitness)",
+        "fitness_kendall_tau": "Kendall τ (fitness)",
+        "fitness_auroc":       "AUROC (fitness)",
+        "fitness_auprc":       "AUPRC (fitness)",
+    }
+
+    def _label(row):
+        parts = [] if protein_prefix else [row["protein"]]
+        parts.append(row["fitness_model"])
+        if row["ig_method"] != "unknown":
+            parts.append(row["ig_method"])
+        if row["attribution"] != "unknown":
+            parts.append(row["attribution"])
+        if row["interp"] not in ("unknown", ""):
+            parts.append(row["interp"])
+        return "\n".join(parts)
+
+    summary_df = summary_df.copy()
+    summary_df["label"] = summary_df.apply(_label, axis=1)
+
+    n_configs = len(summary_df)
+    n_metrics = len(available)
+    ncols = 2
+    nrows = (n_metrics + 1) // ncols
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(max(10, n_configs * 0.7), 5 * nrows),
+        constrained_layout=True,
+        squeeze=False,
+    )
+    axes_flat = axes.flatten()
+
+    colours = _assign_colors(summary_df)
+    prot_handles = _config_legend_handles(summary_df)
+
+    # Random-chance baselines: Spearman/Kendall → 0, AUROC/AUPRC → 0.5
+    # (AUPRC baseline is 0.5 because positives = top-50% most deleterious positions)
+    _fit_baselines = {
+        "fitness_spearman_r":  (0.0, "random (0)"),
+        "fitness_kendall_tau": (0.0, "random (0)"),
+        "fitness_auroc":       (0.5, "random (0.5)"),
+        "fitness_auprc":       (0.5, "random (0.5)"),
+    }
+
+    for i, (ax, metric) in enumerate(zip(axes_flat, available)):
+        vals = summary_df[metric].values
+        bars = ax.bar(
+            range(n_configs), vals,
+            color=colours, edgecolor="black", linewidth=0.5, alpha=0.85,
+        )
+        base_val, base_label = _fit_baselines.get(metric, (float("nan"), ""))
+        extra_handles = []
+        if np.isfinite(base_val):
+            ax.axhline(base_val, color="grey", lw=1.2, linestyle="--")
+            extra_handles.append(
+                plt.Line2D([0], [0], color="grey", lw=1.2, linestyle="--", label=base_label)
+            )
+        if i == 0:
+            ax.legend(handles=prot_handles + extra_handles, fontsize=7, loc="upper right")
+        elif extra_handles:
+            ax.legend(handles=extra_handles, fontsize=7)
+        for bar, v in zip(bars, vals):
+            if np.isfinite(v):
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + 0.01,
+                    f"{v:.3f}",
+                    ha="center", va="bottom", fontsize=6, rotation=90,
+                )
+        ax.set_xticks(range(n_configs))
+        ax.set_xticklabels(summary_df["label"].values, fontsize=6, ha="right", rotation=45)
+        ax.set_ylabel(metric_labels.get(metric, metric), fontsize=9)
+        ax.set_title(metric_labels.get(metric, metric), fontsize=10, fontweight="bold")
+        ax.set_ylim(bottom=min(0, float(np.nanmin(vals)) - 0.05))
+        ax.yaxis.grid(True, linestyle="--", alpha=0.4)
+        ax.set_axisbelow(True)
+
+    # Hide unused axes
+    for ax in axes_flat[len(available):]:
+        ax.set_visible(False)
+
+    title_prot = f" [{protein_prefix}]" if protein_prefix else ""
+    fig.suptitle(
+        f"Synthetic IG Validation{title_prot} — Alignment with Observed Fitness Effects\n"
+        "(Spearman/Kendall: rank correlation |IG| vs mean fitness drop per position; "
+        "AUROC/AUPRC: top-50% most deleterious positions as positives)",
+        fontsize=9,
+    )
+
+    fname = f"{protein_prefix}_ig_fitness_metrics.png" if protein_prefix else "synthetic_ig_fitness_metrics.png"
+    out_path = output_dir / fname
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved: {out_path}")
+
+
+def plot_completeness_summary(
+    summary_df: pd.DataFrame,
+    output_dir: Path,
+    protein_prefix: str | None = None,
+) -> None:
+    """Bar chart of completeness axiom pass-rates and normalized-IG rank metrics.
+
+    Two sub-plots:
+      Left  — fraction of sequences satisfying Σ IG ≈ F(x)−F(x') at 1/5/10% tolerance
+      Right — Spearman ρ on raw |IG| vs. on |IG|/|ΔF| (normalized), to show whether
+              normalizing improves ground-truth alignment.
+    """
+    comp_col = "completeness_frac_pass_5pct"  # primary quality gauge
+    has_completeness = comp_col in summary_df.columns and summary_df[comp_col].notna().any()
+    has_norm = "norm_spearman_r" in summary_df.columns and summary_df["norm_spearman_r"].notna().any()
+
+    if not has_completeness and not has_norm:
+        print("  [skip] No completeness / normalized-IG data to plot.")
+        return
+
+    def _label(row):
+        parts = [] if protein_prefix else [row["protein"]]
+        parts.append(row["fitness_model"])
+        if row.get("ig_method", "unknown") != "unknown":
+            parts.append(row["ig_method"])
+        if row.get("attribution", "unknown") != "unknown":
+            parts.append(row["attribution"])
+        if row.get("interp", "unknown") not in ("unknown", ""):
+            parts.append(row["interp"])
+        return "\n".join(parts)
+
+    df = summary_df.copy()
+    df["label"] = df.apply(_label, axis=1)
+    n = len(df)
+    colours = _assign_colors(df)
+    config_handles = _config_legend_handles(df)
+
+    n_panels = int(has_completeness) + int(has_norm)
+    fig, axes = plt.subplots(1, n_panels, figsize=(max(8, n * 0.9) * n_panels, 5),
+                             constrained_layout=True)
+    if n_panels == 1:
+        axes = [axes]
+
+    panel = 0
+    if has_completeness:
+        ax = axes[panel]; panel += 1
+        tols = [("completeness_frac_pass_1pct",  "ε<1%",  0.55),
+                (comp_col,                        "ε<5%",  0.68),
+                ("completeness_frac_pass_10pct",  "ε<10%", 0.82)]
+        x = np.arange(n)
+        w = 0.22
+        offsets = [-w, 0, w]
+        bar_colors = [plt.cm.Blues(s) for _, _, s in tols]
+        for k, (col, lbl, _) in enumerate(tols):
+            vals = df[col].values if col in df.columns else np.full(n, np.nan)
+            brs = ax.bar(x + offsets[k], vals, w, color=bar_colors[k],
+                         edgecolor="k", linewidth=0.4, alpha=0.85, label=lbl)
+            for bar, v in zip(brs, vals):
+                if np.isfinite(v):
+                    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
+                            f"{v:.2f}", ha="center", va="bottom", fontsize=5, rotation=90)
+        ax.set_xticks(x)
+        ax.set_xticklabels(df["label"].values, rotation=35, ha="right", fontsize=7)
+        ax.set_ylabel("Fraction of sequences passing")
+        ax.set_ylim(0, 1.15)
+        title_prot = f" [{protein_prefix}]" if protein_prefix else ""
+        ax.set_title(f"Completeness Axiom Pass-Rate{title_prot}\n(Σ IG ≈ F(x)−F(x′) within tolerance)")
+        ax.legend(fontsize=7, loc="lower right")
+        ax.yaxis.grid(True, linestyle="--", alpha=0.4)
+        ax.set_axisbelow(True)
+
+        # Annotate near-zero sequence counts if available
+        if "n_near_zero_sequences" in df.columns:
+            for idx, (_, row) in enumerate(df.iterrows()):
+                nz = int(row.get("n_near_zero_sequences", 0))
+                if nz > 0:
+                    ax.text(idx, -0.06, f"⚠{nz}", ha="center", va="top",
+                            fontsize=6, color="firebrick", transform=ax.transData)
+
+    if has_norm:
+        ax = axes[panel]
+        raw_vals  = df["spearman_r"].values  if "spearman_r"  in df.columns else np.full(n, np.nan)
+        norm_vals = df["norm_spearman_r"].values
+        x = np.arange(n)
+        w = 0.35
+        ax.bar(x - w/2, raw_vals,  w, color=plt.cm.Blues(0.55), edgecolor="k",
+               linewidth=0.4, alpha=0.85, label="raw |IG|")
+        ax.bar(x + w/2, norm_vals, w, color=plt.cm.Oranges(0.65), edgecolor="k",
+               linewidth=0.4, alpha=0.85, label="|IG| / |ΔF| (normalised)")
+        ax.axhline(0, color="grey", lw=0.8, linestyle="--")
+        ax.set_xticks(x)
+        ax.set_xticklabels(df["label"].values, rotation=35, ha="right", fontsize=7)
+        ax.set_ylabel("Spearman ρ vs ground-truth importance")
+        ax.set_ylim(bottom=min(0, float(np.nanmin(np.concatenate([raw_vals, norm_vals]))) - 0.05))
+        title_prot = f" [{protein_prefix}]" if protein_prefix else ""
+        ax.set_title(f"Raw vs Normalised |IG| Rank Correlation{title_prot}\n"
+                     "(normalise by |F(x)−F(x′)| to compare across sequences)")
+        ax.legend(fontsize=7)
+        ax.yaxis.grid(True, linestyle="--", alpha=0.4)
+        ax.set_axisbelow(True)
+
+    fname = f"{protein_prefix}_completeness.png" if protein_prefix else "synthetic_completeness.png"
+    out_path = output_dir / fname
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved: {out_path}")
+
+
+def plot_weighted_position_accuracy(
+    summary_df: pd.DataFrame,
+    output_dir: Path,
+    protein_prefix: str | None = None,
+) -> None:
+    """Bar chart of importance-weighted position identification accuracy per run.
+
+    Uses the 'weighted_pos_acc' column computed by
+    compute_weighted_position_accuracy.  One chart per protein when
+    protein_prefix is provided.
+    """
+    col = "weighted_pos_acc"
+    if col not in summary_df.columns or summary_df[col].isna().all():
+        print("  [skip] No weighted_pos_acc data to plot.")
+        return
+
+    def _label(row):
+        parts = [] if protein_prefix else [row["protein"]]
+        parts.append(row["fitness_model"])
+        if row["ig_method"] != "unknown":
+            parts.append(row["ig_method"])
+        if row["attribution"] != "unknown":
+            parts.append(row["attribution"])
+        if row["interp"] not in ("unknown", ""):
+            parts.append(row["interp"])
+        return "\n".join(parts)
+
+    df = summary_df.copy()
+    df["label"] = df.apply(_label, axis=1)
+    n = len(df)
+
+    colours = _assign_colors(df)
+    config_handles = _config_legend_handles(df)
+
+    fig, ax = plt.subplots(figsize=(max(8, n * 0.9), 5), constrained_layout=True)
+    vals = df[col].values
+    bars = ax.bar(range(n), vals, color=colours, edgecolor="black", linewidth=0.5, alpha=0.85)
+
+    for bar, v in zip(bars, vals):
+        if np.isfinite(v):
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
+                    f"{v:.3f}", ha="center", va="bottom", fontsize=6, rotation=90)
+
+    ax.axhline(0.5, color="grey", lw=1.2, linestyle="--", label="chance (0.5)")
+    ax.set_xticks(range(n))
+    ax.set_xticklabels(df["label"].values, rotation=35, ha="right", fontsize=7)
+    ax.set_ylabel("Weighted position identification accuracy")
+    ax.set_ylim(0, 1.15)
+    title_prot = f" [{protein_prefix}]" if protein_prefix else ""
+    ax.set_title(
+        f"Importance-Weighted Position Identification Accuracy{title_prot}\n"
+        "(|IG| > median threshold → predicted important; weighted by ground-truth importance)"
+    )
+    chance_line = plt.Line2D([0], [0], color="grey", lw=1.2, linestyle="--", label="chance (0.5)")
+    ax.legend(handles=config_handles + [chance_line], fontsize=7, loc="lower right")
+    ax.yaxis.grid(True, linestyle="--", alpha=0.4)
+    ax.set_axisbelow(True)
+
+    fname = f"{protein_prefix}_weighted_pos_accuracy.png" if protein_prefix else "synthetic_weighted_pos_accuracy.png"
+    out_path = output_dir / fname
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"  Saved: {out_path}")
@@ -1003,36 +1740,61 @@ def main() -> None:
     rows: list[dict] = []
     for d in dirs:
         print(f"Evaluating: {d.name}")
-        row = evaluate_one(d, use_per_variant=args.use_per_variant)
-        if row is None:
-            continue
-        rows.append(row)
 
-        # Optional per-position plot
-        if args.per_position_plots:
+        # Detect whether this results dir has per-split tags in its IG CSV
+        _ig_files = list(d.glob("*_integrated_gradients_results.csv"))
+        _has_splits = False
+        if _ig_files:
             try:
-                protein = row["protein"]
-                gt = load_ground_truth(protein)
-                L = gt["sequence_length"]
-                if args.use_per_variant:
-                    pos_df = _load_per_variant_gradients(d)
-                else:
-                    pos_df = _load_position_importance(d)
-                if pos_df is not None:
-                    ig_vec = np.zeros(L, dtype=float)
-                    for _, r in pos_df.iterrows():
-                        p0 = int(r["position"]) - 1
-                        if 0 <= p0 < L:
-                            ig_vec[p0] = float(r["mean_abs_gradient"])
-                    plot_per_position_comparison(d, protein, gt, ig_vec, output_dir,
-                                                 label=d.name)
-            except Exception as exc:
-                print(f"  [warn] Per-position plot failed: {exc}")
+                _sample = pd.read_csv(_ig_files[0], usecols=["sequence_name"], nrows=500)
+                _tags = _sample["sequence_name"].apply(_extract_split_tag).unique().tolist()
+                _has_splits = any(t in _tags for t in ("trainval", "test"))
+            except Exception:
+                pass
 
-        print(
-            f"  ρ={row['spearman_r']:+.3f}  τ={row['kendall_tau']:+.3f}  "
-            f"AUROC={row['auroc']:.3f}  AUPRC={row['auprc']:.3f}"
-        )
+        # Determine which split_filter values to run
+        _split_filters: list[str | None] = [None]
+        if _has_splits:
+            _split_filters += ["trainval", "test"]
+
+        for split_filter in _split_filters:
+            row = evaluate_one(d, use_per_variant=args.use_per_variant, split_filter=split_filter)
+            if row is None:
+                continue
+            rows.append(row)
+
+            _split_label = split_filter or "all"
+            # Optional per-position plot (only for 'all' or per-variant mode)
+            if args.per_position_plots and (split_filter is None or args.use_per_variant):
+                try:
+                    protein = row["protein"]
+                    gt = load_ground_truth(protein)
+                    L = gt["sequence_length"]
+                    if args.use_per_variant:
+                        pos_df = _load_per_variant_gradients(d, split_filter=split_filter)
+                    else:
+                        pos_df = _load_position_importance(d)
+                    if pos_df is not None:
+                        ig_vec = np.zeros(L, dtype=float)
+                        for _, r in pos_df.iterrows():
+                            p0 = int(r["position"]) - 1
+                            if 0 <= p0 < L:
+                                ig_vec[p0] = float(r["mean_abs_gradient"])
+                        plot_per_position_comparison(
+                            d, protein, gt, ig_vec, output_dir,
+                            label=f"{d.name}_{_split_label}")
+                except Exception as exc:
+                    print(f"  [warn] Per-position plot failed: {exc}")
+
+            print(
+                f"  [{_split_label}]  "
+                f"ρ(GT)={row['spearman_r']:+.3f}  τ(GT)={row['kendall_tau']:+.3f}  "
+                f"AUROC(GT)={row['auroc']:.3f}  AUPRC(GT)={row['auprc']:.3f}  "
+                f"ρ(fit)={row.get('fitness_spearman_r', float('nan')):+.3f}  "
+                f"AUROC(fit)={row.get('fitness_auroc', float('nan')):.3f}  "
+                f"completeness(5%)={row.get('completeness_frac_pass_5pct', float('nan')):.2f}  "
+                f"near_zero={row.get('n_near_zero_sequences', 0)}"
+            )
 
     if not rows:
         print("No valid results found.")
@@ -1044,8 +1806,21 @@ def main() -> None:
     export_df = summary_df.drop(columns=[c for c in ["_cliff_rows", "_cliff_threshold"] if c in summary_df.columns])
     col_order = [
         "dirname", "protein", "fitness_model", "ig_method", "attribution", "interp",
+        "split",
         "spearman_r", "spearman_p", "kendall_tau", "kendall_p",
         "auroc", "auprc", "n_positions", "n_annotated",
+        "weighted_pos_acc", "unweighted_pos_acc", "ig_threshold",
+        # [2] Normalized rank metrics (|IG| / |ΔF|)
+        "norm_spearman_r", "norm_kendall_tau", "norm_auroc", "norm_auprc",
+        # [1] Completeness axiom stats
+        "completeness_mean_rel_error", "completeness_median_rel_error",
+        "completeness_frac_pass_1pct", "completeness_frac_pass_5pct", "completeness_frac_pass_10pct",
+        "n_completeness_sequences",
+        # [4] Near-zero output-difference (unreliable attributions)
+        "n_near_zero_sequences",
+        "fitness_spearman_r", "fitness_spearman_p",
+        "fitness_kendall_tau", "fitness_kendall_p",
+        "fitness_auroc", "fitness_auprc", "n_fitness_positions",
         "sign_acc_active", "sign_acc_wt", "sign_acc_overall",
         "n_active_mut", "n_wt_positions",
         "linear_spearman_r", "linear_pearson_r", "n_prop_obs",
@@ -1061,14 +1836,18 @@ def main() -> None:
 
     # ── Print table ──────────────────────────────────────────────────────────
     hdr_cols = [
-        ("Directory", "dirname", 40, ""),
-        ("ρ",         "spearman_r",  6, "+.3f"),
-        ("τ",         "kendall_tau", 6, "+.3f"),
-        ("AUROC",     "auroc",       6,  ".3f"),
-        ("AUPRC",     "auprc",       6,  ".3f"),
-        ("SignAcc(act)", "sign_acc_active",  10, ".3f"),
-        ("SignAcc(all)", "sign_acc_overall", 10, ".3f"),
-        ("LinSp",  "linear_spearman_r", 6, "+.3f"),
+        ("Directory",    "dirname",             40, ""),
+        ("ρ(GT)",        "spearman_r",           7, "+.3f"),
+        ("τ(GT)",        "kendall_tau",          7, "+.3f"),
+        ("AUROC(GT)",    "auroc",                8,  ".3f"),
+        ("AUPRC(GT)",    "auprc",                8,  ".3f"),
+        ("ρ(fit)",       "fitness_spearman_r",   7, "+.3f"),
+        ("τ(fit)",       "fitness_kendall_tau",  7, "+.3f"),
+        ("AUROC(fit)",   "fitness_auroc",        9,  ".3f"),
+        ("AUPRC(fit)",   "fitness_auprc",        9,  ".3f"),
+        ("SignAcc(act)", "sign_acc_active",      10, ".3f"),
+        ("SignAcc(all)", "sign_acc_overall",     10, ".3f"),
+        ("LinSp",        "linear_spearman_r",    6, "+.3f"),
     ]
     hdr_cols = [(h, col, w, fmt) for h, col, w, fmt in hdr_cols if col in export_df.columns]
     header = "".join(f"{h:>{w}}  " for h, col, w, fmt in hdr_cols)
@@ -1090,35 +1869,61 @@ def main() -> None:
     print("=" * len(header))
 
     # ── Plots ────────────────────────────────────────────────────────────────
-    try:
-        plot_metric_comparison(export_df, output_dir)
-    except Exception as exc:
-        print(f"  [warn] Metric comparison plot failed: {exc}")
+    proteins_present = list(export_df["protein"].unique()) if "protein" in export_df.columns else []
+    splits_present   = sorted(export_df["split"].unique().tolist()) if "split" in export_df.columns else ["all"]
 
-    # Sign accuracy bar chart
-    try:
-        sign_rows = [
-            {"label": r["dirname"],
-             "sign_acc_active":  r.get("sign_acc_active",  float("nan")),
-             "sign_acc_wt":      r.get("sign_acc_wt",      float("nan")),
-             "sign_acc_overall": r.get("sign_acc_overall", float("nan"))}
-            for _, r in export_df.iterrows()
-        ]
-        plot_sign_accuracy_bars(sign_rows, output_dir)
-    except Exception as exc:
-        print(f"  [warn] Sign accuracy plot failed: {exc}")
+    def _safe_plots(df_sub: pd.DataFrame, prefix: str) -> None:
+        """Generate the standard set of plots for a given (protein × split) subset."""
+        if df_sub.empty:
+            return
+        try:
+            plot_metric_comparison(df_sub, output_dir, protein_prefix=prefix)
+        except Exception as exc:
+            print(f"  [warn] Metric comparison [{prefix}] failed: {exc}")
+        try:
+            plot_fitness_metric_comparison(df_sub, output_dir, protein_prefix=prefix)
+        except Exception as exc:
+            print(f"  [warn] Fitness metric comparison [{prefix}] failed: {exc}")
+        try:
+            plot_weighted_position_accuracy(df_sub, output_dir, protein_prefix=prefix)
+        except Exception as exc:
+            print(f"  [warn] Weighted pos accuracy [{prefix}] failed: {exc}")
+        try:
+            plot_completeness_summary(df_sub, output_dir, protein_prefix=prefix)
+        except Exception as exc:
+            print(f"  [warn] Completeness summary [{prefix}] failed: {exc}")
+        try:
+            sign_rows = [
+                {"label": r["dirname"],
+                 "sign_acc_active":  r.get("sign_acc_active",  float("nan")),
+                 "sign_acc_wt":      r.get("sign_acc_wt",      float("nan")),
+                 "sign_acc_overall": r.get("sign_acc_overall", float("nan"))}
+                for _, r in df_sub.iterrows()
+            ]
+            plot_sign_accuracy_bars(sign_rows, output_dir, protein_prefix=prefix)
+        except Exception as exc:
+            print(f"  [warn] Sign accuracy [{prefix}] failed: {exc}")
 
-    # Cliff damage plots (one per run that has cliff data)
-    for row in rows:
-        cliff_rows = row.get("_cliff_rows", [])
-        if cliff_rows:
-            try:
-                # Attach threshold to each row for the plotting fn
-                for cr in cliff_rows:
-                    cr["cliff_threshold"] = row["_cliff_threshold"]
-                plot_cliff_damage(cliff_rows, output_dir, label=row["dirname"])
-            except Exception as exc:
-                print(f"  [warn] Cliff plot for {row['dirname']} failed: {exc}")
+    # Per-protein × per-split plots
+    for prot in proteins_present:
+        prot_df = export_df[export_df["protein"] == prot]
+        for split in splits_present:
+            split_df = prot_df[prot_df["split"] == split] if "split" in prot_df.columns else prot_df
+            if split_df.empty:
+                continue
+            # Build prefix: e.g. "GB1_all", "GB1_trainval", "GB1_test"
+            prefix = f"{prot}_{split}" if split != "all" else prot
+            print(f"\n  Generating plots for protein={prot} split={split} ({len(split_df)} runs)")
+            _safe_plots(split_df, prefix)
+
+    # Combined plots across all proteins — one set per split
+    for split in splits_present:
+        split_df = export_df[export_df["split"] == split] if "split" in export_df.columns else export_df
+        if split_df.empty:
+            continue
+        combined_prefix = f"combined_{split}" if split != "all" else None
+        print(f"\n  Generating combined overview plots (split={split}, {len(split_df)} runs)")
+        _safe_plots(split_df, combined_prefix)
 
     print(f"\nDone. Output saved to: {output_dir}")
 

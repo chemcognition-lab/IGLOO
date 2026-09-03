@@ -1,0 +1,90 @@
+T4LYSOZYME_ADDITIVE INTEGRATED GRADIENTS ANALYSIS SUMMARY
+==================================================
+
+Analysis Configuration:
+  Integration Method: embedding
+  Attribution Method: signed
+  ESM Layer: 33
+  Pooling Method: esm_attention
+  Integration Steps: 50
+
+Model Performance:
+  R² = 0.9839
+  Pearson r = 0.9920
+  Spearman ρ = 0.5508
+
+Sequences Analyzed:
+  WT[trainval]:
+    Predicted Activity: 0.9773
+    Effect vs Baseline: 0.0000
+    Actual Activity: 1.0000
+
+  Lowest_Activity[trainval]:
+    Predicted Activity: -3.8623
+    Effect vs Baseline: -4.8396
+    Actual Activity: -4.0750
+
+  Highest_Activity[trainval]:
+    Predicted Activity: 0.9773
+    Effect vs Baseline: 0.0000
+    Actual Activity: 1.0000
+
+  Median_Activity[test]:
+    Predicted Activity: 0.9127
+    Effect vs Baseline: -0.0646
+    Actual Activity: 0.9563
+
+TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
+ 1. Position 23 (G): importance = 2.3518
+ 2. Position 21 (T): importance = 1.0724
+ 3. Position 27 (I): importance = 0.0590
+ 4. Position 11 (E): importance = 0.0586
+ 5. Position 117 (S): importance = 0.0330
+ 6. Position 71 (V): importance = 0.0283
+ 7. Position 19 (K): importance = 0.0129
+ 8. Position 25 (Y): importance = 0.0126
+ 9. Position 116 (N): importance = 0.0039
+10. Position 12 (G): importance = 0.0039
+
+SIGNED GRADIENT ANALYSIS:
+------------------------------
+
+TOP 10 MOST BENEFICIAL POSITIONS (positive gradients):
+ 1. Position 71 (V): gradient = +0.0348 [from Lowest_Activity[trainval]]
+ 2. Position 24 (Y): gradient = +0.0047 [from Lowest_Activity[trainval]]
+ 3. Position 20 (L): gradient = +0.0028 [from Lowest_Activity[trainval]]
+ 4. Position 46 (L): gradient = +0.0024 [from Lowest_Activity[trainval]]
+ 5. Position 110 (G): gradient = +0.0020 [from Lowest_Activity[trainval]]
+ 6. Position 28 (G): gradient = +0.0013 [from Lowest_Activity[trainval]]
+ 7. Position 109 (T): gradient = +0.0011 [from Lowest_Activity[trainval]]
+ 8. Position 78 (I): gradient = +0.0009 [from Lowest_Activity[trainval]]
+ 9. Position 63 (A): gradient = +0.0008 [from Lowest_Activity[trainval]]
+10. Position 35 (K): gradient = +0.0007 [from Lowest_Activity[trainval]]
+
+TOP 10 MOST DETRIMENTAL POSITIONS (negative gradients):
+ 1. Position 23 (G): gradient = -3.1357 [from Lowest_Activity[trainval]]
+ 2. Position 21 (T): gradient = -1.4294 [from Lowest_Activity[trainval]]
+ 3. Position 27 (Q): gradient = -0.0787 [from Lowest_Activity[trainval]]
+ 4. Position 11 (E): gradient = -0.0774 [from Lowest_Activity[trainval]]
+ 5. Position 117 (S): gradient = -0.0338 [from Lowest_Activity[trainval]]
+ 6. Position 117 (S): gradient = -0.0271 [from Median_Activity[test]]
+ 7. Position 19 (K): gradient = -0.0171 [from Lowest_Activity[trainval]]
+ 8. Position 25 (Y): gradient = -0.0168 [from Lowest_Activity[trainval]]
+ 9. Position 11 (E): gradient = -0.0057 [from Median_Activity[test]]
+10. Position 12 (G): gradient = -0.0052 [from Lowest_Activity[trainval]]
+
+AMINO ACID TYPE EFFECTS (averaged across all positions):
+Most beneficial amino acid types:
+  1. V: avg effect = +0.0008 (appeared 35 times)
+Most detrimental amino acid types:
+  1. S: avg effect = -0.0026 (appeared 24 times)
+  2. E: avg effect = -0.0027 (appeared 32 times)
+  3. Q: avg effect = -0.0038 (appeared 21 times)
+  4. T: avg effect = -0.0358 (appeared 40 times)
+  5. G: avg effect = -0.0713 (appeared 44 times)
+
+SUMMARY STATISTICS:
+  Total positions analyzed: 656
+  Beneficial positions: 81 (12.3%)
+  Detrimental positions: 247 (37.7%)
+  Neutral positions: 328 (50.0%)

@@ -1,0 +1,86 @@
+T4LYSOZYME_NONLINEAR INTEGRATED GRADIENTS ANALYSIS SUMMARY
+==================================================
+
+Analysis Configuration:
+  Integration Method: embedding
+  Attribution Method: signed
+  ESM Layer: 33
+  Pooling Method: esm_attention
+  Integration Steps: 50
+
+Model Performance:
+  R² = 0.9708
+  Pearson r = 0.9855
+  Spearman ρ = 0.4703
+
+Sequences Analyzed:
+  WT[trainval]:
+    Predicted Activity: 0.9524
+    Effect vs Baseline: 0.0000
+    Actual Activity: 1.0000
+
+  Highest_Activity[trainval]:
+    Predicted Activity: 0.9524
+    Effect vs Baseline: 0.0000
+    Actual Activity: 1.0000
+
+  Median_Activity[test]:
+    Predicted Activity: 0.9357
+    Effect vs Baseline: -0.0166
+    Actual Activity: 0.9563
+
+  PolyAlanine:
+    Predicted Activity: -0.8008
+    Effect vs Baseline: -1.7532
+
+TOP 10 MOST IMPORTANT POSITIONS (across all sequences):
+ 1. Position 12 (G): importance = 1.8130
+ 2. Position 19 (K): importance = 0.2568
+ 3. Position 11 (E): importance = 0.2238
+ 4. Position 23 (G): importance = 0.0932
+ 5. Position 93 (A): importance = 0.0647
+ 6. Position 25 (Y): importance = 0.0374
+ 7. Position 139 (Y): importance = 0.0373
+ 8. Position 146 (A): importance = 0.0292
+ 9. Position 26 (H): importance = 0.0281
+10. Position 15 (L): importance = 0.0213
+
+SIGNED GRADIENT ANALYSIS:
+------------------------------
+
+TOP 10 MOST BENEFICIAL POSITIONS (positive gradients):
+ 1. Position 19 (A): gradient = +0.3391 [from PolyAlanine]
+ 2. Position 11 (A): gradient = +0.2983 [from PolyAlanine]
+ 3. Position 23 (A): gradient = +0.1223 [from PolyAlanine]
+ 4. Position 93 (A): gradient = +0.0862 [from PolyAlanine]
+ 5. Position 25 (A): gradient = +0.0498 [from PolyAlanine]
+ 6. Position 139 (A): gradient = +0.0492 [from PolyAlanine]
+ 7. Position 146 (A): gradient = +0.0390 [from PolyAlanine]
+ 8. Position 26 (A): gradient = +0.0374 [from PolyAlanine]
+ 9. Position 108 (A): gradient = +0.0218 [from PolyAlanine]
+10. Position 46 (A): gradient = +0.0199 [from PolyAlanine]
+
+TOP 10 MOST DETRIMENTAL POSITIONS (negative gradients):
+ 1. Position 12 (A): gradient = -2.4169 [from PolyAlanine]
+ 2. Position 15 (A): gradient = -0.0284 [from PolyAlanine]
+ 3. Position 164 (A): gradient = -0.0269 [from PolyAlanine]
+ 4. Position 142 (A): gradient = -0.0234 [from PolyAlanine]
+ 5. Position 22 (A): gradient = -0.0162 [from PolyAlanine]
+ 6. Position 163 (A): gradient = -0.0131 [from PolyAlanine]
+ 7. Position 71 (A): gradient = -0.0128 [from PolyAlanine]
+ 8. Position 4 (A): gradient = -0.0118 [from PolyAlanine]
+ 9. Position 109 (A): gradient = -0.0111 [from PolyAlanine]
+10. Position 116 (A): gradient = -0.0099 [from PolyAlanine]
+
+AMINO ACID TYPE EFFECTS (averaged across all positions):
+Most detrimental amino acid types:
+  1. Y: avg effect = -0.0001 (appeared 18 times)
+  2. K: avg effect = -0.0002 (appeared 39 times)
+  3. G: avg effect = -0.0002 (appeared 33 times)
+  4. A: avg effect = -0.0080 (appeared 209 times)
+
+SUMMARY STATISTICS:
+  Total positions analyzed: 656
+  Beneficial positions: 97 (14.8%)
+  Detrimental positions: 231 (35.2%)
+  Neutral positions: 328 (50.0%)

@@ -123,7 +123,7 @@ class ESMCBackend:
         key = "_".join(parts)  # e.g. esmc_300m
 
         print(f"Loading ESM-C model {key}...")
-        client = ESMC.from_pretrained(key).to(device)
+        client = ESMC.from_pretrained(key).to(device).float()  # force float32 to avoid bfloat16 NaN overflow
         client.eval()
         return cls(client, model_name)
 
@@ -146,7 +146,9 @@ class ESMCBackend:
                     LogitsConfig(sequence=True, return_embeddings=True),
                 )
             # ESM-C embeddings are already (1, L, D) — no BOS/EOS tokens in output
-            emb = logits_output.embeddings.cpu()  # (1, L, D)
+            # Cast to float32 before moving to CPU: bfloat16 on H100 can produce
+            # NaN for long sequences due to softmax overflow.
+            emb = logits_output.embeddings.float().cpu()  # (1, L, D)
             all_embs.append(emb)
 
         return _concat_with_padding(all_embs)

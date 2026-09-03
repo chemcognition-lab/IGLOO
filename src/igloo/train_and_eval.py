@@ -150,6 +150,7 @@ def train_model_with_embeddings(
     model_config: Optional[dict[str, Any]] = None,
     embeddings_subdir: Optional[str] = None,
     esm_model_name: str = 'esmc_300m',
+    noise_config: Optional[dict] = None,
 ) -> dict:
     """
     Train a model using the same embedding + DataLoader approach as integrated gradients.
@@ -277,6 +278,12 @@ def train_model_with_embeddings(
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {trainable_params:,} trainable / {total_params:,} total")
 
+    # ── Parse noise configuration ─────────────────────────────────────────
+    _noise = noise_config or {}
+    _input_noise_std = float(_noise.get('input_noise_std', 0.0))
+    if _input_noise_std > 0.0:
+        print(f"Noise injection — input_noise_std={_input_noise_std:.4f} (per-batch embedding augmentation)")
+
     for epoch in range(num_epochs):
         # Training phase
         model.train()
@@ -285,6 +292,10 @@ def train_model_with_embeddings(
         for _batch_idx, (xb, lengths, yb) in enumerate(train_loader):
             xb = xb.to(device)
             yb = yb.to(device)
+
+            # Apply per-batch input noise (training only)
+            if _input_noise_std > 0.0:
+                xb = xb + torch.randn_like(xb) * _input_noise_std
 
             optimizer.zero_grad()
 
@@ -993,7 +1004,12 @@ def train_or_load_model(config, sequences, y, results_dir, device):
     model_config    = config['model']
     training_config = config.get('training', {})
     n_folds         = int(training_config.get('n_folds', 1))
-    training_model_path = os.path.join(results_dir, f"{config['data']['name']}_training_model.pth")
+    # model_dir defaults to results_dir but can be overridden to share a trained
+    # model across multiple runs (e.g. different interpolation paths at the same
+    # noise level).
+    model_dir = config.get('model_dir', results_dir)
+    os.makedirs(model_dir, exist_ok=True)
+    training_model_path = os.path.join(model_dir, f"{config['data']['name']}_training_model.pth")
 
     # Get embedding dimensions
     print("Getting embedding dimensions...")
@@ -1086,6 +1102,8 @@ def train_or_load_model(config, sequences, y, results_dir, device):
         print("\nTraining model...")
 
         # ── K-fold CV path ────────────────────────────────────────────────
+        noise_config = training_config.get('noise', {})
+
         if n_folds > 1:
             final_model, cv_summary, model_cfg, _norm = kfold_cv_and_train(
                 config=config,
@@ -1096,6 +1114,7 @@ def train_or_load_model(config, sequences, y, results_dir, device):
                 n_folds=n_folds,
                 save_path=training_model_path,
                 embeddings_subdir=embeddings_subdir,
+                noise_config=noise_config,
             )
             train_metrics = cv_summary
         else:
@@ -1132,6 +1151,7 @@ def train_or_load_model(config, sequences, y, results_dir, device):
                 model_config=model_cfg,
                 embeddings_subdir=embeddings_subdir,
                 esm_model_name=esm_model_name,
+                noise_config=noise_config,
             )
 
             final_model   = training_results['model']
@@ -1160,6 +1180,7 @@ def _run_fold_training(
     patience: int,
     criterion,
     device,
+    noise_config: Optional[dict] = None,
 ) -> tuple[dict, int, list[float], list[float]]:
     """Train one CV fold on pre-computed embeddings.
 
@@ -1190,12 +1211,17 @@ def _run_fold_training(
     train_loss_history: list[float] = []
     val_loss_history:   list[float] = []
 
+    _noise = noise_config or {}
+    _input_noise_std = float(_noise.get('input_noise_std', 0.0))
+
     for epoch in range(num_epochs):
         # ── Training step ──
         model.train()
         train_batch_losses: list[float] = []
         for xb, lengths, yb in train_loader:
             xb, yb = xb.to(device), yb.to(device)
+            if _input_noise_std > 0.0:
+                xb = xb + torch.randn_like(xb) * _input_noise_std
             optimizer.zero_grad()
             if pooling_method == 'esm_attention':
                 mask = torch.zeros(xb.size(0), xb.size(1), device=device)
@@ -1303,6 +1329,7 @@ def kfold_cv_and_train(
     n_folds: int = 5,
     save_path: Optional[str] = None,
     embeddings_subdir: Optional[str] = None,
+    noise_config: Optional[dict] = None,
 ) -> tuple:
     """
     Run K-fold cross-validation on *sequences* / *y*, then train a final model
@@ -1406,6 +1433,7 @@ def kfold_cv_and_train(
             patience=cv_patience,
             criterion=criterion,
             device=device,
+            noise_config=noise_config,
         )
         fold_metrics['fold'] = fold_idx + 1
         cv_fold_metrics.append(fold_metrics)
@@ -1509,6 +1537,7 @@ def kfold_cv_and_train(
         model_config=model_cfg,
         embeddings_subdir=embeddings_subdir,
         esm_model_name=esm_model_name,
+        noise_config=noise_config,
     )
     final_model = final_results['model']
     cv_summary['final_train_metrics'] = final_results['metrics']

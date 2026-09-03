@@ -1,0 +1,36 @@
+==========================================
+SWEEP JOB: p53 / additive / linear / noise=0.0
+  config    : configs/synthetic/p53_additive_config.yaml
+  model_dir : results/synthetic/p53_additive/noise_0.0
+  results   : results/synthetic/p53_additive/noise_0.0/linear
+==========================================
+Configuration file 'configs/synthetic/p53_additive_config.yaml' is valid!
+Using device: cuda
+============================================================
+INTEGRATED GRADIENTS ANALYSIS PIPELINE
+============================================================
+Config file: Unknown
+Device: cuda
+
+Loading data from /project/6111759/ranaab/IGLOO/data/synthetic/p53_additive.csv
+Dataset 'p53_additive' - skipping wildtype normalization
+Dataset size: 10001 sequences
+Target range: -4.4154 to 1.0000
+Using raw target values without normalization...
+
+Data split: 8099 train+val (80%), 1902 held-out test (20%)
+  Test set — single: 1314
+  Test set — double: 391
+  Test set — triple: 197
+Using provided WT sequence
+WT sequence: MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDI...
+WT sequence length: 393
+Results directory: /project/6111759/ranaab/IGLOO/results/synthetic/p53_additive/noise_0.0/linear
+Config snapshot saved to: /project/6111759/ranaab/IGLOO/results/synthetic/p53_additive/noise_0.0/linear/p53_additive_config_snapshot_20260420_150407.yaml
+Getting embedding dimensions...
+
+Training model...
+
+Pre-fetching embeddings for 8099 train+val sequences...
+Loading ESM-C model esmc_300m...
+Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files: 100%|██████████| 4/4 [00:00<00:00, 1090.35it/s]

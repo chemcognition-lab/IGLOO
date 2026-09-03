@@ -17,21 +17,21 @@ model:
   hidden_dim2: 256
   hidden_dim3: 128
   hidden_dim4: 64
-  dropout_rate: 0.4
-  learning_rate: 0.0008
+  dropout_rate: 0.45
+  learning_rate: 0.0007
   batch_size: 128
-  epochs: 50
+  epochs: 65
   loss_type: "huber"
   final_activation: null
-  patience: 15          # early-stopping patience (epochs without val improvement)
-  min_epochs: 10        # floor on avg_best_epoch used for the final model
+  patience: 17          # early-stopping patience (epochs without val improvement)
+  min_epochs: 12        # floor on avg_best_epoch used for the final model
 
 integrated_gradients:
   method: "embedding"
   attribution_method: "signed"
   interpolation_path: "linear"  # 'linear' | 'slerp' | 'nearest_neighbor' | 'guided_ig'
   plot_interpolation_umap: false   # UMAP projection of interpolation path; saved to results_dir
-  steps: 50
+  steps: 500
   batch_size: 10
 
 analysis:
@@ -40,12 +40,18 @@ analysis:
     include_median: true
     include_top_n: 0
     include_bottom_n: 0
+    include_all: true
     custom_sequences: []
 
 results_dir: "results/synthetic/T4Lysozyme_nonlinear_LINEAR"
-force_retrain: true
+force_retrain: false
 
 training:
+  seed: 42
   n_folds: 5
   test_fraction: 0.20
   split_seed: 42
+  noise:
+    label_noise_std: 0.0    # σ in raw target units; 0 = no noise
+    label_noise_seed: 0     # RNG seed for reproducibility
+    input_noise_std: 0.0    # σ for per-batch embedding augmentation; 0 = off

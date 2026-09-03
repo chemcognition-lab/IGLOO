@@ -58,13 +58,65 @@ class _Tee:
         return getattr(self._orig, name)
 
 
+def _apply_overrides(cfg: dict, overrides: list[str]) -> None:
+    """Merge dot-path key=value strings into cfg in-place.
+
+    Supports nested keys separated by dots, e.g.::
+
+        ig.interpolation_path=slerp
+        training.noise.label_noise_std=0.1
+        results_dir=results/myjob
+    """
+    def _cast(v: str):
+        if v.lower() in ('true', 'false'):
+            return v.lower() == 'true'
+        try:
+            return int(v)
+        except ValueError:
+            pass
+        try:
+            return float(v)
+        except ValueError:
+            pass
+        return v
+
+    for item in overrides:
+        if '=' not in item:
+            print(f"Warning: ignoring malformed override (no '='): {item}")
+            continue
+        dotpath, _, raw_val = item.partition('=')
+        keys = dotpath.split('.')
+        node = cfg
+        for k in keys[:-1]:
+            node = node.setdefault(k, {})
+        node[keys[-1]] = _cast(raw_val)
+
+
 class IntegratedGradientsRunner:
     """Unified runner for integrated gradients analysis with config support."""
 
-    def __init__(self, config_path: str):
+
+    def __init__(self, config_path: str, overrides: list[str] | None = None):
         """Initialize the runner with a configuration file."""
+        import random
         self.config = load_config(config_path)
+        if overrides:
+            _apply_overrides(self.config, overrides)
         validate_config(self.config)
+
+        # Set global random seeds for reproducibility
+        seed = self.config.get('training', {}).get('seed', 42)
+        try:
+            import numpy as np
+            import torch
+            np.random.seed(seed)
+            random.seed(seed)
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+            print(f"Global random seed set to {seed}")
+        except Exception as e:
+            print(f"[Warning] Could not set all random seeds: {e}")
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {self.device}")
@@ -95,6 +147,37 @@ class IntegratedGradientsRunner:
         # load_and_prepare_data returns a tuple: (df, sequences, y_raw, y, y_log_mean, y_log_std)
         result = load_and_prepare_data(self.config, data_path)
         self.df, self.sequences, self.y_raw, self.y, self.y_log_mean, self.y_log_std = result
+
+    def inject_label_noise(self):
+        """Optionally corrupt all labels with Gaussian noise before the train/test split.
+
+        Reads ``training.noise.label_noise_std`` from the config (in raw target
+        units).  The same noise realisation is applied to both ``y_raw`` and
+        the (possibly normalised) ``y``, so model training, evaluation, and IG
+        analysis all see consistently noisy labels.
+
+        A fixed ``label_noise_seed`` (default 0) is used so runs are
+        reproducible; set it to different values to sample different noise
+        realisations.
+        """
+        import numpy as np
+
+        noise_cfg  = self.config.get('training', {}).get('noise', {})
+        noise_std  = float(noise_cfg.get('label_noise_std', 0.0))
+        if noise_std <= 0.0:
+            return
+
+        seed = int(noise_cfg.get('label_noise_seed', 0))
+        rng  = np.random.default_rng(seed)
+        epsilon = rng.standard_normal(len(self.y_raw)).astype(np.float32) * noise_std
+
+        self.y_raw = self.y_raw + epsilon
+        # y may be z-score normalised: y = (y_raw - mean) / std
+        # so the noise in normalised space is epsilon / y_log_std
+        self.y = self.y + (epsilon / self.y_log_std)
+
+        print(f"Label noise injected — std={noise_std:.4f} (seed={seed}), "
+              f"applied to all {len(self.y_raw)} sequences before train/test split")
 
     def split_data(self):
         """Split the loaded dataset into train+val and held-out test sets.
@@ -267,14 +350,20 @@ class IntegratedGradientsRunner:
                 return "all"
 
         # Get sequences to analyze based on configuration (from full dataset)
-        selection_config = self.config.get('sequence_selection', {
+        # Config can store sequence_selection either at the top level or under 'analysis'.
+        _default_sel = {
             'include_extremes': True,
             'include_median': True,
             'include_top_n': 0,
             'include_bottom_n': 0,
             'custom_sequences': [],
             'max_error_percent': 10.0,
-        })
+        }
+        selection_config = (
+            self.config.get('analysis', {}).get('sequence_selection')
+            or self.config.get('sequence_selection')
+            or _default_sel
+        )
 
         # y_pred is not available over the full dataset here (eval was on test only),
         # so pass None to avoid misleading error-filtering.
@@ -425,6 +514,9 @@ class IntegratedGradientsRunner:
             self.load_and_prepare_data()
             timing['data_loading'] = time.perf_counter() - _t
 
+            # Step 1b: Inject label noise (if configured) — before any split
+            self.inject_label_noise()
+
             # Step 2: Split into train+val and held-out test (if configured)
             self.split_data()
 
@@ -530,6 +622,15 @@ Examples:
         help='Only validate the configuration file without running analysis'
     )
 
+    parser.add_argument(
+        'overrides',
+        nargs='*',
+        metavar='key.subkey=value',
+        help='Optional dot-path overrides applied on top of the config, e.g. '
+             'ig.interpolation_path=slerp  training.noise.label_noise_std=0.1  '
+             'results_dir=results/myjob'
+    )
+
     args = parser.parse_args()
 
     # Check if config file exists
@@ -538,8 +639,10 @@ Examples:
         sys.exit(1)
 
     try:
-        # Load and validate config
+        # Load and validate config (apply any CLI overrides first)
         config = load_config(args.config_path)
+        if args.overrides:
+            _apply_overrides(config, args.overrides)
         validate_config(config)
         print(f"Configuration file '{args.config_path}' is valid!")
 
@@ -548,7 +651,7 @@ Examples:
             return
 
         # Run analysis
-        runner = IntegratedGradientsRunner(args.config_path)
+        runner = IntegratedGradientsRunner(args.config_path, overrides=args.overrides)
         results = runner.run_complete_analysis()
 
         print("\nAnalysis completed successfully!")

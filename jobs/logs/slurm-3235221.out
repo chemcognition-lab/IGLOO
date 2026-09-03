@@ -1,0 +1,31 @@
+Configuration file 'configs/synthetic/T4Lysozyme_epistatic_config.yaml' is valid!
+Using device: cuda
+============================================================
+INTEGRATED GRADIENTS ANALYSIS PIPELINE
+============================================================
+Config file: Unknown
+Device: cuda
+
+Loading data from /project/6111759/ranaab/IGLOO/data/synthetic/T4Lysozyme_epistatic.csv
+Dataset 't4lysozyme_epistatic' - skipping wildtype normalization
+Dataset size: 4001 sequences
+Target range: -4.0816 to 1.0000
+Using raw target values without normalization...
+
+Data split: 3228 train+val (80%), 773 held-out test (20%)
+  Test set — single: 534
+  Test set — double: 157
+  Test set — triple: 82
+Using provided WT sequence
+WT sequence: MNIFEMLRIDEGLRLKIYKDTEGYYHIGIGHLLTKSPSLNAAKSELDKAI...
+WT sequence length: 164
+Results directory: /project/6111759/ranaab/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR
+Config snapshot saved to: /project/6111759/ranaab/IGLOO/results/synthetic/T4Lysozyme_epistatic_LINEAR/T4Lysozyme_epistatic_config_snapshot_20260420_094225.yaml
+Getting embedding dimensions...
+
+Training model...
+
+Pre-fetching embeddings for 3228 train+val sequences...
+Loading ESM-C model esmc_300m...
+Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files: 100%|██████████| 4/4 [00:00<00:00, 58254.22it/s]
+slurmstepd: error: *** JOB 3235221 ON kn059 CANCELLED AT 2026-04-20T10:57:35 ***

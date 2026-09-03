@@ -17,13 +17,24 @@ from scipy import stats
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
+def _safe_filename(name: str) -> str:
+    """Convert a sequence name to a safe filename by replacing non-alphanumeric chars."""
+    import re
+    return re.sub(r'[^\w\-]', '_', name)
+
+
 def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[str] = None) -> None:
     """
     Plot integrated gradients for multiple sequences.
 
+    Each sequence is saved as its own PNG inside a ``_per_sequence/`` subdirectory
+    derived from *save_path*.  This avoids generating a single enormous stacked
+    figure (which could be hundreds of MB for large proteins / many sequences).
+
     Args:
         results_dict: Dictionary containing analysis results for each sequence
-        save_path: Optional path to save the plot
+        save_path: Base path for output.  Individual files are written to
+            ``<save_path without .png>_per_sequence/<sequence_name>.png``.
     """
     # Filter out special validation results keys that don't have sequence analysis data
     analysis_results = {name: result for name, result in results_dict.items()
@@ -34,45 +45,70 @@ def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[
         print("No valid sequences found for plotting.")
         return
 
-    fig, axes = plt.subplots(n_sequences, 1, figsize=(20, 4 * n_sequences))
+    # Derive per-sequence output directory from save_path
+    if save_path:
+        base = save_path[:-4] if save_path.endswith('.png') else save_path
+        save_dir = base + '_per_sequence'
+        os.makedirs(save_dir, exist_ok=True)
+    else:
+        save_dir = None
 
-    if n_sequences == 1:
-        axes = [axes]
-
-    for idx, (name, result) in enumerate(analysis_results.items()):
-        ax = axes[idx]
+    saved_paths = []
+    for name, result in analysis_results.items():
         positions = result['positions']
         gradients = result['position_gradients']
         amino_acids = result['amino_acids']
 
-        # Create bar plot
-        colors = ['red' if g < 0 else 'blue' for g in gradients]
-        ax.bar(positions, gradients, color=colors, alpha=0.7)
+        # Figure width scales with sequence length; height is fixed
+        n_pos = len(positions)
+        fig_width = max(12, min(n_pos * 0.15, 40))
 
-        # Add amino acid labels
+        fig, ax = plt.subplots(1, 1, figsize=(fig_width, 3.5))
+
+        # Bar plot: blue = positive contribution, red = negative
+        colors = ['#2166ac' if g >= 0 else '#d6604d' for g in gradients]
+        ax.bar(positions, gradients, color=colors, alpha=0.8, width=0.8)
+
+        # Label the top-10% magnitude positions
+        threshold = np.percentile(np.abs(gradients), 90)
         for pos, aa, grad in zip(positions, amino_acids, gradients):
-            if abs(grad) > np.percentile(np.abs(gradients), 90):  # Label top 10% gradients
-                ax.text(pos, grad + np.sign(grad) * 0.01 * max(np.abs(gradients)),
-                       aa, ha='center', va='bottom' if grad > 0 else 'top',
-                       fontweight='bold', fontsize=8)
+            if abs(grad) >= threshold:
+                offset = np.sign(grad) * 0.015 * max(np.abs(gradients), default=1)
+                ax.text(pos, grad + offset, aa,
+                        ha='center', va='bottom' if grad >= 0 else 'top',
+                        fontweight='bold', fontsize=7)
 
-        ax.set_xlabel('Position')
-        ax.set_ylabel('Integrated Gradient')
-        ax.set_title(f'{name}\nPredicted: {result["predicted_activity"]:.3f}, '
-                    f'Effect vs Baseline: {result["effect_vs_baseline"]:.3f}')
-        ax.grid(True, alpha=0.3)
-        ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
+        ax.set_xlabel('Position', fontsize=9)
+        ax.set_ylabel('Integrated Gradient', fontsize=9)
+        ax.set_title(
+            f'{name}   |   Predicted: {result["predicted_activity"]:.3f}'
+            f'   |   Effect vs Baseline: {result["effect_vs_baseline"]:.3f}',
+            fontsize=9,
+        )
+        ax.tick_params(labelsize=8)
+        ax.grid(True, alpha=0.25, axis='y')
+        ax.axhline(y=0, color='black', linewidth=0.8, alpha=0.6)
+        ax.spines[['top', 'right']].set_visible(False)
 
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Integrated gradients plot saved to {save_path}")
-    plt.close()
+        plt.tight_layout()
+
+        if save_dir:
+            out_path = os.path.join(save_dir, f'{_safe_filename(name)}.png')
+            plt.savefig(out_path, dpi=120, bbox_inches='tight')
+            saved_paths.append(out_path)
+        plt.close(fig)
+
+    if saved_paths:
+        print(f"Integrated gradients plots saved: {len(saved_paths)} files in {save_dir}")
 
 
 def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Optional[str] = None) -> None:
     """
     Create a heatmap of gradients across sequences.
+
+    Y-axis (sequences) labels are suppressed when there are more than 50
+    sequences — showing thousands of tiny labels makes the axis unreadable.
+    Figure height is capped so the file stays manageable.
 
     Args:
         results_df: DataFrame with columns ['sequence_name', 'position', 'integrated_gradient']
@@ -81,49 +117,63 @@ def plot_gradients_heatmap(results_df: pd.DataFrame, title: str, save_path: Opti
     """
     pivot_data = results_df.pivot(index='sequence_name', columns='position', values='integrated_gradient')
 
-    # Calculate dynamic width based on number of positions
     num_positions = len(pivot_data.columns)
-    # Use at least 0.1 inches per position, with a minimum of 30 inches
-    width = max(30, num_positions * 0.1)
+    num_sequences = len(pivot_data)
 
-    plt.figure(figsize=(width, 8))
+    # Width scales with positions; height capped to keep file sizes sane
+    width = max(20, num_positions * 0.12)
+    height = min(max(6, num_sequences * 0.12), 30)
 
-    # Show every 10th position label to reduce crowding
-    x_tick_frequency = max(1, num_positions // 50)  # Show ~50 labels max
+    # Show y-labels only when there are few enough sequences to be legible
+    show_ylabels = num_sequences <= 50
+    y_fontsize = max(4, min(9, 400 // num_sequences)) if show_ylabels else 0
+
+    x_tick_frequency = max(1, num_positions // 60)
     x_tick_labels = [str(pos) if i % x_tick_frequency == 0 else ''
                      for i, pos in enumerate(pivot_data.columns)]
 
+    plt.figure(figsize=(width, height))
     sns.heatmap(
         pivot_data,
-        cmap='RdBu_r',
+        cmap='RdBu',
         center=0,
         cbar_kws={'label': 'Integrated Gradient'},
         xticklabels=x_tick_labels,
-        yticklabels=True
+        yticklabels=show_ylabels,
     )
+    ax = plt.gca()
     plt.title(title)
     plt.xlabel('Position')
     plt.ylabel('Sequence')
-
-    # Rotate x-axis labels for better readability
     plt.xticks(rotation=90, fontsize=8)
-    plt.tight_layout()
+    if show_ylabels:
+        plt.yticks(fontsize=y_fontsize)
+    else:
+        ax.set_yticks([])
 
+    plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Gradient heatmap saved to {save_path}")
     plt.close()
 
 
-def plot_variants_vs_wt_gradients(ig_results: dict[str, Any], save_path: Optional[str] = None) -> None:
+def plot_variants_vs_wt_gradients(ig_results: dict[str, Any], save_path: Optional[str] = None,
+                                   max_variants: int = 9) -> None:
     """
-    Plot gradient differences between variants and wild-type.
+    Plot gradient differences between a representative set of variants and wild-type.
+
+    When many sequences are present (e.g. include_all=True), selects up to
+    ``max_variants`` informative variants: the lowest-activity, highest-activity,
+    and median-activity sequences, plus those with the largest L2 gradient
+    deviation from WT.  This keeps the figure legible regardless of dataset size.
 
     Args:
         ig_results: Dictionary containing integrated gradients results
         save_path: Optional path to save the plot
+        max_variants: Maximum number of variant subplots to show (default 9)
     """
-    # Filter out special validation results keys that don't have sequence analysis data
+    # Filter out special/validation keys
     analysis_results = {name: result for name, result in ig_results.items()
                        if not name.startswith('_') and 'positions' in result}
 
@@ -131,52 +181,88 @@ def plot_variants_vs_wt_gradients(ig_results: dict[str, Any], save_path: Optiona
         print("No valid sequences found for variant comparison plotting.")
         return
 
-    # Find wildtype result - try common keys
+    # Find wildtype result
     wt_key = None
     for key in ['WT', 'Wildtype', 'wildtype', 'wt']:
         if key in analysis_results:
             wt_key = key
             break
-
     if wt_key is None:
-        # If no wildtype found, use the first result as reference
         wt_key = list(analysis_results.keys())[0]
 
     wt_result = analysis_results[wt_key]
     wt_gradients = wt_result['position_gradients']
 
-    # Check if we have any variants to compare (more than just wildtype)
-    variant_count = len([name for name in analysis_results.keys() if name != wt_key])
+    variants = {name: res for name, res in analysis_results.items() if name != wt_key}
 
-    if variant_count == 0:
+    if len(variants) == 0:
         print("Only wildtype sequence found, skipping variant comparison plot.")
         return
 
-    plt.figure(figsize=(15, 10))
-    plot_idx = 0
+    # --- Select a representative subset ---
+    if len(variants) <= max_variants:
+        selected = list(variants.keys())
+    else:
+        activities = {name: res['predicted_activity'] for name, res in variants.items()}
+        sorted_by_act = sorted(activities, key=activities.get)
 
-    for _i, (name, result) in enumerate(analysis_results.items()):
-        if name == wt_key:
-            continue
+        n_extreme = max(1, max_variants // 3)
+        # low / high activity extremes
+        bottom = sorted_by_act[:n_extreme]
+        top = sorted_by_act[-n_extreme:]
+        # median-ish
+        mid_idx = len(sorted_by_act) // 2
+        mid_half = n_extreme // 2
+        median = sorted_by_act[max(0, mid_idx - mid_half): mid_idx + mid_half + 1]
 
-        plot_idx += 1
-        plt.subplot(variant_count, 1, plot_idx)
+        # largest gradient deviation from WT
+        l2_dev = {name: float(np.linalg.norm(res['position_gradients'] - wt_gradients))
+                  for name, res in variants.items()}
+        sorted_by_dev = sorted(l2_dev, key=l2_dev.get, reverse=True)
+        top_dev = sorted_by_dev[:n_extreme]
+
+        seen = set()
+        selected = []
+        for name in bottom + top + median + top_dev:
+            if name not in seen:
+                seen.add(name)
+                selected.append(name)
+            if len(selected) >= max_variants:
+                break
+
+    n_plots = len(selected)
+    ncols = min(3, n_plots)
+    nrows = (n_plots + ncols - 1) // ncols
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 4 * nrows), squeeze=False)
+
+    for idx, name in enumerate(selected):
+        row, col = divmod(idx, ncols)
+        ax = axes[row][col]
+        result = variants[name]
         positions = result['positions']
         gradient_diff = result['position_gradients'] - wt_gradients
 
-        colors = ['red' if g < 0 else 'blue' for g in gradient_diff]
-        plt.bar(positions, gradient_diff, color=colors, alpha=0.7)
+        colors = ['red' if g < 0 else 'steelblue' for g in gradient_diff]
+        ax.bar(positions, gradient_diff, color=colors, alpha=0.75, width=0.8)
+        ax.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.6)
+        ax.set_xlabel('Position', fontsize=9)
+        ax.set_ylabel('ΔGradient (variant − WT)', fontsize=9)
+        act_v = result['predicted_activity']
+        act_wt = wt_result['predicted_activity']
+        ax.set_title(f'{name}\nact={act_v:.2f}  WT={act_wt:.2f}', fontsize=9)
+        ax.grid(True, alpha=0.2)
+        ax.tick_params(labelsize=8)
 
-        plt.xlabel('Position')
-        plt.ylabel('Gradient Difference from WT')
-        plt.title(f'{name} - WT (Activity: {result["predicted_activity"]:.1f} '
-                  f'vs {wt_result["predicted_activity"]:.1f})')
-        plt.grid(True, alpha=0.3)
-        plt.axhline(y=0, color='black', linestyle='-', alpha=0.5)
+    # Hide unused axes
+    for idx in range(n_plots, nrows * ncols):
+        row, col = divmod(idx, ncols)
+        axes[row][col].set_visible(False)
 
+    fig.suptitle('Gradient Difference from WT\n(representative variants)', fontsize=11)
     plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Variants vs WT gradients plot saved to {save_path}")
     plt.close()
 
@@ -527,118 +613,117 @@ def plot_signed_gradient_effects(
     figsize: tuple[int, int] = (15, 8)
 ) -> None:
     """
-    Create a scatter plot showing signed gradient effects by position, similar to a mutation effect plot.
+    Create a scatter plot showing signed gradient effects by position.
 
-    This function creates a visualization with:
-    - Red/orange points for beneficial effects (positive gradients)
-    - Blue points for detrimental effects (negative gradients)
-    - Points scattered by position with some vertical jitter for clarity
-    - Top N most significant effects labeled
+    - Red/orange points: beneficial effects (positive gradients)
+    - Blue points: detrimental effects (negative gradients)
+    - Small position-space jitter for visibility; scales with data range
+    - Top N most significant position-level effects labelled with short arrows
+
     Args:
         results_dict: Dictionary containing analysis results for each sequence
         save_path: Optional path to save the plot
         top_n: Number of top effects to label (default: 10)
         figsize: Figure size as tuple (width, height)
     """
-    # Filter out special validation results keys that don't have sequence analysis data
     analysis_results = {name: result for name, result in results_dict.items()
-                       if not name.startswith('_') and 'positions' in result}
+                        if not name.startswith('_') and 'positions' in result}
 
     if len(analysis_results) == 0:
         print("No valid sequences found for signed gradient effects plotting.")
         return
 
-    # Collect all gradient data
     all_effects = []
-
     for name, result in analysis_results.items():
-        positions = result['positions']
-        gradients = result['position_gradients']
-        amino_acids = result['amino_acids']
-
-        for pos, grad, aa in zip(positions, gradients, amino_acids):
+        for pos, grad, aa in zip(result['positions'],
+                                  result['position_gradients'],
+                                  result['amino_acids']):
             all_effects.append({
                 'sequence_name': name,
-                'position': pos,
+                'position': int(pos),
                 'amino_acid': aa,
-                'effect': grad,
-                'abs_effect': abs(grad)
+                'effect': float(grad),
+                'abs_effect': abs(float(grad))
             })
 
     effects_df = pd.DataFrame(all_effects)
 
-    # Separate beneficial and detrimental effects
+    y_min, y_max = effects_df['effect'].min(), effects_df['effect'].max()
+    y_range = max(y_max - y_min, 1e-6)
+
+    # Jitter scaled to ~1 % of the data range so points stay within the plot
+    jitter_scale = 0.01 * y_range
+    n_points = len(effects_df)
+
     beneficial = effects_df[effects_df['effect'] > 0].copy()
     detrimental = effects_df[effects_df['effect'] < 0].copy()
 
     fig, ax = plt.subplots(1, 1, figsize=figsize)
+    np.random.seed(42)
 
-    # Add some vertical jitter for better visibility
-    np.random.seed(42)  # For reproducible jitter
+    # For large datasets, downsample to avoid a saturated solid-colour blob
+    _SCATTER_MAX = 10_000
+    if n_points > _SCATTER_MAX:
+        sample_frac = _SCATTER_MAX / n_points
+        ben_plot = beneficial.sample(frac=sample_frac, random_state=42) if len(beneficial) > 0 else beneficial
+        det_plot = detrimental.sample(frac=sample_frac, random_state=42) if len(detrimental) > 0 else detrimental
+    else:
+        ben_plot = beneficial
+        det_plot = detrimental
 
-    # Plot beneficial effects (positive gradients) in red/orange
-    if len(beneficial) > 0:
-        beneficial_jitter = np.random.normal(0, 5, len(beneficial))  # Small jitter
-        ax.scatter(
-            beneficial['position'],
-            beneficial['effect'] + beneficial_jitter,
-            c='coral',
-            alpha=0.6,
-            s=30,
-            label=f'Beneficial ({len(beneficial)} positions)'
-        )
+    alpha = 0.3
+    point_size = 8
 
-    # Plot detrimental effects (negative gradients) in blue
-    if len(detrimental) > 0:
-        detrimental_jitter = np.random.normal(0, 5, len(detrimental))  # Small jitter
-        ax.scatter(
-            detrimental['position'],
-            detrimental['effect'] + detrimental_jitter,
-            c='steelblue',
-            alpha=0.6,
-            s=30,
-            label=f'Detrimental ({len(detrimental)} positions)'
-        )
+    if len(ben_plot) > 0:
+        jitter = np.random.normal(0, jitter_scale, len(ben_plot))
+        ax.scatter(ben_plot['position'], ben_plot['effect'] + jitter,
+                   c='steelblue', alpha=alpha, s=point_size, linewidths=0,
+                   label=f'Beneficial ({len(beneficial):,} pos-sequence pairs)')
 
-    # Add horizontal line at zero
+    if len(det_plot) > 0:
+        jitter = np.random.normal(0, jitter_scale, len(det_plot))
+        ax.scatter(det_plot['position'], det_plot['effect'] + jitter,
+                   c='coral', alpha=alpha, s=point_size, linewidths=0,
+                   label=f'Detrimental ({len(detrimental):,} pos-sequence pairs)')
+
     ax.axhline(y=0, color='gray', linestyle='--', alpha=0.7, linewidth=1)
 
-    # Label top N most significant effects
-    top_effects = effects_df.nlargest(top_n, 'abs_effect')
+    # Label the top-N most extreme position-level mean effects
+    # (average across sequences to get one representative point per position)
+    pos_mean = (effects_df.groupby('position')
+                .agg(mean_effect=('effect', 'mean'),
+                     abs_mean=('abs_effect', 'mean'),
+                     amino_acid=('amino_acid', 'first'))
+                .reset_index()
+                .nlargest(top_n, 'abs_mean'))
 
-    for _, row in top_effects.iterrows():
-        # Add small random jitter for label positioning
-        jitter_y = np.random.normal(0, 2)
-
+    for _, row in pos_mean.iterrows():
+        sign = 1 if row['mean_effect'] >= 0 else -1
         ax.annotate(
             f"{row['amino_acid']}{int(row['position'])}",
-            xy=(row['position'], row['effect']),
-            xytext=(row['position'], row['effect'] + jitter_y + np.sign(row['effect']) * 10),
+            xy=(row['position'], row['mean_effect']),
+            xytext=(0, sign * 18),          # 18 pt offset in display space
+            textcoords='offset points',
             fontsize=8,
             ha='center',
-            va='bottom' if row['effect'] > 0 else 'top',
-            bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7, edgecolor='none'),
+            va='bottom' if sign > 0 else 'top',
+            annotation_clip=True,
+            bbox=dict(boxstyle='round,pad=0.2', facecolor='white',
+                      alpha=0.85, edgecolor='none'),
             arrowprops=dict(arrowstyle='->', color='black', alpha=0.5, lw=0.5)
         )
 
-    # Formatting
     ax.set_xlabel('Position', fontsize=12)
     ax.set_ylabel('Signed Gradient Effect', fontsize=12)
     ax.set_title('Signed Gradient Effects by Position', fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3)
-    ax.legend(loc='upper right')
-
-    # Set y-axis limits with some padding
-    y_min, y_max = effects_df['effect'].min(), effects_df['effect'].max()
-    y_range = y_max - y_min
-    ax.set_ylim(y_min - 0.1 * y_range, y_max + 0.1 * y_range)
+    ax.legend(loc='upper right', fontsize=9)
+    ax.set_ylim(y_min - 0.08 * y_range, y_max + 0.08 * y_range)
 
     plt.tight_layout()
-
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Signed gradient effects plot saved to {save_path}")
-
     plt.close()
 
 
