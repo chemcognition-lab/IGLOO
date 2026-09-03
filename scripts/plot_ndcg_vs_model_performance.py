@@ -69,6 +69,7 @@ from src.igloo.plot import FIG_BG, INTERP_COLORS, INTERP_LABELS, INTERP_MARKERS 
 
 X_METRIC_LABELS = {
     "model_test_spearman": "Model test performance (Spearman ρ, predicted vs. true fitness)",
+    "model_test_kendall":  "Model test performance (Kendall τ, predicted vs. true fitness)",
     "model_test_ndcg":     "Model test performance (NDCG, predicted vs. true fitness)",
     "model_test_r2":       "Model test performance (R², predicted vs. true fitness)",
 }

@@ -26,7 +26,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy.stats import pearsonr, spearmanr
+from scipy.stats import kendalltau, pearsonr, spearmanr
 from sklearn.metrics import average_precision_score, mean_absolute_error, r2_score, roc_auc_score
 
 # ---------------------------------------------------------------------------
@@ -734,6 +734,7 @@ def compute_metrics_for_dir(
 
     # ── Model predictive performance ──────────────────────────────────────────
     model_test_spearman = model_val_spearman  = float("nan")
+    model_test_kendall  = float("nan")
     model_test_ndcg     = model_val_ndcg      = float("nan")
     model_test_r2       = model_val_r2        = float("nan")
     if "predicted_activity" in ig_df.columns and "actual_activity" in ig_df.columns:
@@ -747,6 +748,11 @@ def compute_metrics_for_dir(
             _aa = _seq_pred["actual_activity"].values
             if _pa.std() > 0 and _aa.std() > 0:
                 model_test_spearman = float(spearmanr(_pa, _aa)[0])
+                # tau-b: same (pred, true) pairs as the Spearman above, but a
+                # concordance-based rank correlation (tau = 2*P(concordant) - 1
+                # for continuous data), so an x-axis value reads directly as
+                # "how often the model orders a random variant pair correctly".
+                model_test_kendall = float(kendalltau(_pa, _aa, variant="b")[0])
                 _ss_res = np.sum((_aa - _pa) ** 2)
                 _ss_tot = np.sum((_aa - _aa.mean()) ** 2)
                 model_test_r2 = float(1 - _ss_res / _ss_tot) if _ss_tot > 0 else float("nan")
@@ -833,6 +839,7 @@ def compute_metrics_for_dir(
         "out_diff_std":         out_diff_std,
         # Model predictive performance
         "model_test_spearman":  model_test_spearman,
+        "model_test_kendall":   model_test_kendall,
         "model_val_spearman":   model_val_spearman,
         "model_test_ndcg":      model_test_ndcg,
         "model_val_ndcg":       model_val_ndcg,
