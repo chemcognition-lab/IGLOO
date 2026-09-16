@@ -1,0 +1,94 @@
+<svg width="700" height="450" style="border: 1px solid #ccc; background: white; font-family: Roboto, sans-serif;">
+<text x="20" y="25" font-size="16" font-weight="bold" font-family="Roboto">Sign Accuracy vs Model Performance</text>
+<line x1="70" y1="380" x2="630" y2="380" stroke="#333" stroke-width="2"/>
+<line x1="70" y1="70" x2="70" y2="380" stroke="#333" stroke-width="2"/>
+<text x="70.0" y="405" text-anchor="middle" font-size="11" font-family="Roboto">-0.19</text>
+<text x="140.0" y="405" text-anchor="middle" font-size="11" font-family="Roboto">-0.12</text>
+<text x="210.0" y="405" text-anchor="middle" font-size="11" font-family="Roboto">-0.09</text>
+<text x="280.0" y="405" text-anchor="middle" font-size="11" font-family="Roboto">-0.00</text>
+<text x="350.0" y="405" text-anchor="middle" font-size="11" font-family="Roboto">0.08</text>
+<text x="420.0" y="405" text-anchor="middle" font-size="11" font-family="Roboto">0.08</text>
+<text x="490.0" y="405" text-anchor="middle" font-size="11" font-family="Roboto">0.10</text>
+<text x="560.0" y="405" text-anchor="middle" font-size="11" font-family="Roboto">0.10</text>
+<text x="630.0" y="405" text-anchor="middle" font-size="11" font-family="Roboto">0.13</text>
+<line x1="65" y1="380.0" x2="630" y2="380.0" stroke="#ddd" stroke-width="1"/>
+<text x="55" y="384.0" text-anchor="end" font-size="10" font-family="Roboto">0.39</text>
+<line x1="65" y1="302.5" x2="630" y2="302.5" stroke="#ddd" stroke-width="1"/>
+<text x="55" y="306.5" text-anchor="end" font-size="10" font-family="Roboto">0.46</text>
+<line x1="65" y1="225.0" x2="630" y2="225.0" stroke="#ddd" stroke-width="1"/>
+<text x="55" y="229.0" text-anchor="end" font-size="10" font-family="Roboto">0.54</text>
+<line x1="65" y1="147.5" x2="630" y2="147.5" stroke="#ddd" stroke-width="1"/>
+<text x="55" y="151.5" text-anchor="end" font-size="10" font-family="Roboto">0.61</text>
+<line x1="65" y1="70.0" x2="630" y2="70.0" stroke="#ddd" stroke-width="1"/>
+<text x="55" y="74.0" text-anchor="end" font-size="10" font-family="Roboto">0.69</text>
+<path d="M 70.0 271.5282998603802 L 140.0 284.0950629311976 L 210.0 239.81977282374658 L 280.0 256.75157136208577 L 350.0 293.6787274140672 L 420.0 264.2477049674987 L 490.0 246.98589993402572 L 560.0 267.612296771356 L 630.0 239.46618311162928" stroke="#d62728" stroke-width="2.5" fill="none"/>
+<circle cx="70.0" cy="271.5282998603802" r="3.5" fill="#d62728" stroke="white" stroke-width="1"/>
+<circle cx="140.0" cy="284.0950629311976" r="3.5" fill="#d62728" stroke="white" stroke-width="1"/>
+<circle cx="210.0" cy="239.81977282374658" r="3.5" fill="#d62728" stroke="white" stroke-width="1"/>
+<circle cx="280.0" cy="256.75157136208577" r="3.5" fill="#d62728" stroke="white" stroke-width="1"/>
+<circle cx="350.0" cy="293.6787274140672" r="3.5" fill="#d62728" stroke="white" stroke-width="1"/>
+<circle cx="420.0" cy="264.2477049674987" r="3.5" fill="#d62728" stroke="white" stroke-width="1"/>
+<circle cx="490.0" cy="246.98589993402572" r="3.5" fill="#d62728" stroke="white" stroke-width="1"/>
+<circle cx="560.0" cy="267.612296771356" r="3.5" fill="#d62728" stroke="white" stroke-width="1"/>
+<circle cx="630.0" cy="239.46618311162928" r="3.5" fill="#d62728" stroke="white" stroke-width="1"/>
+<path d="M 70.0 121.87197937922889 L 140.0 309.3826528785717 L 210.0 328.06460356669777 L 280.0 205.9470793633745 L 350.0 245.57062946540447 L 420.0 232.38122983056388 L 490.0 160.42162112401604 L 560.0 300.2720796190885 L 630.0 216.18705090241437" stroke="#1f77b4" stroke-width="2.5" fill="none"/>
+<circle cx="70.0" cy="121.87197937922889" r="3.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="140.0" cy="309.3826528785717" r="3.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="210.0" cy="328.06460356669777" r="3.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="280.0" cy="205.9470793633745" r="3.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="350.0" cy="245.57062946540447" r="3.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="420.0" cy="232.38122983056388" r="3.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="490.0" cy="160.42162112401604" r="3.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="560.0" cy="300.2720796190885" r="3.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="630.0" cy="216.18705090241437" r="3.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<path d="M 70.0 122.08601193672621 L 140.0 309.7622039472002 L 210.0 328.12802062077117 L 280.0 206.12894758375907 L 350.0 211.9487306360628 L 420.0 232.47611759772104 L 490.0 160.51674670512605 L 560.0 300.5733106259365 L 630.0 216.40845569244766" stroke="#2ca02c" stroke-width="2.5" fill="none"/>
+<circle cx="70.0" cy="122.08601193672621" r="3.5" fill="#2ca02c" stroke="white" stroke-width="1"/>
+<circle cx="140.0" cy="309.7622039472002" r="3.5" fill="#2ca02c" stroke="white" stroke-width="1"/>
+<circle cx="210.0" cy="328.12802062077117" r="3.5" fill="#2ca02c" stroke="white" stroke-width="1"/>
+<circle cx="280.0" cy="206.12894758375907" r="3.5" fill="#2ca02c" stroke="white" stroke-width="1"/>
+<circle cx="350.0" cy="211.9487306360628" r="3.5" fill="#2ca02c" stroke="white" stroke-width="1"/>
+<circle cx="420.0" cy="232.47611759772104" r="3.5" fill="#2ca02c" stroke="white" stroke-width="1"/>
+<circle cx="490.0" cy="160.51674670512605" r="3.5" fill="#2ca02c" stroke="white" stroke-width="1"/>
+<circle cx="560.0" cy="300.5733106259365" r="3.5" fill="#2ca02c" stroke="white" stroke-width="1"/>
+<circle cx="630.0" cy="216.40845569244766" r="3.5" fill="#2ca02c" stroke="white" stroke-width="1"/>
+<path d="M 70.0 121.87990651098812 L 140.0 309.3826528785717 L 210.0 328.06460356669777 L 280.0 205.9470793633745 L 350.0 211.75895510174857 L 420.0 232.38122983056388 L 490.0 160.42162112401604 L 560.0 300.2720796190885 L 630.0 216.18705090241437" stroke="#ff7f0e" stroke-width="2.5" fill="none"/>
+<circle cx="70.0" cy="121.87990651098812" r="3.5" fill="#ff7f0e" stroke="white" stroke-width="1"/>
+<circle cx="140.0" cy="309.3826528785717" r="3.5" fill="#ff7f0e" stroke="white" stroke-width="1"/>
+<circle cx="210.0" cy="328.06460356669777" r="3.5" fill="#ff7f0e" stroke="white" stroke-width="1"/>
+<circle cx="280.0" cy="205.9470793633745" r="3.5" fill="#ff7f0e" stroke="white" stroke-width="1"/>
+<circle cx="350.0" cy="211.75895510174857" r="3.5" fill="#ff7f0e" stroke="white" stroke-width="1"/>
+<circle cx="420.0" cy="232.38122983056388" r="3.5" fill="#ff7f0e" stroke="white" stroke-width="1"/>
+<circle cx="490.0" cy="160.42162112401604" r="3.5" fill="#ff7f0e" stroke="white" stroke-width="1"/>
+<circle cx="560.0" cy="300.2720796190885" r="3.5" fill="#ff7f0e" stroke="white" stroke-width="1"/>
+<circle cx="630.0" cy="216.18705090241437" r="3.5" fill="#ff7f0e" stroke="white" stroke-width="1"/>
+<path d="M 70.0 325.5913384578404 L 140.0 274.4481399368898 L 210.0 267.53302545376437 L 280.0 325.11820759879504 L 350.0 262.6662421815467 L 420.0 262.6662421815467 L 490.0 267.53302545376437 L 560.0 279.6456827817583 L 630.0 325.11820759879504" stroke="#9467bd" stroke-width="2.5" fill="none"/>
+<circle cx="70.0" cy="325.5913384578404" r="3.5" fill="#9467bd" stroke="white" stroke-width="1"/>
+<circle cx="140.0" cy="274.4481399368898" r="3.5" fill="#9467bd" stroke="white" stroke-width="1"/>
+<circle cx="210.0" cy="267.53302545376437" r="3.5" fill="#9467bd" stroke="white" stroke-width="1"/>
+<circle cx="280.0" cy="325.11820759879504" r="3.5" fill="#9467bd" stroke="white" stroke-width="1"/>
+<circle cx="350.0" cy="262.6662421815467" r="3.5" fill="#9467bd" stroke="white" stroke-width="1"/>
+<circle cx="420.0" cy="262.6662421815467" r="3.5" fill="#9467bd" stroke="white" stroke-width="1"/>
+<circle cx="490.0" cy="267.53302545376437" r="3.5" fill="#9467bd" stroke="white" stroke-width="1"/>
+<circle cx="560.0" cy="279.6456827817583" r="3.5" fill="#9467bd" stroke="white" stroke-width="1"/>
+<circle cx="630.0" cy="325.11820759879504" r="3.5" fill="#9467bd" stroke="white" stroke-width="1"/>
+<line x1="450" y1="85" x2="465" y2="85" stroke="#d62728" stroke-width="2.5"/>
+<circle cx="457.5" cy="85" r="3" fill="#d62728" stroke="white" stroke-width="1"/>
+<text x="470" y="89" font-size="11" font-family="Roboto">Gradient Input</text>
+<line x1="450" y1="107" x2="465" y2="107" stroke="#1f77b4" stroke-width="2.5"/>
+<circle cx="457.5" cy="107" r="3" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<text x="470" y="111" font-size="11" font-family="Roboto">Ig Linear</text>
+<text x="600" y="111" font-size="9" font-family="Roboto" fill="#666">(IG)</text>
+<line x1="450" y1="129" x2="465" y2="129" stroke="#2ca02c" stroke-width="2.5"/>
+<circle cx="457.5" cy="129" r="3" fill="#2ca02c" stroke="white" stroke-width="1"/>
+<text x="470" y="133" font-size="11" font-family="Roboto">Ig Nearest Neighbor</text>
+<text x="600" y="133" font-size="9" font-family="Roboto" fill="#666">(IG)</text>
+<line x1="450" y1="151" x2="465" y2="151" stroke="#ff7f0e" stroke-width="2.5"/>
+<circle cx="457.5" cy="151" r="3" fill="#ff7f0e" stroke="white" stroke-width="1"/>
+<text x="470" y="155" font-size="11" font-family="Roboto">Ig Slerp</text>
+<text x="600" y="155" font-size="9" font-family="Roboto" fill="#666">(IG)</text>
+<line x1="450" y1="173" x2="465" y2="173" stroke="#9467bd" stroke-width="2.5"/>
+<circle cx="457.5" cy="173" r="3" fill="#9467bd" stroke="white" stroke-width="1"/>
+<text x="470" y="177" font-size="11" font-family="Roboto">Input Difference</text>
+<text x="350.0" y="438" text-anchor="middle" font-size="12" font-family="Roboto">Model Performance (Spearman ρ)</text>
+<text x="25" y="225.0" text-anchor="middle" font-size="12" font-family="Roboto" transform="rotate(-90, 25, 225.0)">Sign Accuracy</text>
+</svg>

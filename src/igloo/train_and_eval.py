@@ -13,21 +13,23 @@ from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader
 from tqdm import trange
 
-from src.igloo.data_processing import (
+from .data_processing import (
     CustomDataset,
     batch_pad_and_normalize,
     compute_global_normalization_params,
     set_global_normalization_params,
 )
-from src.igloo.embedding import get_embeddings
-from src.igloo.loss import combined_loss, huber_loss, mae_loss, mse_loss, quantile_loss
-from src.igloo.models import AttentionConvPoolingModel, ESMAttention1d, LinearRegressionModel, MeanPoolingModel
-from src.igloo.utils import create_model
+from .embedding import get_embeddings
+from .loss import combined_loss, huber_loss, mae_loss, mse_loss, quantile_loss
+from .models import AttentionConvPoolingModel, ESMAttention1d, LinearRegressionModel, MeanPoolingModel
+from .plot import setup_matplotlib_style
+from .utils import create_model
 
 
 def _create_epoch_plot(model, train_loader, val_loader, train_targets, val_targets,
                       epoch, pooling_method, results_dir, dataset_name, device):
     """Create and save predicted vs actual plot for current epoch."""
+    setup_matplotlib_style()
     model.eval()
 
     # Generate hash for unique filename
@@ -43,7 +45,7 @@ def _create_epoch_plot(model, train_loader, val_loader, train_targets, val_targe
             xb = xb.to(device)
             yb = yb.to(device)
 
-            if pooling_method == 'esm_attention':
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1
@@ -62,7 +64,7 @@ def _create_epoch_plot(model, train_loader, val_loader, train_targets, val_targe
                 xb = xb.to(device)
                 yb = yb.to(device)
 
-                if pooling_method == 'esm_attention':
+                if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                     input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                     for i, length in enumerate(lengths):
                         input_mask[i, :length] = 1
@@ -153,6 +155,7 @@ def train_model_with_embeddings(
     embeddings_subdir: Optional[str] = None,
     esm_model_name: str = 'esmc_300m',
     noise_config: Optional[dict] = None,
+    esm_backend = None,
 ) -> dict:
     """
     Train a model using the same embedding + DataLoader approach as integrated gradients.
@@ -192,6 +195,7 @@ def train_model_with_embeddings(
         dataset_name=f"{dataset_name}_train",
         subdir=embeddings_subdir,
         esm_model_name=esm_model_name,
+        esm_backend=esm_backend,
         device=device,
     )
 
@@ -205,6 +209,7 @@ def train_model_with_embeddings(
             dataset_name=f"{dataset_name}_val",
             subdir=embeddings_subdir,
             esm_model_name=esm_model_name,
+            esm_backend=esm_backend,
             device=device,
         )
 
@@ -304,7 +309,7 @@ def train_model_with_embeddings(
             optimizer.zero_grad()
 
             # Forward pass (same as in integrated gradients)
-            if pooling_method == 'esm_attention':
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1
@@ -339,7 +344,7 @@ def train_model_with_embeddings(
                     xb = xb.to(device)
                     yb = yb.to(device)
 
-                    if pooling_method == 'esm_attention':
+                    if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                         input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                         for i, length in enumerate(lengths):
                             input_mask[i, :length] = 1
@@ -413,7 +418,7 @@ def train_model_with_embeddings(
                 xb, lengths, yb = sample_batch
                 xb, yb = xb.to(device), yb.to(device)
 
-                if pooling_method == 'esm_attention':
+                if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                     input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                     for i, length in enumerate(lengths):
                         input_mask[i, :length] = 1
@@ -463,7 +468,7 @@ def train_model_with_embeddings(
             xb = xb.to(device)
             yb = yb.to(device)
 
-            if pooling_method == 'esm_attention':
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1
@@ -487,7 +492,7 @@ def train_model_with_embeddings(
                 xb = xb.to(device)
                 yb = yb.to(device)
 
-                if pooling_method == 'esm_attention':
+                if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                     input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                     for i, length in enumerate(lengths):
                         input_mask[i, :length] = 1
@@ -501,11 +506,14 @@ def train_model_with_embeddings(
             final_metrics['val_r2'] = r2_score(val_actuals, val_predictions)
             final_metrics['val_mae'] = mean_absolute_error(val_actuals, val_predictions)
             final_metrics['val_rmse'] = np.sqrt(mean_squared_error(val_actuals, val_predictions))
+            val_spearman, _ = spearmanr(val_actuals, val_predictions)
+            final_metrics['val_spearman'] = float(val_spearman)
 
     print("\nTraining completed!")
 
     # Create and save loss vs epoch plot
     if results_dir is not None:
+        setup_matplotlib_style()
         plt.figure(figsize=(10, 6))
 
         epochs = history['epoch']
@@ -760,6 +768,7 @@ def train_and_evaluate(
                 if epochs_no_improve >= patience:
                     model.load_state_dict(best_model_state)
                     break
+    setup_matplotlib_style()
     plt.figure()
     plt.plot(train_losses, label='Train Loss')
     plt.plot(val_losses, label='Val Loss')
@@ -796,14 +805,13 @@ def train_and_evaluate(
     y_true_norm = np.concatenate(y_true_norm)
     pred_log = pred_norm * y_log_std + y_log_mean
     y_true_log = y_true_norm * y_log_std + y_log_mean
-    pred = pred_log #np.expm1(pred_log)
-    y_true = y_true_log # np.expm1(y_true_log)
+    pred = pred_log
+    y_true = y_true_log
 
     # Clip predictions to reasonable range based on training data
-    y_train_original = y_train * y_log_std + y_log_mean  # Convert back to original scale
+    y_train_original = y_train * y_log_std + y_log_mean
     data_min = np.min(y_train_original)
     data_max = np.max(y_train_original)
-    # Add small buffer (5% of range) to avoid being too restrictive
     buffer = 0.05 * (data_max - data_min)
     pred_unclipped = pred.copy()
     pred = np.clip(pred, data_min - buffer, data_max + buffer)
@@ -823,7 +831,8 @@ def train_and_evaluate(
     pearson_r = np.corrcoef(y_true, pred)[0, 1]
     spearman_rho, spearman_p = spearmanr(y_true, pred)
 
-    plt.figure(figsize=(6,6))
+    setup_matplotlib_style()
+    plt.figure(figsize=(6, 6))
     plt.scatter(y_true, pred, alpha=0.5, color='orange')
     plt.plot([min(y_true), max(y_true)], [min(y_true), max(y_true)], 'k--', lw=2)
     plt.xlabel('Actual')
@@ -1228,7 +1237,7 @@ def _run_fold_training(
             if _input_noise_std > 0.0:
                 xb = xb + torch.randn_like(xb) * _input_noise_std
             optimizer.zero_grad()
-            if pooling_method == 'esm_attention':
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, ln in enumerate(lengths):
                     mask[i, :ln] = 1
@@ -1249,7 +1258,7 @@ def _run_fold_training(
         with torch.no_grad():
             for xb, lengths, yb in val_loader:
                 xb, yb = xb.to(device), yb.to(device)
-                if pooling_method == 'esm_attention':
+                if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                     mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                     for i, ln in enumerate(lengths):
                         mask[i, :ln] = 1
@@ -1279,7 +1288,7 @@ def _run_fold_training(
     with torch.no_grad():
         for xb, lengths, yb in val_loader:
             xb = xb.to(device)
-            if pooling_method == 'esm_attention':
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, ln in enumerate(lengths):
                     mask[i, :ln] = 1
@@ -1474,6 +1483,7 @@ def kfold_cv_and_train(
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
+        setup_matplotlib_style()
 
         os.makedirs(results_dir, exist_ok=True)
         cv_df = pd.DataFrame(cv_fold_metrics)

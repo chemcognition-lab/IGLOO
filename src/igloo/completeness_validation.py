@@ -124,6 +124,7 @@ def validate_completeness_axiom(
     completeness_threshold: float = 0.1,
     embeddings_subdir: str = None,
     esm_backend=None,
+    esm_model_name: str = 'esmc_300m',
 ) -> tuple[bool, float, dict]:
     """
     Validate that a sequence satisfies the completeness axiom before full analysis.
@@ -170,6 +171,7 @@ def validate_completeness_axiom(
             baseline_name="Baseline",
             embeddings_subdir=embeddings_subdir,
             _esm_backend=esm_backend,
+            esm_model_name=esm_model_name,
         )
 
         # Extract completeness information from the result
@@ -215,6 +217,7 @@ def filter_sequences_by_completeness(
     max_sequences: int = None,
     embeddings_subdir: str = None,
     esm_backend=None,
+    esm_model_name: str = 'esmc_300m',
 ) -> tuple[list[tuple[str, str, str]], dict]:
     """
     Filter sequences to only include those that satisfy the completeness axiom.
@@ -250,7 +253,7 @@ def filter_sequences_by_completeness(
         passes, error, info = validate_completeness_axiom(
             wt_entry[1], wt_entry[2], model, alphabet, device,
             y_log_mean, y_log_std, validation_steps, 10, attribution_method, completeness_threshold,
-            embeddings_subdir=embeddings_subdir, esm_backend=esm_backend,
+            embeddings_subdir=embeddings_subdir, esm_backend=esm_backend, esm_model_name=esm_model_name,
         )
         validation_results[wt_entry[0]] = {
             'passes': passes,
@@ -271,7 +274,7 @@ def filter_sequences_by_completeness(
         passes, error, info = validate_completeness_axiom(
             sequence, baseline, model, alphabet, device,
             y_log_mean, y_log_std, validation_steps, 10, attribution_method, completeness_threshold,
-            embeddings_subdir=embeddings_subdir, esm_backend=esm_backend,
+            embeddings_subdir=embeddings_subdir, esm_backend=esm_backend, esm_model_name=esm_model_name,
         )
 
         validation_results[name] = {

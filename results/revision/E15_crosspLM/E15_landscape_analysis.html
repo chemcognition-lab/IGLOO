@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>E15: Landscape Complexity Analysis</title>
+<style>
+body { font-family: 'Segoe UI', Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+h1 { color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }
+h2 { color: #0066cc; margin-top: 35px; border-bottom: 2px solid #ddd; padding-bottom: 8px; }
+.chart-container { margin: 30px 0; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+table { border-collapse: collapse; width: 100%; margin: 20px 0; background-color: white; }
+th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+th { background-color: #0066cc; color: white; font-weight: bold; }
+.summary { background-color: #e6f2ff; padding: 15px; border-left: 4px solid #0066cc; margin: 20px 0; border-radius: 4px; }
+svg { display: block; margin: 20px auto; }
+</style>
+</head>
+<body>
+<h1>E15 Phase 1: Landscape Complexity Impact on Attribution Quality</h1>
+<div class='summary'><strong>Fitness Models:</strong><br/>
+• <strong>Additive:</strong> Linear combinations of sequence positions<br/>
+• <strong>Epistatic:</strong> Pairwise position interactions<br/>
+• <strong>Nonlinear:</strong> Complex multi-position dependencies</div>
+<div class='chart-container'>
+<svg width="900" height="480" style="border: 1px solid #ccc; background: white;">
+<text x="20" y="25" font-size="14" font-weight="bold">Attribution Quality Across Fitness Landscapes</text>
+<text x="190.0" y="50" font-size="12" font-weight="bold" text-anchor="middle">Additive</text>
+<line x1="50" y1="420" x2="290" y2="420" stroke="#999" stroke-width="2"/>
+<line x1="50" y1="70" x2="50" y2="420" stroke="#999" stroke-width="2"/>
+<text x="50.0" y="440" text-anchor="middle" font-size="9">0.0</text>
+<text x="130.0" y="440" text-anchor="middle" font-size="9">0.2</text>
+<text x="210.0" y="440" text-anchor="middle" font-size="9">0.4</text>
+<text x="290.0" y="440" text-anchor="middle" font-size="9">1.0</text>
+<text x="40" y="424.0" text-anchor="end" font-size="8">0.00</text>
+<text x="40" y="336.5" text-anchor="end" font-size="8">0.03</text>
+<text x="40" y="249.0" text-anchor="end" font-size="8">0.06</text>
+<text x="40" y="161.5" text-anchor="end" font-size="8">0.09</text>
+<text x="40" y="74.0" text-anchor="end" font-size="8">0.12</text>
+<path d="M 50.0 191.66454963016756 L 90.0 191.66454963016756 L 130.0 191.66454963016756 L 170.0 191.66454963016756 L 210.0 191.66454963016756 L 250.0 191.66454963016756 L 290.0 191.66454963016756 L 290.0 371.2198893871558 L 290.0 371.2198893871558 L 250.0 371.2198893871558 L 210.0 371.2198893871558 L 170.0 371.2198893871558 L 130.0 371.2198893871558 L 90.0 371.2198893871558 Z" fill="#FF6B6B" opacity="0.12" stroke="none"/>
+<path d="M 50.0 281.44221950866165 L 90.0 281.44221950866165 L 130.0 281.44221950866165 L 170.0 281.44221950866165 L 210.0 281.44221950866165 L 250.0 281.44221950866165 L 290.0 281.44221950866165" stroke="#FF6B6B" stroke-width="1.5" fill="none"/>
+<circle cx="50.0" cy="281.44221950866165" r="2.5" fill="#FF6B6B"/>
+<circle cx="90.0" cy="281.44221950866165" r="2.5" fill="#FF6B6B"/>
+<circle cx="130.0" cy="281.44221950866165" r="2.5" fill="#FF6B6B"/>
+<circle cx="170.0" cy="281.44221950866165" r="2.5" fill="#FF6B6B"/>
+<circle cx="210.0" cy="281.44221950866165" r="2.5" fill="#FF6B6B"/>
+<circle cx="250.0" cy="281.44221950866165" r="2.5" fill="#FF6B6B"/>
+<circle cx="290.0" cy="281.44221950866165" r="2.5" fill="#FF6B6B"/>
+<path d="M 50.0 376.6442589510925 L 90.0 376.6442589510925 L 130.0 376.6442589510925 L 170.0 376.6442589510925 L 210.0 376.6442589510925 L 250.0 376.6442589510925 L 290.0 376.6442589510925 L 290.0 420.0 L 290.0 420.0 L 250.0 420.0 L 210.0 420.0 L 170.0 420.0 L 130.0 420.0 L 90.0 420.0 Z" fill="#4ECDC4" opacity="0.12" stroke="none"/>
+<path d="M 50.0 508.88825611110315 L 90.0 508.88825611110315 L 130.0 508.88825611110315 L 170.0 508.88825611110315 L 210.0 508.88825611110315 L 250.0 508.88825611110315 L 290.0 508.88825611110315" stroke="#4ECDC4" stroke-width="1.5" fill="none"/>
+<circle cx="50.0" cy="508.88825611110315" r="2.5" fill="#4ECDC4"/>
+<circle cx="90.0" cy="508.88825611110315" r="2.5" fill="#4ECDC4"/>
+<circle cx="130.0" cy="508.88825611110315" r="2.5" fill="#4ECDC4"/>
+<circle cx="170.0" cy="508.88825611110315" r="2.5" fill="#4ECDC4"/>
+<circle cx="210.0" cy="508.88825611110315" r="2.5" fill="#4ECDC4"/>
+<circle cx="250.0" cy="508.88825611110315" r="2.5" fill="#4ECDC4"/>
+<circle cx="290.0" cy="508.88825611110315" r="2.5" fill="#4ECDC4"/>
+<path d="M 50.0 376.9945545229296 L 90.0 376.9945545229296 L 130.0 376.9945545229296 L 170.0 376.9945545229296 L 210.0 376.9945545229296 L 250.0 376.9945545229296 L 290.0 376.9945545229296 L 290.0 420.0 L 290.0 420.0 L 250.0 420.0 L 210.0 420.0 L 170.0 420.0 L 130.0 420.0 L 90.0 420.0 Z" fill="#45B7D1" opacity="0.12" stroke="none"/>
+<path d="M 50.0 509.06454363720354 L 90.0 509.06454363720354 L 130.0 509.06454363720354 L 170.0 509.06454363720354 L 210.0 509.06454363720354 L 250.0 509.06454363720354 L 290.0 509.06454363720354" stroke="#45B7D1" stroke-width="1.5" fill="none"/>
+<circle cx="50.0" cy="509.06454363720354" r="2.5" fill="#45B7D1"/>
+<circle cx="90.0" cy="509.06454363720354" r="2.5" fill="#45B7D1"/>
+<circle cx="130.0" cy="509.06454363720354" r="2.5" fill="#45B7D1"/>
+<circle cx="170.0" cy="509.06454363720354" r="2.5" fill="#45B7D1"/>
+<circle cx="210.0" cy="509.06454363720354" r="2.5" fill="#45B7D1"/>
+<circle cx="250.0" cy="509.06454363720354" r="2.5" fill="#45B7D1"/>
+<circle cx="290.0" cy="509.06454363720354" r="2.5" fill="#45B7D1"/>
+<path d="M 50.0 376.6483031074958 L 90.0 376.6483031074958 L 130.0 376.6483031074958 L 170.0 376.6483031074958 L 210.0 376.6483031074958 L 250.0 376.6483031074958 L 290.0 376.6483031074958 L 290.0 420.0 L 290.0 420.0 L 250.0 420.0 L 210.0 420.0 L 170.0 420.0 L 130.0 420.0 L 90.0 420.0 Z" fill="#FFA07A" opacity="0.12" stroke="none"/>
+<path d="M 50.0 508.84869199161284 L 90.0 508.84869199161284 L 130.0 508.84869199161284 L 170.0 508.84869199161284 L 210.0 508.84869199161284 L 250.0 508.84869199161284 L 290.0 508.84869199161284" stroke="#FFA07A" stroke-width="1.5" fill="none"/>
+<circle cx="50.0" cy="508.84869199161284" r="2.5" fill="#FFA07A"/>
+<circle cx="90.0" cy="508.84869199161284" r="2.5" fill="#FFA07A"/>
+<circle cx="130.0" cy="508.84869199161284" r="2.5" fill="#FFA07A"/>
+<circle cx="170.0" cy="508.84869199161284" r="2.5" fill="#FFA07A"/>
+<circle cx="210.0" cy="508.84869199161284" r="2.5" fill="#FFA07A"/>
+<circle cx="250.0" cy="508.84869199161284" r="2.5" fill="#FFA07A"/>
+<circle cx="290.0" cy="508.84869199161284" r="2.5" fill="#FFA07A"/>
+<path d="M 50.0 395.31609587182766 L 90.0 395.31609587182766 L 130.0 395.31609587182766 L 170.0 395.31609587182766 L 210.0 395.31609587182766 L 250.0 395.31609587182766 L 290.0 395.31609587182766 L 290.0 398.4536135239204 L 290.0 398.4536135239204 L 250.0 398.4536135239204 L 210.0 398.4536135239204 L 170.0 398.4536135239204 L 130.0 398.4536135239204 L 90.0 398.4536135239204 Z" fill="#98D8C8" opacity="0.12" stroke="none"/>
+<path d="M 50.0 396.88485469787406 L 90.0 396.88485469787406 L 130.0 396.88485469787406 L 170.0 396.88485469787406 L 210.0 396.88485469787406 L 250.0 396.88485469787406 L 290.0 396.88485469787406" stroke="#98D8C8" stroke-width="1.5" fill="none"/>
+<circle cx="50.0" cy="396.88485469787406" r="2.5" fill="#98D8C8"/>
+<circle cx="90.0" cy="396.88485469787406" r="2.5" fill="#98D8C8"/>
+<circle cx="130.0" cy="396.88485469787406" r="2.5" fill="#98D8C8"/>
+<circle cx="170.0" cy="396.88485469787406" r="2.5" fill="#98D8C8"/>
+<circle cx="210.0" cy="396.88485469787406" r="2.5" fill="#98D8C8"/>
+<circle cx="250.0" cy="396.88485469787406" r="2.5" fill="#98D8C8"/>
+<circle cx="290.0" cy="396.88485469787406" r="2.5" fill="#98D8C8"/>
+<text x="490.0" y="50" font-size="12" font-weight="bold" text-anchor="middle">Epistatic</text>
+<line x1="350" y1="420" x2="590" y2="420" stroke="#999" stroke-width="2"/>
+<line x1="350" y1="70" x2="350" y2="420" stroke="#999" stroke-width="2"/>
+<text x="350.0" y="440" text-anchor="middle" font-size="9">0.0</text>
+<text x="430.0" y="440" text-anchor="middle" font-size="9">0.2</text>
+<text x="510.0" y="440" text-anchor="middle" font-size="9">0.4</text>
+<text x="590.0" y="440" text-anchor="middle" font-size="9">1.0</text>
+<path d="M 350.0 400.77389473682825 L 390.0 400.77389473682825 L 430.0 400.77389473682825 L 470.0 400.77389473682825 L 510.0 400.77389473682825 L 550.0 400.77389473682825 L 590.0 400.77389473682825 L 590.0 420.0 L 590.0 420.0 L 550.0 420.0 L 510.0 420.0 L 470.0 420.0 L 430.0 420.0 L 390.0 420.0 Z" fill="#FF6B6B" opacity="0.12" stroke="none"/>
+<path d="M 350.0 527.964005300421 L 390.0 527.964005300421 L 430.0 527.964005300421 L 470.0 527.964005300421 L 510.0 527.964005300421 L 550.0 527.964005300421 L 590.0 527.964005300421" stroke="#FF6B6B" stroke-width="1.5" fill="none"/>
+<circle cx="350.0" cy="527.964005300421" r="2.5" fill="#FF6B6B"/>
+<circle cx="390.0" cy="527.964005300421" r="2.5" fill="#FF6B6B"/>
+<circle cx="430.0" cy="527.964005300421" r="2.5" fill="#FF6B6B"/>
+<circle cx="470.0" cy="527.964005300421" r="2.5" fill="#FF6B6B"/>
+<circle cx="510.0" cy="527.964005300421" r="2.5" fill="#FF6B6B"/>
+<circle cx="550.0" cy="527.964005300421" r="2.5" fill="#FF6B6B"/>
+<circle cx="590.0" cy="527.964005300421" r="2.5" fill="#FF6B6B"/>
+<path d="M 350.0 245.8206638110797 L 390.0 245.8206638110797 L 430.0 245.8206638110797 L 470.0 245.8206638110797 L 510.0 245.8206638110797 L 550.0 245.8206638110797 L 590.0 245.8206638110797 L 590.0 420.0 L 590.0 420.0 L 550.0 420.0 L 510.0 420.0 L 470.0 420.0 L 430.0 420.0 L 390.0 420.0 Z" fill="#4ECDC4" opacity="0.12" stroke="none"/>
+<path d="M 350.0 412.87459983030953 L 390.0 412.87459983030953 L 430.0 412.87459983030953 L 470.0 412.87459983030953 L 510.0 412.87459983030953 L 550.0 412.87459983030953 L 590.0 412.87459983030953" stroke="#4ECDC4" stroke-width="1.5" fill="none"/>
+<circle cx="350.0" cy="412.87459983030953" r="2.5" fill="#4ECDC4"/>
+<circle cx="390.0" cy="412.87459983030953" r="2.5" fill="#4ECDC4"/>
+<circle cx="430.0" cy="412.87459983030953" r="2.5" fill="#4ECDC4"/>
+<circle cx="470.0" cy="412.87459983030953" r="2.5" fill="#4ECDC4"/>
+<circle cx="510.0" cy="412.87459983030953" r="2.5" fill="#4ECDC4"/>
+<circle cx="550.0" cy="412.87459983030953" r="2.5" fill="#4ECDC4"/>
+<circle cx="590.0" cy="412.87459983030953" r="2.5" fill="#4ECDC4"/>
+<path d="M 350.0 245.83627427730264 L 390.0 245.83627427730264 L 430.0 245.83627427730264 L 470.0 245.83627427730264 L 510.0 245.83627427730264 L 550.0 245.83627427730264 L 590.0 245.83627427730264 L 590.0 420.0 L 590.0 420.0 L 550.0 420.0 L 510.0 420.0 L 470.0 420.0 L 430.0 420.0 L 390.0 420.0 Z" fill="#45B7D1" opacity="0.12" stroke="none"/>
+<path d="M 350.0 412.74028938788547 L 390.0 412.74028938788547 L 430.0 412.74028938788547 L 470.0 412.74028938788547 L 510.0 412.74028938788547 L 550.0 412.74028938788547 L 590.0 412.74028938788547" stroke="#45B7D1" stroke-width="1.5" fill="none"/>
+<circle cx="350.0" cy="412.74028938788547" r="2.5" fill="#45B7D1"/>
+<circle cx="390.0" cy="412.74028938788547" r="2.5" fill="#45B7D1"/>
+<circle cx="430.0" cy="412.74028938788547" r="2.5" fill="#45B7D1"/>
+<circle cx="470.0" cy="412.74028938788547" r="2.5" fill="#45B7D1"/>
+<circle cx="510.0" cy="412.74028938788547" r="2.5" fill="#45B7D1"/>
+<circle cx="550.0" cy="412.74028938788547" r="2.5" fill="#45B7D1"/>
+<circle cx="590.0" cy="412.74028938788547" r="2.5" fill="#45B7D1"/>
+<path d="M 350.0 245.7750235975804 L 390.0 245.7750235975804 L 430.0 245.7750235975804 L 470.0 245.7750235975804 L 510.0 245.7750235975804 L 550.0 245.7750235975804 L 590.0 245.7750235975804 L 590.0 420.0 L 590.0 420.0 L 550.0 420.0 L 510.0 420.0 L 470.0 420.0 L 430.0 420.0 L 390.0 420.0 Z" fill="#FFA07A" opacity="0.12" stroke="none"/>
+<path d="M 350.0 412.84428217217885 L 390.0 412.84428217217885 L 430.0 412.84428217217885 L 470.0 412.84428217217885 L 510.0 412.84428217217885 L 550.0 412.84428217217885 L 590.0 412.84428217217885" stroke="#FFA07A" stroke-width="1.5" fill="none"/>
+<circle cx="350.0" cy="412.84428217217885" r="2.5" fill="#FFA07A"/>
+<circle cx="390.0" cy="412.84428217217885" r="2.5" fill="#FFA07A"/>
+<circle cx="430.0" cy="412.84428217217885" r="2.5" fill="#FFA07A"/>
+<circle cx="470.0" cy="412.84428217217885" r="2.5" fill="#FFA07A"/>
+<circle cx="510.0" cy="412.84428217217885" r="2.5" fill="#FFA07A"/>
+<circle cx="550.0" cy="412.84428217217885" r="2.5" fill="#FFA07A"/>
+<circle cx="590.0" cy="412.84428217217885" r="2.5" fill="#FFA07A"/>
+<path d="M 350.0 354.9864490468407 L 390.0 354.9864490468407 L 430.0 354.9864490468407 L 470.0 354.9864490468407 L 510.0 354.9864490468407 L 550.0 354.9864490468407 L 590.0 354.9864490468407 L 590.0 356.81627629616713 L 590.0 356.81627629616713 L 550.0 356.81627629616713 L 510.0 356.81627629616713 L 470.0 356.81627629616713 L 430.0 356.81627629616713 L 390.0 356.81627629616713 Z" fill="#98D8C8" opacity="0.12" stroke="none"/>
+<path d="M 350.0 355.9013626715039 L 390.0 355.9013626715039 L 430.0 355.9013626715039 L 470.0 355.9013626715039 L 510.0 355.9013626715039 L 550.0 355.9013626715039 L 590.0 355.9013626715039" stroke="#98D8C8" stroke-width="1.5" fill="none"/>
+<circle cx="350.0" cy="355.9013626715039" r="2.5" fill="#98D8C8"/>
+<circle cx="390.0" cy="355.9013626715039" r="2.5" fill="#98D8C8"/>
+<circle cx="430.0" cy="355.9013626715039" r="2.5" fill="#98D8C8"/>
+<circle cx="470.0" cy="355.9013626715039" r="2.5" fill="#98D8C8"/>
+<circle cx="510.0" cy="355.9013626715039" r="2.5" fill="#98D8C8"/>
+<circle cx="550.0" cy="355.9013626715039" r="2.5" fill="#98D8C8"/>
+<circle cx="590.0" cy="355.9013626715039" r="2.5" fill="#98D8C8"/>
+<text x="790.0" y="50" font-size="12" font-weight="bold" text-anchor="middle">Nonlinear</text>
+<line x1="650" y1="420" x2="890" y2="420" stroke="#999" stroke-width="2"/>
+<line x1="650" y1="70" x2="650" y2="420" stroke="#999" stroke-width="2"/>
+<text x="650.0" y="440" text-anchor="middle" font-size="9">0.0</text>
+<text x="730.0" y="440" text-anchor="middle" font-size="9">0.2</text>
+<text x="810.0" y="440" text-anchor="middle" font-size="9">0.4</text>
+<text x="890.0" y="440" text-anchor="middle" font-size="9">1.0</text>
+<path d="M 650.0 433.6957162866199 L 690.0 433.6957162866199 L 730.0 433.6957162866199 L 770.0 433.6957162866199 L 810.0 433.6957162866199 L 850.0 433.6957162866199 L 890.0 433.6957162866199 L 890.0 420.0 L 890.0 420.0 L 850.0 420.0 L 810.0 420.0 L 770.0 420.0 L 730.0 420.0 L 690.0 420.0 Z" fill="#FF6B6B" opacity="0.12" stroke="none"/>
+<path d="M 650.0 535.469843312658 L 690.0 535.469843312658 L 730.0 535.469843312658 L 770.0 535.469843312658 L 810.0 535.469843312658 L 850.0 535.469843312658 L 890.0 535.469843312658" stroke="#FF6B6B" stroke-width="1.5" fill="none"/>
+<circle cx="650.0" cy="535.469843312658" r="2.5" fill="#FF6B6B"/>
+<circle cx="690.0" cy="535.469843312658" r="2.5" fill="#FF6B6B"/>
+<circle cx="730.0" cy="535.469843312658" r="2.5" fill="#FF6B6B"/>
+<circle cx="770.0" cy="535.469843312658" r="2.5" fill="#FF6B6B"/>
+<circle cx="810.0" cy="535.469843312658" r="2.5" fill="#FF6B6B"/>
+<circle cx="850.0" cy="535.469843312658" r="2.5" fill="#FF6B6B"/>
+<circle cx="890.0" cy="535.469843312658" r="2.5" fill="#FF6B6B"/>
+<path d="M 650.0 370.13086517009083 L 690.0 370.13086517009083 L 730.0 370.13086517009083 L 770.0 370.13086517009083 L 810.0 370.13086517009083 L 850.0 370.13086517009083 L 890.0 370.13086517009083 L 890.0 420.0 L 890.0 420.0 L 850.0 420.0 L 810.0 420.0 L 770.0 420.0 L 730.0 420.0 L 690.0 420.0 Z" fill="#4ECDC4" opacity="0.12" stroke="none"/>
+<path d="M 650.0 414.19212042650355 L 690.0 414.19212042650355 L 730.0 414.19212042650355 L 770.0 414.19212042650355 L 810.0 414.19212042650355 L 850.0 414.19212042650355 L 890.0 414.19212042650355" stroke="#4ECDC4" stroke-width="1.5" fill="none"/>
+<circle cx="650.0" cy="414.19212042650355" r="2.5" fill="#4ECDC4"/>
+<circle cx="690.0" cy="414.19212042650355" r="2.5" fill="#4ECDC4"/>
+<circle cx="730.0" cy="414.19212042650355" r="2.5" fill="#4ECDC4"/>
+<circle cx="770.0" cy="414.19212042650355" r="2.5" fill="#4ECDC4"/>
+<circle cx="810.0" cy="414.19212042650355" r="2.5" fill="#4ECDC4"/>
+<circle cx="850.0" cy="414.19212042650355" r="2.5" fill="#4ECDC4"/>
+<circle cx="890.0" cy="414.19212042650355" r="2.5" fill="#4ECDC4"/>
+<path d="M 650.0 331.32946426654496 L 690.0 331.32946426654496 L 730.0 331.32946426654496 L 770.0 331.32946426654496 L 810.0 331.32946426654496 L 850.0 331.32946426654496 L 890.0 331.32946426654496 L 890.0 420.0 L 890.0 420.0 L 850.0 420.0 L 810.0 420.0 L 770.0 420.0 L 730.0 420.0 L 690.0 420.0 Z" fill="#45B7D1" opacity="0.12" stroke="none"/>
+<path d="M 650.0 394.98203966089017 L 690.0 394.98203966089017 L 730.0 394.98203966089017 L 770.0 394.98203966089017 L 810.0 394.98203966089017 L 850.0 394.98203966089017 L 890.0 394.98203966089017" stroke="#45B7D1" stroke-width="1.5" fill="none"/>
+<circle cx="650.0" cy="394.98203966089017" r="2.5" fill="#45B7D1"/>
+<circle cx="690.0" cy="394.98203966089017" r="2.5" fill="#45B7D1"/>
+<circle cx="730.0" cy="394.98203966089017" r="2.5" fill="#45B7D1"/>
+<circle cx="770.0" cy="394.98203966089017" r="2.5" fill="#45B7D1"/>
+<circle cx="810.0" cy="394.98203966089017" r="2.5" fill="#45B7D1"/>
+<circle cx="850.0" cy="394.98203966089017" r="2.5" fill="#45B7D1"/>
+<circle cx="890.0" cy="394.98203966089017" r="2.5" fill="#45B7D1"/>
+<path d="M 650.0 331.19142544817817 L 690.0 331.19142544817817 L 730.0 331.19142544817817 L 770.0 331.19142544817817 L 810.0 331.19142544817817 L 850.0 331.19142544817817 L 890.0 331.19142544817817 L 890.0 420.0 L 890.0 420.0 L 850.0 420.0 L 810.0 420.0 L 770.0 420.0 L 730.0 420.0 L 690.0 420.0 Z" fill="#FFA07A" opacity="0.12" stroke="none"/>
+<path d="M 650.0 395.0012596490784 L 690.0 395.0012596490784 L 730.0 395.0012596490784 L 770.0 395.0012596490784 L 810.0 395.0012596490784 L 850.0 395.0012596490784 L 890.0 395.0012596490784" stroke="#FFA07A" stroke-width="1.5" fill="none"/>
+<circle cx="650.0" cy="395.0012596490784" r="2.5" fill="#FFA07A"/>
+<circle cx="690.0" cy="395.0012596490784" r="2.5" fill="#FFA07A"/>
+<circle cx="730.0" cy="395.0012596490784" r="2.5" fill="#FFA07A"/>
+<circle cx="770.0" cy="395.0012596490784" r="2.5" fill="#FFA07A"/>
+<circle cx="810.0" cy="395.0012596490784" r="2.5" fill="#FFA07A"/>
+<circle cx="850.0" cy="395.0012596490784" r="2.5" fill="#FFA07A"/>
+<circle cx="890.0" cy="395.0012596490784" r="2.5" fill="#FFA07A"/>
+<path d="M 650.0 387.87227345573547 L 690.0 387.87227345573547 L 730.0 387.87227345573547 L 770.0 387.87227345573547 L 810.0 387.87227345573547 L 850.0 387.87227345573547 L 890.0 387.87227345573547 L 890.0 390.6928215516304 L 890.0 390.6928215516304 L 850.0 390.6928215516304 L 810.0 390.6928215516304 L 770.0 390.6928215516304 L 730.0 390.6928215516304 L 690.0 390.6928215516304 Z" fill="#98D8C8" opacity="0.12" stroke="none"/>
+<path d="M 650.0 389.28254750368296 L 690.0 389.28254750368296 L 730.0 389.28254750368296 L 770.0 389.28254750368296 L 810.0 389.28254750368296 L 850.0 389.28254750368296 L 890.0 389.28254750368296" stroke="#98D8C8" stroke-width="1.5" fill="none"/>
+<circle cx="650.0" cy="389.28254750368296" r="2.5" fill="#98D8C8"/>
+<circle cx="690.0" cy="389.28254750368296" r="2.5" fill="#98D8C8"/>
+<circle cx="730.0" cy="389.28254750368296" r="2.5" fill="#98D8C8"/>
+<circle cx="770.0" cy="389.28254750368296" r="2.5" fill="#98D8C8"/>
+<circle cx="810.0" cy="389.28254750368296" r="2.5" fill="#98D8C8"/>
+<circle cx="850.0" cy="389.28254750368296" r="2.5" fill="#98D8C8"/>
+<circle cx="890.0" cy="389.28254750368296" r="2.5" fill="#98D8C8"/>
+<line x1="80" y1="460" x2="90" y2="460" stroke="#FF6B6B" stroke-width="1.5"/>
+<circle cx="85" cy="460" r="2" fill="#FF6B6B"/>
+<text x="95" y="463" font-size="9">gradient_input</text>
+<line x1="250" y1="460" x2="260" y2="460" stroke="#4ECDC4" stroke-width="1.5"/>
+<circle cx="255" cy="460" r="2" fill="#4ECDC4"/>
+<text x="265" y="463" font-size="9">ig_linear</text>
+<line x1="420" y1="460" x2="430" y2="460" stroke="#45B7D1" stroke-width="1.5"/>
+<circle cx="425" cy="460" r="2" fill="#45B7D1"/>
+<text x="435" y="463" font-size="9">ig_nearest_neighbor</text>
+<line x1="590" y1="460" x2="600" y2="460" stroke="#FFA07A" stroke-width="1.5"/>
+<circle cx="595" cy="460" r="2" fill="#FFA07A"/>
+<text x="605" y="463" font-size="9">ig_slerp</text>
+<line x1="760" y1="460" x2="770" y2="460" stroke="#98D8C8" stroke-width="1.5"/>
+<circle cx="765" cy="460" r="2" fill="#98D8C8"/>
+<text x="775" y="463" font-size="9">input_difference</text>
+</svg>
+</div>
+<h2>Spearman Correlation by Landscape and Noise Level</h2>
+<table>
+<tr><th>Landscape</th><th>Zero Noise</th><th>0.3 Noise</th><th>High Noise (1.0)</th><th>Robustness</th></tr>
+<tr><td><strong>Additive</strong></td><td>-0.0071</td><td>-0.0071</td><td>-0.0071</td><td>High</td></tr>
+<tr><td><strong>Epistatic</strong></td><td>-0.0015</td><td>-0.0015</td><td>-0.0015</td><td>High</td></tr>
+<tr><td><strong>Nonlinear</strong></td><td>-0.0020</td><td>-0.0020</td><td>-0.0020</td><td>High</td></tr>
+</table>
+
+<h2>Analysis by Landscape Type</h2>
+<ul>
+<li><strong>Additive Fitness:</strong> Simplest model - direct, non-interacting effects. Should show highest attribution accuracy.</li>
+<li><strong>Epistatic Fitness:</strong> Second-order interactions between positions. More complex to attribute.</li>
+<li><strong>Nonlinear Fitness:</strong> Complex dependencies - most challenging for attribution methods to capture.</li>
+</ul>
+
+<p style='margin-top: 30px; color: #666; font-size: 12px;'>Generated from results/revision/E15_crosspLM/metrics_long.csv</p>
+</body>
+</html>

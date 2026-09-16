@@ -34,13 +34,23 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
     esm_model_name = model_config.get('esm_model_name', _DEFAULT_ESM_MODEL)
     ig_method = ig_config['method']  # 'embedding' or 'token'
 
-    # Load ESM backend (model + optional alphabet)
-    print(f"Loading ESM model for integrated gradients ({esm_model_name})...")
-    esm_backend = load_esm_backend(esm_model_name, device)
-    esm_model = esm_backend.model
-    alphabet  = esm_backend.alphabet  # None for ESM-C
+    # Load ESM backend (model + optional alphabet). 'onehot' bypasses the pLM
+    # entirely (see embedding.py::get_embeddings) — no backend to load, and
+    # the embedding-level combined model never calls esm_model(...) directly.
+    if esm_model_name == 'onehot':
+        print("Input representation: one-hot amino-acid encoding (no pLM)")
+        esm_backend = None
+        esm_model = None
+        alphabet = None
+    else:
+        print(f"Loading ESM model for integrated gradients ({esm_model_name})...")
+        esm_backend = load_esm_backend(esm_model_name, device)
+        esm_model = esm_backend.model
+        alphabet  = esm_backend.alphabet  # None for ESM-C
 
     # Guard: token-level IG requires ESM-2
+    if ig_method == 'token' and esm_model_name == 'onehot':
+        raise ValueError("Token-level integrated gradients is not supported for the one-hot baseline.")
     if ig_method == 'token' and esm_backend.family != 'esm2':
         raise ValueError(
             f"Token-level integrated gradients is not supported with "
@@ -82,7 +92,8 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
             dataset_name=_test_cache_name,
             subdir=embeddings_subdir,
             esm_backend=esm_backend,
-        )
+            esm_model_name=esm_model_name,
+        )  # (N, L, D) numpy array
         for i, seq in enumerate(test_sequences):
             embedding_lookup[seq] = test_emb_np[i : i + 1]
 
@@ -129,6 +140,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 max_sequences=completeness_config.get('max_sequences_to_validate', None),
                 embeddings_subdir=embeddings_subdir,
                 esm_backend=esm_backend,
+                esm_model_name=esm_model_name,
             )
 
             # Store validation results for later reporting
@@ -179,6 +191,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
                 ),
                 training_embeddings=training_embeddings,
                 _esm_backend=esm_backend,
+                esm_model_name=esm_model_name,
                 embedding_lookup=embedding_lookup,
             )
             ig_results[name] = result

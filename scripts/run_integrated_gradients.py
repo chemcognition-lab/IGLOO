@@ -150,25 +150,70 @@ class IntegratedGradientsRunner:
         self.df, self.sequences, self.y_raw, self.y, self.y_log_mean, self.y_log_std = result
 
     def inject_label_noise(self):
-        """Optionally corrupt all labels with Gaussian noise before the train/test split.
+        """Optionally corrupt all labels before the train/test split.
 
-        Reads ``training.noise.label_noise_std`` from the config (in raw target
-        units).  The same noise realisation is applied to both ``y_raw`` and
-        the (possibly normalised) ``y``, so model training, evaluation, and IG
-        analysis all see consistently noisy labels.
+        Two modes, chosen by ``training.noise.label_noise_mode``:
 
-        A fixed ``label_noise_seed`` (default 0) is used so runs are
-        reproducible; set it to different values to sample different noise
-        realisations.
+        ``gaussian`` (default)
+            Add ``N(0, label_noise_std**2)`` in raw target units.  ``label_noise_std``
+            is an absolute standard deviation, so its effect depends on the label
+            scale (for the synthetic sets, σ_signal ≈ 0.68).
+
+        ``blend``
+            Interpolate every label toward a random permutation of the labels::
+
+                y  :=  (1 - p) * y_true  +  p * y_perm          (then rescaled
+                                                                 to the original
+                                                                 mean / std)
+
+            ``p`` is ``label_noise_level`` ∈ [0, 1] — a scale-free knob:
+            ``p = 0`` is the exact labels, ``p = 1`` is a full permutation
+            (held-out performance ≈ 0, i.e. the shuffled-label baseline).
+            ``corr(y_noisy, y_true) = (1 - p) / sqrt((1 - p)**2 + p**2)``
+            (1.0 → 0.71 at p=0.5 → 0.0 at p=1).  The rescale keeps the label
+            marginal distribution fixed at every ``p``.
+
+        The same realisation is applied to both ``y_raw`` and the (possibly
+        normalised) ``y``.  A fixed ``label_noise_seed`` (default 0) makes runs
+        reproducible; vary it to sample different noise / permutation draws.
         """
         import numpy as np
 
-        noise_cfg  = self.config.get('training', {}).get('noise', {})
-        noise_std  = float(noise_cfg.get('label_noise_std', 0.0))
+        noise_cfg = self.config.get('training', {}).get('noise', {})
+        mode      = str(noise_cfg.get('label_noise_mode', 'gaussian')).lower()
+        seed      = int(noise_cfg.get('label_noise_seed', 0))
+
+        if mode == 'blend':
+            p = float(noise_cfg.get('label_noise_level', 0.0))
+            p = min(max(p, 0.0), 1.0)
+            if p <= 0.0:
+                return
+
+            perm = np.random.default_rng(seed).permutation(len(self.y_raw))
+
+            def _blend(vec):
+                vec   = np.asarray(vec, dtype=np.float64)
+                mixed = (1.0 - p) * vec + p * vec[perm]
+                sd1   = mixed.std()
+                if sd1 > 0:                       # rescale to the original moments
+                    mixed = (mixed - mixed.mean()) / sd1 * vec.std() + vec.mean()
+                return mixed.astype(np.float32)
+
+            self.y_raw = _blend(self.y_raw)
+            self.y     = _blend(self.y)
+
+            corr = (1.0 - p) / np.sqrt((1.0 - p) ** 2 + p ** 2) if p < 1.0 else 0.0
+            tag  = " [FULL PERMUTATION — random-label baseline]" if p >= 1.0 else ""
+            print(f"Label noise (blend) — p={p:.3f} (seed={seed}); "
+                  f"corr(noisy, true) ≈ {corr:.3f}{tag}; "
+                  f"applied to all {len(self.y_raw)} labels before train/test split")
+            return
+
+        # ---- gaussian (legacy) ----
+        noise_std = float(noise_cfg.get('label_noise_std', 0.0))
         if noise_std <= 0.0:
             return
 
-        seed = int(noise_cfg.get('label_noise_seed', 0))
         rng  = np.random.default_rng(seed)
         epsilon = rng.standard_normal(len(self.y_raw)).astype(np.float32) * noise_std
 
@@ -179,6 +224,28 @@ class IntegratedGradientsRunner:
 
         print(f"Label noise injected — std={noise_std:.4f} (seed={seed}), "
               f"applied to all {len(self.y_raw)} sequences before train/test split")
+
+    def shuffle_labels(self):
+        """Optionally permute all labels before the split — a 'sanity check' /
+        random-performance baseline (cf. Adebayo et al., data-randomisation test).
+
+        Gated on ``training.shuffle_labels`` (bool).  ``training.shuffle_labels_seed``
+        (default 0) picks the permutation.  The same permutation is applied to
+        ``y`` and ``y_raw`` so training, evaluation and IG all see the shuffled
+        targets; the model should end up with ~0 test performance.
+        """
+        import numpy as np
+
+        tcfg = self.config.get('training', {})
+        if not bool(tcfg.get('shuffle_labels', False)):
+            return
+
+        seed = int(tcfg.get('shuffle_labels_seed', 0))
+        perm = np.random.default_rng(seed).permutation(len(self.y_raw))
+        self.y_raw = self.y_raw[perm]
+        self.y = self.y[perm]
+        print(f"Label SHUFFLE applied — seed={seed}, all {len(self.y_raw)} "
+              f"labels permuted before train/test split (random-baseline run)")
 
     def split_data(self):
         """Split the loaded dataset into train+val and held-out test sets.
@@ -637,6 +704,9 @@ class IntegratedGradientsRunner:
 
             # Step 1b: Inject label noise (if configured) — before any split
             self.inject_label_noise()
+
+            # Step 1c: Shuffle labels (if configured) — random-baseline run
+            self.shuffle_labels()
 
             # Step 2: Split into train+val and held-out test (if configured)
             self.split_data()

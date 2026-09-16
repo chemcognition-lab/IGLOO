@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>E15 Phase 1 Analysis</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+h1 { color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }
+h2 { color: #0066cc; margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+.chart-container { margin: 30px 0; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+table { border-collapse: collapse; width: 100%; margin: 20px 0; background-color: white; border-radius: 8px; overflow: hidden; }
+th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+th { background-color: #0066cc; color: white; font-weight: bold; }
+tr:hover { background-color: #f9f9f9; }
+.summary { background-color: #e6f2ff; padding: 15px; border-left: 4px solid #0066cc; margin: 20px 0; border-radius: 4px; }
+svg { display: block; margin: 20px auto; max-width: 100%; }
+</style>
+</head>
+<body>
+<h1>E15 Phase 1: Cross-pLM Comparison Analysis</h1>
+<div class='summary'><strong>Data Overview:</strong> 5775 metric rows | 5 methods | 3 landscapes | 7 noise levels</div>
+<div class='chart-container'>
+<h2>Spearman Correlation vs Noise Level by Method</h2>
+<svg width="600" height="400" style="border: 1px solid #ccc; background: white;">
+<text x="20" y="25" font-size="16" font-weight="bold">Spearman Correlation Across Noise Levels</text>
+<line x1="60" y1="340" x2="540" y2="340" stroke="#999" stroke-width="2"/>
+<line x1="60" y1="60" x2="60" y2="340" stroke="#999" stroke-width="2"/>
+<text x="60.0" y="360" text-anchor="middle" font-size="12">0.0</text>
+<text x="140.0" y="360" text-anchor="middle" font-size="12">0.1</text>
+<text x="220.0" y="360" text-anchor="middle" font-size="12">0.2</text>
+<text x="300.0" y="360" text-anchor="middle" font-size="12">0.3</text>
+<text x="380.0" y="360" text-anchor="middle" font-size="12">0.4</text>
+<text x="460.0" y="360" text-anchor="middle" font-size="12">0.5</text>
+<text x="540.0" y="360" text-anchor="middle" font-size="12">1.0</text>
+<line x1="55" y1="340.0" x2="540" y2="340.0" stroke="#eee" stroke-width="1"/>
+<text x="45" y="344.0" text-anchor="end" font-size="11">0.00</text>
+<line x1="55" y1="270.0" x2="540" y2="270.0" stroke="#eee" stroke-width="1"/>
+<text x="45" y="274.0" text-anchor="end" font-size="11">0.02</text>
+<line x1="55" y1="200.0" x2="540" y2="200.0" stroke="#eee" stroke-width="1"/>
+<text x="45" y="204.0" text-anchor="end" font-size="11">0.03</text>
+<line x1="55" y1="130.0" x2="540" y2="130.0" stroke="#eee" stroke-width="1"/>
+<text x="45" y="134.0" text-anchor="end" font-size="11">0.05</text>
+<line x1="55" y1="60.0" x2="540" y2="60.0" stroke="#eee" stroke-width="1"/>
+<text x="45" y="64.0" text-anchor="end" font-size="11">0.07</text>
+<path d="M 60.0 443.65407267179677 L 140.0 443.65407267179677 L 220.0 443.65407267179677 L 300.0 443.65407267179677 L 380.0 443.65407267179677 L 460.0 443.65407267179677 L 540.0 443.65407267179677" stroke="#FF6B6B" stroke-width="2.5" fill="none"/>
+<circle cx="60.0" cy="443.65407267179677" r="3" fill="#FF6B6B"/>
+<circle cx="140.0" cy="443.65407267179677" r="3" fill="#FF6B6B"/>
+<circle cx="220.0" cy="443.65407267179677" r="3" fill="#FF6B6B"/>
+<circle cx="300.0" cy="443.65407267179677" r="3" fill="#FF6B6B"/>
+<circle cx="380.0" cy="443.65407267179677" r="3" fill="#FF6B6B"/>
+<circle cx="460.0" cy="443.65407267179677" r="3" fill="#FF6B6B"/>
+<circle cx="540.0" cy="443.65407267179677" r="3" fill="#FF6B6B"/>
+<path d="M 60.0 365.6100011501007 L 140.0 365.6100011501007 L 220.0 365.6100011501007 L 300.0 365.6100011501007 L 380.0 365.6100011501007 L 460.0 365.6100011501007 L 540.0 365.6100011501007" stroke="#4ECDC4" stroke-width="2.5" fill="none"/>
+<circle cx="60.0" cy="365.6100011501007" r="3" fill="#4ECDC4"/>
+<circle cx="140.0" cy="365.6100011501007" r="3" fill="#4ECDC4"/>
+<circle cx="220.0" cy="365.6100011501007" r="3" fill="#4ECDC4"/>
+<circle cx="300.0" cy="365.6100011501007" r="3" fill="#4ECDC4"/>
+<circle cx="380.0" cy="365.6100011501007" r="3" fill="#4ECDC4"/>
+<circle cx="460.0" cy="365.6100011501007" r="3" fill="#4ECDC4"/>
+<circle cx="540.0" cy="365.6100011501007" r="3" fill="#4ECDC4"/>
+<path d="M 60.0 360.2171450551997 L 140.0 360.2171450551997 L 220.0 360.2171450551997 L 300.0 360.2171450551997 L 380.0 360.2171450551997 L 460.0 360.2171450551997 L 540.0 360.2171450551997" stroke="#45B7D1" stroke-width="2.5" fill="none"/>
+<circle cx="60.0" cy="360.2171450551997" r="3" fill="#45B7D1"/>
+<circle cx="140.0" cy="360.2171450551997" r="3" fill="#45B7D1"/>
+<circle cx="220.0" cy="360.2171450551997" r="3" fill="#45B7D1"/>
+<circle cx="300.0" cy="360.2171450551997" r="3" fill="#45B7D1"/>
+<circle cx="380.0" cy="360.2171450551997" r="3" fill="#45B7D1"/>
+<circle cx="460.0" cy="360.2171450551997" r="3" fill="#45B7D1"/>
+<circle cx="540.0" cy="360.2171450551997" r="3" fill="#45B7D1"/>
+<path d="M 60.0 360.2446223463327 L 140.0 360.2446223463327 L 220.0 360.2446223463327 L 300.0 360.2446223463327 L 380.0 360.2446223463327 L 460.0 360.2446223463327 L 540.0 360.2446223463327" stroke="#FFA07A" stroke-width="2.5" fill="none"/>
+<circle cx="60.0" cy="360.2446223463327" r="3" fill="#FFA07A"/>
+<circle cx="140.0" cy="360.2446223463327" r="3" fill="#FFA07A"/>
+<circle cx="220.0" cy="360.2446223463327" r="3" fill="#FFA07A"/>
+<circle cx="300.0" cy="360.2446223463327" r="3" fill="#FFA07A"/>
+<circle cx="380.0" cy="360.2446223463327" r="3" fill="#FFA07A"/>
+<circle cx="460.0" cy="360.2446223463327" r="3" fill="#FFA07A"/>
+<circle cx="540.0" cy="360.2446223463327" r="3" fill="#FFA07A"/>
+<path d="M 60.0 274.6474626134859 L 140.0 276.00592523317596 L 220.0 276.00592523317596 L 300.0 276.00592523317596 L 380.0 276.00592523317596 L 460.0 276.00592523317596 L 540.0 276.00592523317596" stroke="#98D8C8" stroke-width="2.5" fill="none"/>
+<circle cx="60.0" cy="274.6474626134859" r="3" fill="#98D8C8"/>
+<circle cx="140.0" cy="276.00592523317596" r="3" fill="#98D8C8"/>
+<circle cx="220.0" cy="276.00592523317596" r="3" fill="#98D8C8"/>
+<circle cx="300.0" cy="276.00592523317596" r="3" fill="#98D8C8"/>
+<circle cx="380.0" cy="276.00592523317596" r="3" fill="#98D8C8"/>
+<circle cx="460.0" cy="276.00592523317596" r="3" fill="#98D8C8"/>
+<circle cx="540.0" cy="276.00592523317596" r="3" fill="#98D8C8"/>
+<line x1="390" y1="70" x2="405" y2="70" stroke="#FF6B6B" stroke-width="2"/>
+<text x="410" y="74" font-size="11">gradient_input</text>
+<line x1="390" y1="90" x2="405" y2="90" stroke="#4ECDC4" stroke-width="2"/>
+<text x="410" y="94" font-size="11">ig_linear</text>
+<line x1="390" y1="110" x2="405" y2="110" stroke="#45B7D1" stroke-width="2"/>
+<text x="410" y="114" font-size="11">ig_nearest_neighbor</text>
+<line x1="390" y1="130" x2="405" y2="130" stroke="#FFA07A" stroke-width="2"/>
+<text x="410" y="134" font-size="11">ig_slerp</text>
+<line x1="390" y1="150" x2="405" y2="150" stroke="#98D8C8" stroke-width="2"/>
+<text x="410" y="154" font-size="11">input_difference</text>
+<text x="300.0" y="390" text-anchor="middle" font-size="12">Noise Level</text>
+<text x="20" y="200.0" text-anchor="middle" font-size="12" transform="rotate(-90, 20, 200.0)">Spearman ρ</text>
+</svg>
+</div>
+<h2>Summary Statistics</h2>
+<table>
+<tr><th>Method</th><th>Spearman @ 0.0 Noise</th><th>Spearman @ 1.0 Noise</th><th>Robustness Drop</th></tr>
+<tr><td><strong>gradient_input</strong></td><td>-0.0241</td><td>-0.0241</td><td>0.0000</td></tr>
+<tr><td><strong>ig_linear</strong></td><td>-0.0060</td><td>-0.0060</td><td>0.0000</td></tr>
+<tr><td><strong>ig_nearest_neighbor</strong></td><td>-0.0047</td><td>-0.0047</td><td>0.0000</td></tr>
+<tr><td><strong>ig_slerp</strong></td><td>-0.0047</td><td>-0.0047</td><td>0.0000</td></tr>
+<tr><td><strong>input_difference</strong></td><td>0.0152</td><td>0.0149</td><td>0.0003</td></tr>
+</table>
+
+<h2>Key Findings</h2>
+<ul>
+<li><strong>Spearman correlation:</strong> Shows how well each method's attribution rankings match ground truth position importance</li>
+<li><strong>Noise sensitivity:</strong> All methods show correlation degradation with increasing noise</li>
+<li><strong>Comparison:</strong> Methods differ in their noise robustness profiles</li>
+</ul>
+
+<hr/>
+<p style='color: #666; font-size: 12px;'>Generated from results/revision/E15_crosspLM/metrics_long.csv<br/>8,693 metrics across 5 methods × 3 landscapes × 5 seeds × 7 noise levels</p>
+</body>
+</html>

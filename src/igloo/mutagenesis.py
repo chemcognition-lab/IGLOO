@@ -30,7 +30,9 @@ def compute_mutation_effects(
     y_log_std: float = 1.0,
     pooling_method: str = 'linear',
     batch_size: int = 16,
-    progress: bool = True
+    progress: bool = True,
+    dataset_name: str = 'mutagenesis',
+    embeddings_subdir: Optional[str] = None
 ) -> pd.DataFrame:
     """
     Compute the predicted effect of all possible single amino acid mutations.
@@ -55,7 +57,8 @@ def compute_mutation_effects(
 
     # Get WT prediction for baseline using the same method as mutants
     print("Computing WT baseline prediction...")
-    wt_embedding = get_embeddings([wt_sequence], layer=esm_layer, batch_size=1, dataset_name='PafA_mutagenesis')
+    wt_embedding = get_embeddings([wt_sequence], layer=esm_layer, batch_size=1,
+                                  dataset_name=f'{dataset_name}_wt', subdir=embeddings_subdir)
 
     # Use DataLoader approach for consistency
     dummy_target = np.zeros(1)
@@ -65,7 +68,7 @@ def compute_mutation_effects(
     with torch.no_grad():
         for xb, lengths, _yb in wt_loader:
             xb = xb.to(device)
-            if pooling_method == 'esm_attention':
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1
@@ -104,7 +107,8 @@ def compute_mutation_effects(
     all_embeddings = get_embeddings(sequences_to_embed,
                                     layer=esm_layer,
                                     batch_size=batch_size,
-                                    dataset_name='PafA_mutagenesis')
+                                    dataset_name=f'{dataset_name}_mutants',
+                                    subdir=embeddings_subdir)
 
     print(f"Predicting activities for {len(sequences_to_embed)} mutations...")
 
@@ -123,7 +127,7 @@ def compute_mutation_effects(
     with torch.no_grad():
         for xb, lengths, _yb in tqdm(eval_loader, disable=not progress, desc="Predicting"):
             xb = xb.to(device)
-            if pooling_method == 'esm_attention':
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1

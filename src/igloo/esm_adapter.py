@@ -185,7 +185,22 @@ class ESMCBackend:
         layer: int | None = None,  # ignored; ESM-C always returns final-layer
         batch_size: int = 16,      # kept for interface parity; ESM-C encodes one at a time
     ) -> np.ndarray:
-        """Return ``(N, L, D)`` float32 numpy array with BOS and EOS stripped."""
+        """Return ``(N, L, D)`` float32 numpy array with BOS/EOS stripped.
+
+        CORRECTNESS NOTE (found 2026-09-15): ``client.logits(...)`` does NOT
+        strip BOS/EOS — verified empirically: encoding a 56-residue sequence
+        returns an (1, 58, 960) embedding (58 = 56 + BOS + EOS, tokenizer ids
+        0 and 2). The previous version of this method returned that
+        (1, L+2, D) tensor uncorrected (the docstring's claim that ESM-C
+        "already" excludes special tokens was wrong), so every downstream
+        consumer — training, evaluation, and embedding-level IG — silently
+        operated on an off-by-one-shifted sequence: reported "position 1" was
+        actually the BOS token, positions 2..L were actually residues 1..L-1,
+        and the true last residue was dropped entirely by the `[:len(seq)]`
+        truncation in sequence_ig.py. Every ESM-C-trained model and every
+        ESM-C-based attribution result computed before this fix needs to be
+        regenerated from a purged embedding cache to be trusted.
+        """
         from esm.sdk.api import ESMProtein, LogitsConfig  # type: ignore[import]
 
         all_embs: list[torch.Tensor] = []

@@ -10,8 +10,17 @@ import torch
 from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
-from src.igloo.models import AttentionConvPoolingModel, ESMAttention1d, LinearRegressionModel, MeanPoolingModel
-
+from .models import (
+    AttentionConvPoolingModel,
+    ESMAttention1d,
+    ESMAttention1dPreMLP,
+    ESMAttentionChannel,
+    ESMPerResidueMLP,
+    ESMPerResidueFlatten,
+    ESMCrossAttnPerResidue,
+    LinearRegressionModel,
+    MeanPoolingModel,
+)
 from .data_processing import CustomDataset, batch_pad_and_normalize
 from .embedding import get_embeddings
 from .plot import (
@@ -281,6 +290,69 @@ def create_model(config, device):
             dropout_rate=config['dropout_rate'],
             final_activation=config['final_activation'],
         )
+    elif pooling_method == 'esm_attention_premlp':
+        model = ESMAttention1dPreMLP(
+            max_length=L,
+            d_embedding=input_dim,
+            hidden_dim1=config['hidden_dim1'],
+            hidden_dim2=config['hidden_dim2'],
+            hidden_dim3=config['hidden_dim3'],
+            hidden_dim4=config['hidden_dim4'],
+            dropout_rate=config['dropout_rate'],
+            final_activation=config['final_activation'],
+        )
+    elif pooling_method == 'esm_attention_channel':
+        # Item 2: attention pools the CHANNEL axis, not sequence length.
+        model = ESMAttentionChannel(
+            max_length=L,
+            d_embedding=input_dim,
+            hidden_dim1=config['hidden_dim1'],
+            hidden_dim2=config['hidden_dim2'],
+            hidden_dim3=config['hidden_dim3'],
+            hidden_dim4=config['hidden_dim4'],
+            dropout_rate=config['dropout_rate'],
+            final_activation=config['final_activation'],
+        )
+    elif pooling_method in ('esm_perres_mean', 'esm_perres_attn'):
+        # Item 3a/3b: entire MLP moved per-residue, aggregated last (mean or attention).
+        model = ESMPerResidueMLP(
+            max_length=L,
+            d_embedding=input_dim,
+            hidden_dim1=config['hidden_dim1'],
+            hidden_dim2=config['hidden_dim2'],
+            hidden_dim3=config['hidden_dim3'],
+            hidden_dim4=config['hidden_dim4'],
+            dropout_rate=config['dropout_rate'],
+            final_activation=config['final_activation'],
+            final_pool='mean' if pooling_method == 'esm_perres_mean' else 'attention',
+        )
+    elif pooling_method == 'esm_crossattn_perres':
+        # Item 3c: cross-position self-attention before the per-residue MLP + mean pool.
+        model = ESMCrossAttnPerResidue(
+            max_length=L,
+            d_embedding=input_dim,
+            hidden_dim1=config['hidden_dim1'],
+            hidden_dim2=config['hidden_dim2'],
+            hidden_dim3=config['hidden_dim3'],
+            hidden_dim4=config['hidden_dim4'],
+            dropout_rate=config['dropout_rate'],
+            final_activation=config['final_activation'],
+        )
+    elif pooling_method == 'esm_perres_flatten':
+        # No pooling at all: per-residue MLP output is flattened and fed
+        # directly into a single linear head -- freely-learned, per-position
+        # coefficients instead of a mean/attention reduction. Requires
+        # fixed-length input (true for this per-protein/landscape setup).
+        model = ESMPerResidueFlatten(
+            max_length=L,
+            d_embedding=input_dim,
+            hidden_dim1=config['hidden_dim1'],
+            hidden_dim2=config['hidden_dim2'],
+            hidden_dim3=config['hidden_dim3'],
+            hidden_dim4=config['hidden_dim4'],
+            dropout_rate=config['dropout_rate'],
+            final_activation=config['final_activation'],
+        )
     else:
         raise ValueError(f"Unknown pooling method: {pooling_method}")
 
@@ -340,7 +412,7 @@ def evaluate_model_performance(
             xb = xb.to(device)
             yb = yb.to(device)
 
-            if model_config['pooling_method'] == 'esm_attention':
+            if model_config['pooling_method'] in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1

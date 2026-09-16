@@ -13,8 +13,6 @@
 
 #SBATCH --account=aip-bensl
 #SBATCH --cpus-per-task=4
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=ranamoneim@gmail.com
 # --output is set by submit_sweep.sh on the sbatch command line
 
 cd /scratch/ranaab/IGLOO || exit 1

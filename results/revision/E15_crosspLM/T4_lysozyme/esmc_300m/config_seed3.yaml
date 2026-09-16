@@ -1,0 +1,37 @@
+experiment: E15_PHASE1
+landscape: nonlinear
+metadata:
+  phase: E15_PHASE1
+  plm: esmc_300m
+  protein: T4_lysozyme
+  seed: 3
+  timestamp: '2026-09-08T11:59:01.051975'
+methods:
+- ig_linear
+- ig_slerp
+- ig_nearest_neighbor
+- gradient_input
+- input_difference
+noise_levels:
+- 0.0
+- 0.1
+- 0.2
+- 0.3
+- 0.4
+- 0.5
+- 1.0
+plm: esmc_300m
+predictor_hparams:
+  batch_size: 128
+  dropout_rate: 0.4
+  epochs: 90
+  hidden_dim1: 512
+  hidden_dim2: 256
+  hidden_dim3: 128
+  hidden_dim4: 64
+  learning_rate: 0.00055
+  loss_type: huber
+  min_epochs: 16
+  patience: 22
+protein: T4_lysozyme
+seed: 3

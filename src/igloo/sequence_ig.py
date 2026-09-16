@@ -129,9 +129,13 @@ class ESMBasedPredictor(torch.nn.Module):
         self.esm_layer = esm_layer
         self.pooling_method = pooling_method
 
-        # Freeze ESM parameters to avoid changing them
-        for param in self.esm_model.parameters():
-            param.requires_grad = False
+        # Freeze ESM parameters to avoid changing them. esm_model is None for
+        # the one-hot baseline (no pLM involved) — the embedding-level IG path
+        # never calls self.esm_model(...), it only reads .predictor_model /
+        # .pooling_method / .esm_layer off this wrapper.
+        if self.esm_model is not None:
+            for param in self.esm_model.parameters():
+                param.requires_grad = False
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
         """
@@ -184,7 +188,7 @@ class ESMBasedPredictor(torch.nn.Module):
         print(f"ESMBasedPredictor: After normalization shape: {normalized_embeddings.shape}")
 
         # Apply prediction model
-        if self.pooling_method == 'esm_attention':
+        if self.pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
             # Create input mask (all positions are valid since we removed special tokens)
             input_mask = torch.ones(batch_size, seq_len, device=normalized_embeddings.device)
             print(f"ESMBasedPredictor: Using esm_attention with mask shape: {input_mask.shape}")
@@ -294,7 +298,7 @@ class ESMBasedPredictorGumbel(torch.nn.Module):
         normalized_embeddings = flat_normalized.reshape(batch_size, seq_len, embed_dim)
 
         # Apply prediction model
-        if self.pooling_method == 'esm_attention':
+        if self.pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
             input_mask = torch.ones(batch_size, seq_len, device=normalized_embeddings.device)
             predictions = self.predictor_model(normalized_embeddings, input_mask)
         else:
@@ -492,7 +496,7 @@ def integrated_gradients_tokens(
         normalized_embeddings = flat_normalized.reshape(batch_size_actual, seq_len, embed_dim)
 
         # Apply prediction model
-        if combined_model.pooling_method == 'esm_attention':
+        if combined_model.pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
             input_mask = torch.ones(batch_size_actual, seq_len, device=device)
             outputs = combined_model.predictor_model(normalized_embeddings, input_mask)
         else:
@@ -982,7 +986,7 @@ def _guided_ig_model_forward(
         sigma = flat.std(dim=1, keepdim=True)
         flat_norm = (flat - mu) / (sigma + 1e-8)
     norm_emb = flat_norm.reshape(b, L, D)
-    if pooling_method == 'esm_attention':
+    if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
         mask = torch.ones(b, L, device=device)
         out = predictor_model(norm_emb, mask)
     else:
@@ -1165,7 +1169,7 @@ def _compute_path_integral(
     def _forward(norm_emb: torch.Tensor) -> torch.Tensor:
         """Forward pass on already-normalised embeddings. Returns rescaled output."""
         b, l, _ = norm_emb.shape
-        if pooling_method == 'esm_attention':
+        if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
             mask = torch.ones(b, l, device=device)
             out  = predictor_model(norm_emb, mask)
         else:
@@ -1250,6 +1254,26 @@ def _compute_path_integral(
 
         if attribution_method == 'signed':
             position_gradients = acc_signed.cpu().numpy()          # (L,)
+        elif attribution_method == 'displacement':
+            # FACTOR ABLATION: pLM embedding displacement only — NO model gradient.
+            # a_i = || x1_i - x0_i ||_2 .  Identical across seeds/noise/model.
+            position_gradients = embed_diff.norm(dim=-1).cpu().numpy()  # (L,)
+            print("NOTE: 'displacement' attribution ignores the model gradient "
+                  "(pLM-geometry-only factor ablation).")
+        elif attribution_method in ('gradient', 'grad_only'):
+            # FACTOR ABLATION: path-averaged model gradient magnitude only —
+            # no weighting by the embedding displacement.  a_i = || mean_k grad_k ||_2
+            position_gradients = acc_mag.norm(dim=-1).cpu().numpy()  # (L,)
+            print("NOTE: 'gradient' attribution ignores the embedding displacement "
+                  "(model-gradient-only factor ablation).")
+        elif attribution_method in ('grad_input', 'gradient_input'):
+            # BASELINE: gradient x input  —  a_i = < grad F(x1)_i , x1_i >  (sum over D).
+            # Single-point gradient at the actual sequence embedding, no path integral.
+            g1, _ = _grad_at(seq_emb_torch)                           # (1, L, D)
+            position_gradients = (g1.squeeze(0) * seq_emb_torch.squeeze(0)) \
+                .sum(dim=-1).cpu().numpy()                            # (L,)
+            print("NOTE: 'grad_input' attribution = grad(F, x1) . x1 "
+                  "(single-point gradient x input baseline).")
         else:  # magnitude
             position_gradients = acc_mag.norm(dim=-1).cpu().numpy()  # (L,)
             print("WARNING: magnitude attribution violates the completeness axiom.")
@@ -1374,6 +1398,7 @@ def analyze_sequence_with_integrated_gradients(
     interpolation_umap_save_path: str | None = None,
     training_embeddings: torch.Tensor | None = None,
     _esm_backend=None,
+    esm_model_name: str = 'esmc_300m',
     embedding_lookup: dict | None = None,
     nn_waypoints: int = 10,
 ) -> dict:
@@ -1426,6 +1451,7 @@ def analyze_sequence_with_integrated_gradients(
             [sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_{_model_tag}_seq_{seq_hash}',
             subdir=embeddings_subdir,
             esm_backend=_esm_backend,
+            esm_model_name=esm_model_name,
         )
 
     if embedding_lookup is not None and baseline_sequence in embedding_lookup:
@@ -1438,6 +1464,7 @@ def analyze_sequence_with_integrated_gradients(
             [baseline_sequence], layer=esm_layer, batch_size=1, dataset_name=f'sequence_ig_{_model_tag}_baseline_{baseline_hash}',
             subdir=embeddings_subdir,
             esm_backend=_esm_backend,
+            esm_model_name=esm_model_name,
         )
 
     # Get predictions using DataLoader approach (exactly like training/evaluation)
@@ -1460,7 +1487,7 @@ def analyze_sequence_with_integrated_gradients(
         for xb, lengths, yb in seq_loader:
             xb = xb.to(device)
             yb = yb.to(device)
-            if pooling_method == 'esm_attention':
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1
@@ -1482,7 +1509,7 @@ def analyze_sequence_with_integrated_gradients(
         for xb, lengths, yb in baseline_loader:
             xb = xb.to(device)
             yb = yb.to(device)
-            if pooling_method == 'esm_attention':
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1
@@ -1682,7 +1709,7 @@ def analyze_sequence_with_integrated_gradients(
             seq_normalized = normalize_like_ig(test_seq_emb)
             baseline_normalized = normalize_like_ig(test_baseline_emb)
 
-            if pooling_method == 'esm_attention':
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 seq_len = seq_normalized.size(1)
                 input_mask = torch.ones(1, seq_len, device=device)
                 seq_pred_direct = predictor_model(seq_normalized, input_mask).item()
@@ -1901,7 +1928,7 @@ def analyze_sequence_with_token_level_integrated_gradients(
         normalized_embeddings = flat_normalized.reshape(batch_size_cur, seq_len, embed_dim)
 
         # Apply predictor model
-        if pooling_method == 'esm_attention':
+        if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
             input_mask = torch.ones(batch_size_cur, seq_len, device=device)
             outputs = predictor_model(normalized_embeddings, input_mask)
         else:
@@ -1948,7 +1975,7 @@ def analyze_sequence_with_token_level_integrated_gradients(
         for xb, lengths, yb in seq_loader:
             xb = xb.to(device)
             yb = yb.to(device)
-            if pooling_method == 'esm_attention':
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1
@@ -1970,7 +1997,7 @@ def analyze_sequence_with_token_level_integrated_gradients(
         for xb, lengths, yb in baseline_loader:
             xb = xb.to(device)
             yb = yb.to(device)
-            if pooling_method == 'esm_attention':
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1
