@@ -196,7 +196,7 @@ License and acknowledgments
 MIT License (see `docs/LICENSE <docs/LICENSE>`_).
 
 This work builds on ESM-C (EvolutionaryScale), Ankh (Elnaggar et al.), Profluent E1
-(Profluent Bio), PyTorch, Captum, and the FLIP2 and ProteinGym benchmarks.
+(Profluent Bio), PyTorch, and the FLIP2 and ProteinGym benchmarks.
 
 Issues and questions: https://github.com/ranaabarghout/IGLOO/issues ·
 `Contact <mailto:ranamoneim@gmail.com>`_

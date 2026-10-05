@@ -433,7 +433,6 @@ def main():
         'matplotlib': 'Matplotlib',
         'seaborn': 'Seaborn',
         'tqdm': 'TQDM',
-        'captum': 'Captum',
         'biopython': 'BioPython'
     }
 
