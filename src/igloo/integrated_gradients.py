@@ -78,6 +78,7 @@ def run_integrated_gradients_analysis(sequences_to_analyze, config, y_raw, seque
         dataset_name=_train_cache_name,
         subdir=embeddings_subdir,
         esm_backend=esm_backend,
+        esm_model_name=esm_model_name,
     )  # (N, L, D) numpy array
     embedding_lookup: dict = {seq: train_emb_np[i : i + 1] for i, seq in enumerate(_lookup_seqs)}
 

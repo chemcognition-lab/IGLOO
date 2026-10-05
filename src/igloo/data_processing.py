@@ -69,26 +69,64 @@ def compute_global_normalization_params(all_embeddings):
 
     return {'mean': _global_scaler_mean, 'scale': _global_scaler_scale}
 
+def compute_pool_masks(sequences, pooling_method, wildtype=None):
+    """Return a list of 1D float32 pooling masks, one per sequence.
+
+    For every pooling method except ``esm_mutation_pool`` this is simply an
+    all-ones mask (i.e. "pool over every non-padding position") — identical
+    to the padding-only mask every pooling method used before this function
+    existed, so behaviour is unchanged.
+
+    ``esm_mutation_pool`` marks only the positions where *sequence* differs
+    from *wildtype* (substitution-only comparison — datasets here never have
+    indels, so a position-wise diff is exact, no alignment needed). A
+    sequence identical to the wildtype (zero mutated positions) would give an
+    empty mask, which is undefined for mean pooling, so it falls back to an
+    all-ones mask (full-sequence mean) for that one sequence only.
+    """
+    if pooling_method != 'esm_mutation_pool':
+        return [np.ones(len(seq), dtype=np.float32) for seq in sequences]
+
+    if wildtype is None:
+        raise ValueError("esm_mutation_pool requires the wildtype sequence to build its mask")
+
+    masks = []
+    for seq in sequences:
+        L = min(len(seq), len(wildtype))
+        mask = np.array(
+            [1.0 if seq[i] != wildtype[i] else 0.0 for i in range(L)],
+            dtype=np.float32,
+        )
+        if len(seq) > L:
+            mask = np.concatenate([mask, np.zeros(len(seq) - L, dtype=np.float32)])
+        if mask.sum() == 0:
+            mask[:] = 1.0  # identical-to-WT sequence: fall back to full-sequence mean
+        masks.append(mask)
+    return masks
+
+
 def batch_pad_and_normalize(batch, use_global_normalization=True):
     """
     Pad sequences in batch and normalize embeddings.
 
     Args:
-        batch: List of (embedding, target) tuples
+        batch: List of (embedding, pool_mask, target) tuples
         use_global_normalization: If True, use global normalization parameters.
                                  If False, use batch-specific normalization (old behavior).
     """
     global _global_scaler_mean, _global_scaler_scale
 
-    embeddings, targets = zip(*batch)
+    embeddings, pool_masks, targets = zip(*batch)
     batch_size = len(embeddings)
     embedding_dim = embeddings[0].shape[1]
     max_len = max(seq.shape[0] for seq in embeddings)
     padded = np.full((batch_size, max_len, embedding_dim), 0.0)
+    mask_padded = np.zeros((batch_size, max_len), dtype=np.float32)
     lengths = []
     for i, seq in enumerate(embeddings):
         seq_len = seq.shape[0]
         padded[i, :seq_len, :] = seq
+        mask_padded[i, :seq_len] = pool_masks[i][:seq_len]
         lengths.append(seq_len)
 
     flat = padded.reshape(batch_size, -1)
@@ -105,17 +143,21 @@ def batch_pad_and_normalize(batch, use_global_normalization=True):
     return (
         torch.tensor(normed, dtype=torch.float32),
         torch.tensor(lengths, dtype=torch.int64),
+        torch.tensor(mask_padded, dtype=torch.float32),
         torch.tensor(targets, dtype=torch.float32).unsqueeze(1)
     )
 
 class CustomDataset(torch.utils.data.Dataset):
-    def __init__(self, embeddings, targets):
+    def __init__(self, embeddings, targets, pool_masks=None):
         self.embeddings = embeddings
         self.targets = targets
+        self.pool_masks = pool_masks if pool_masks is not None else [
+            np.ones(emb.shape[0], dtype=np.float32) for emb in embeddings
+        ]
     def __len__(self):
         return len(self.embeddings)
     def __getitem__(self, idx):
-        return self.embeddings[idx], self.targets[idx]
+        return self.embeddings[idx], self.pool_masks[idx], self.targets[idx]
 
 def load_and_prepare_data(config, data_path):
     """Load and prepare the dataset"""

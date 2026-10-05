@@ -84,7 +84,7 @@ where $\mathcal{A}$ is the 20-letter amino-acid alphabet. Runs the whole model $
 
 ---
 
-# 2. Token-level IG (pilot — `scripts/token_level_ig_esmc.py`)
+# 2. Token-level IG (pilot — `scripts/sanity_checks/token_level_ig_esmc.py`)
 
 Extends the interpolation **through the entire pLM**, not just the predictor head, while keeping the WT-vs-mutant counterfactual framing. Define the fuller composed function:
 
@@ -137,4 +137,4 @@ There is no formulation that has *both* a non-sparse $\Delta$ *and* a gradient c
 
 ---
 
-*Generated for the Path-2 investigation, session `d256fa7d`. See `docs/attribution_methods_and_metrics.md` for the evaluation metrics and architecture descriptions, and `scripts/token_level_ig_esmc.py` for the reference implementation of §2.*
+*Generated for the Path-2 investigation, session `d256fa7d`. See `docs/attribution_methods_and_metrics.md` for the evaluation metrics and architecture descriptions, and `scripts/sanity_checks/token_level_ig_esmc.py` for the reference implementation of §2.*

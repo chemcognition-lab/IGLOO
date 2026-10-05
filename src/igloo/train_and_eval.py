@@ -17,6 +17,7 @@ from .data_processing import (
     CustomDataset,
     batch_pad_and_normalize,
     compute_global_normalization_params,
+    compute_pool_masks,
     set_global_normalization_params,
 )
 from .embedding import get_embeddings
@@ -41,14 +42,12 @@ def _create_epoch_plot(model, train_loader, val_loader, train_targets, val_targe
         # Get training predictions
         train_preds = []
         train_actuals = []
-        for xb, lengths, yb in train_loader:
+        for xb, lengths, mask, yb in train_loader:
             xb = xb.to(device)
             yb = yb.to(device)
 
-            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                for i, length in enumerate(lengths):
-                    input_mask[i, :length] = 1
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                input_mask = mask.to(device)
                 predictions = model(xb, input_mask)
             else:
                 predictions = model(xb)
@@ -60,14 +59,12 @@ def _create_epoch_plot(model, train_loader, val_loader, train_targets, val_targe
         val_preds = []
         val_actuals = []
         if val_loader is not None:
-            for xb, lengths, yb in val_loader:
+            for xb, lengths, mask, yb in val_loader:
                 xb = xb.to(device)
                 yb = yb.to(device)
 
-                if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                    input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                    for i, length in enumerate(lengths):
-                        input_mask[i, :length] = 1
+                if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                    input_mask = mask.to(device)
                     predictions = model(xb, input_mask)
                 else:
                     predictions = model(xb)
@@ -156,6 +153,7 @@ def train_model_with_embeddings(
     esm_model_name: str = 'esmc_300m',
     noise_config: Optional[dict] = None,
     esm_backend = None,
+    wildtype: str | None = None,
 ) -> dict:
     """
     Train a model using the same embedding + DataLoader approach as integrated gradients.
@@ -230,7 +228,8 @@ def train_model_with_embeddings(
         return batch_pad_and_normalize(batch, use_global_normalization=True)
 
     # Create datasets and dataloaders
-    train_dataset = CustomDataset(train_embeddings, train_targets)
+    train_pool_masks = compute_pool_masks(train_sequences, pooling_method, wildtype=wildtype)
+    train_dataset = CustomDataset(train_embeddings, train_targets, pool_masks=train_pool_masks)
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -240,7 +239,8 @@ def train_model_with_embeddings(
 
     val_loader = None
     if val_embeddings is not None:
-        val_dataset = CustomDataset(val_embeddings, val_targets)
+        val_pool_masks = compute_pool_masks(val_sequences, pooling_method, wildtype=wildtype)
+        val_dataset = CustomDataset(val_embeddings, val_targets, pool_masks=val_pool_masks)
         val_loader = DataLoader(
             val_dataset,
             batch_size=batch_size,
@@ -298,7 +298,7 @@ def train_model_with_embeddings(
         model.train()
         train_losses = []
 
-        for _batch_idx, (xb, lengths, yb) in enumerate(train_loader):
+        for _batch_idx, (xb, lengths, mask, yb) in enumerate(train_loader):
             xb = xb.to(device)
             yb = yb.to(device)
 
@@ -309,10 +309,8 @@ def train_model_with_embeddings(
             optimizer.zero_grad()
 
             # Forward pass (same as in integrated gradients)
-            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                for i, length in enumerate(lengths):
-                    input_mask[i, :length] = 1
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                input_mask = mask.to(device)
                 predictions = model(xb, input_mask)
             else:
                 predictions = model(xb)
@@ -340,14 +338,12 @@ def train_model_with_embeddings(
             val_losses = []
 
             with torch.no_grad():
-                for xb, lengths, yb in val_loader:
+                for xb, lengths, mask, yb in val_loader:
                     xb = xb.to(device)
                     yb = yb.to(device)
 
-                    if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                        input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                        for i, length in enumerate(lengths):
-                            input_mask[i, :length] = 1
+                    if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                        input_mask = mask.to(device)
                         predictions = model(xb, input_mask)
                     else:
                         predictions = model(xb)
@@ -415,13 +411,11 @@ def train_model_with_embeddings(
             with torch.no_grad():
                 # Sample a few predictions to check if model is learning
                 sample_batch = next(iter(train_loader))
-                xb, lengths, yb = sample_batch
+                xb, lengths, mask, yb = sample_batch
                 xb, yb = xb.to(device), yb.to(device)
 
-                if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                    input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                    for i, length in enumerate(lengths):
-                        input_mask[i, :length] = 1
+                if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                    input_mask = mask.to(device)
                     sample_preds = model(xb, input_mask).squeeze(-1)
                 else:
                     sample_preds = model(xb).squeeze(-1)
@@ -435,8 +429,14 @@ def train_model_with_embeddings(
                       f"Target mean: {target_mean:.4f}, std: {target_std:.4f}")
             model.train()
 
-        # Create and save predicted vs actual plot for this epoch
-        if results_dir is not None and (epoch + 1) % 5 == 0:  # Save every 5 epochs to avoid too many plots
+        # Create and save predicted vs actual plot for this epoch -- capped
+        # at ~5 plots total per run regardless of num_epochs (a fixed "every
+        # 5 epochs" scaled unboundedly with num_epochs=250 configs across
+        # thousands of array tasks, which is what caused the epoch-plot
+        # inode-exhaustion incident; see the failed-run cleanup this fix
+        # accompanies).
+        _epoch_plot_every = max(1, num_epochs // 5)
+        if results_dir is not None and (epoch + 1) % _epoch_plot_every == 0:
             _create_epoch_plot(
                 model, train_loader, val_loader, train_targets, val_targets,
                 epoch, pooling_method, results_dir, dataset_name, device
@@ -464,14 +464,12 @@ def train_model_with_embeddings(
         train_predictions = []
         train_actuals = []
 
-        for xb, lengths, yb in train_loader:
+        for xb, lengths, mask, yb in train_loader:
             xb = xb.to(device)
             yb = yb.to(device)
 
-            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                for i, length in enumerate(lengths):
-                    input_mask[i, :length] = 1
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                input_mask = mask.to(device)
                 predictions = model(xb, input_mask)
             else:
                 predictions = model(xb)
@@ -488,14 +486,12 @@ def train_model_with_embeddings(
             val_predictions = []
             val_actuals = []
 
-            for xb, lengths, yb in val_loader:
+            for xb, lengths, mask, yb in val_loader:
                 xb = xb.to(device)
                 yb = yb.to(device)
 
-                if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                    input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                    for i, length in enumerate(lengths):
-                        input_mask[i, :length] = 1
+                if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                    input_mask = mask.to(device)
                     predictions = model(xb, input_mask)
                 else:
                     predictions = model(xb)
@@ -1195,6 +1191,8 @@ def _run_fold_training(
     criterion,
     device,
     noise_config: Optional[dict] = None,
+    train_pool_mask: list | None = None,
+    val_pool_mask: list | None = None,
 ) -> tuple[dict, int, list[float], list[float]]:
     """Train one CV fold on pre-computed embeddings.
 
@@ -1205,8 +1203,8 @@ def _run_fold_training(
     """
     model = model.to(device)
 
-    train_dataset = CustomDataset(train_emb, y_train)
-    val_dataset   = CustomDataset(val_emb,   y_val)
+    train_dataset = CustomDataset(train_emb, y_train, pool_masks=train_pool_mask)
+    val_dataset   = CustomDataset(val_emb,   y_val,   pool_masks=val_pool_mask)
     train_loader  = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                collate_fn=batch_pad_and_normalize)
     val_loader    = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False,
@@ -1232,16 +1230,13 @@ def _run_fold_training(
         # ── Training step ──
         model.train()
         train_batch_losses: list[float] = []
-        for xb, lengths, yb in train_loader:
+        for xb, lengths, mask, yb in train_loader:
             xb, yb = xb.to(device), yb.to(device)
             if _input_noise_std > 0.0:
                 xb = xb + torch.randn_like(xb) * _input_noise_std
             optimizer.zero_grad()
-            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                for i, ln in enumerate(lengths):
-                    mask[i, :ln] = 1
-                pred = model(xb, mask)
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                pred = model(xb, mask.to(device))
             else:
                 pred = model(xb)
             loss = criterion(pred.squeeze(-1), yb.squeeze(-1))
@@ -1256,13 +1251,10 @@ def _run_fold_training(
         model.eval()
         val_losses = []
         with torch.no_grad():
-            for xb, lengths, yb in val_loader:
+            for xb, lengths, mask, yb in val_loader:
                 xb, yb = xb.to(device), yb.to(device)
-                if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                    mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                    for i, ln in enumerate(lengths):
-                        mask[i, :ln] = 1
-                    out = model(xb, mask)
+                if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                    out = model(xb, mask.to(device))
                 else:
                     out = model(xb)
                 val_losses.append(criterion(out.squeeze(-1), yb.squeeze(-1)).item())
@@ -1286,13 +1278,10 @@ def _run_fold_training(
     model.eval()
     preds, actuals = [], []
     with torch.no_grad():
-        for xb, lengths, yb in val_loader:
+        for xb, lengths, mask, yb in val_loader:
             xb = xb.to(device)
-            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                for i, ln in enumerate(lengths):
-                    mask[i, :ln] = 1
-                out = model(xb, mask).squeeze(-1)
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                out = model(xb, mask.to(device)).squeeze(-1)
             else:
                 out = model(xb).squeeze(-1)
             preds.append(out.cpu().numpy())
@@ -1400,6 +1389,17 @@ def kfold_cv_and_train(
     )
     L, D = int(all_embeddings.shape[1]), int(all_embeddings.shape[2])
 
+    # wildtype is only actually used by compute_pool_masks for
+    # esm_mutation_pool (every other pooling method ignores it) -- config's
+    # data.wildtype dict only has a 'sequence' key for the "sequence"
+    # resolution method; "variant_column" configs (e.g. FLIP2/ProteinGym)
+    # resolve the wildtype elsewhere (prepare_wildtype_sequence, already run
+    # earlier in the pipeline) and have no 'sequence' key here, so this must
+    # not require it. compute_pool_masks itself raises a clear error if
+    # wildtype is None and actually needed.
+    wildtype = config['data']['wildtype'].get('sequence')
+    all_pool_masks = compute_pool_masks(sequences, pooling_method, wildtype=wildtype)
+
     # ── Compute global normalisation once on all train+val embeddings ────
     norm_params = compute_global_normalization_params([all_embeddings])
     set_global_normalization_params(norm_params['mean'], norm_params['scale'])
@@ -1440,6 +1440,8 @@ def kfold_cv_and_train(
         val_emb   = all_embeddings[val_idx]     # (n_val,   L, D)
         y_train_f = y[train_idx]
         y_val_f   = y[val_idx]
+        train_pool_mask = [all_pool_masks[i] for i in train_idx]
+        val_pool_mask   = [all_pool_masks[i] for i in val_idx]
 
         fold_metrics, best_ep, fold_train_hist, fold_val_hist = _run_fold_training(
             fold_model, train_emb, y_train_f, val_emb, y_val_f,
@@ -1451,6 +1453,8 @@ def kfold_cv_and_train(
             criterion=criterion,
             device=device,
             noise_config=noise_config,
+            train_pool_mask=train_pool_mask,
+            val_pool_mask=val_pool_mask,
         )
         fold_metrics['fold'] = fold_idx + 1
         cv_fold_metrics.append(fold_metrics)
@@ -1552,6 +1556,7 @@ def kfold_cv_and_train(
         loss_type=loss_type,
         results_dir=results_dir,
         save_path=save_path,
+        wildtype=wildtype,
         model_config=model_cfg,
         embeddings_subdir=embeddings_subdir,
         esm_model_name=esm_model_name,

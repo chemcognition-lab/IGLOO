@@ -6,16 +6,16 @@ This directory contains configuration files for running integrated gradients ana
 
 ```bash
 # Run ERBC analysis with embedding-level IG and magnitude attribution
-python scripts/run_integrated_gradients.py --config configs/erbc_config.yaml
+python scripts/pipeline/run_integrated_gradients.py configs/erbc_config.yaml
 
 # Run PafA analysis with token-level IG and signed attribution
-python scripts/run_integrated_gradients.py --config configs/pafa_config.yaml
+python scripts/pipeline/run_integrated_gradients.py configs/pafa_config.yaml
 
 # Run beta-lactamase analysis
-python scripts/run_integrated_gradients.py --config configs/betalactamase_config.yaml
+python scripts/pipeline/run_integrated_gradients.py configs/betalactamase_config.yaml
 
 # Validate config without running analysis
-python scripts/run_integrated_gradients.py --config configs/erbc_config.yaml --validate-only
+python scripts/pipeline/run_integrated_gradients.py configs/erbc_config.yaml --validate-only
 ```
 
 ## Configuration File Structure

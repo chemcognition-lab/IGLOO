@@ -21,7 +21,7 @@ from .models import (
     LinearRegressionModel,
     MeanPoolingModel,
 )
-from .data_processing import CustomDataset, batch_pad_and_normalize
+from .data_processing import CustomDataset, batch_pad_and_normalize, compute_pool_masks
 from .embedding import get_embeddings
 from .plot import (
     plot_attributions_on_3d_structure,
@@ -326,6 +326,23 @@ def create_model(config, device):
             final_activation=config['final_activation'],
             final_pool='mean' if pooling_method == 'esm_perres_mean' else 'attention',
         )
+    elif pooling_method == 'esm_mutation_pool':
+        # Same architecture as esm_perres_mean — the only difference is the
+        # input_mask passed to forward(): mutated-positions-only instead of
+        # all (non-padding) positions. See compute_pool_masks() in
+        # data_processing.py, which every training/eval/IG call site uses to
+        # build the correct mask for this pooling method.
+        model = ESMPerResidueMLP(
+            max_length=L,
+            d_embedding=input_dim,
+            hidden_dim1=config['hidden_dim1'],
+            hidden_dim2=config['hidden_dim2'],
+            hidden_dim3=config['hidden_dim3'],
+            hidden_dim4=config['hidden_dim4'],
+            dropout_rate=config['dropout_rate'],
+            final_activation=config['final_activation'],
+            final_pool='mean',
+        )
     elif pooling_method == 'esm_crossattn_perres':
         # Item 3c: cross-position self-attention before the per-residue MLP + mean pool.
         model = ESMCrossAttnPerResidue(
@@ -396,7 +413,13 @@ def evaluate_model_performance(
     )
 
     # Evaluate using DataLoader
-    eval_dataset = CustomDataset(all_embeddings, y)
+    # (see the matching comment in train_and_eval.py's kfold_cv_and_train:
+    # wildtype is only used by compute_pool_masks for esm_mutation_pool, and
+    # "variant_column"-resolved configs (FLIP2/ProteinGym) have no
+    # 'sequence' key here)
+    wildtype = config['data']['wildtype'].get('sequence')
+    pool_masks = compute_pool_masks(sequences, model_config['pooling_method'], wildtype=wildtype)
+    eval_dataset = CustomDataset(all_embeddings, y, pool_masks=pool_masks)
     eval_loader = DataLoader(
         eval_dataset,
         batch_size=model_config['batch_size'],
@@ -408,14 +431,12 @@ def evaluate_model_performance(
     y_true_norm = []
 
     with torch.no_grad():
-        for xb, lengths, yb in eval_loader:
+        for xb, lengths, mask, yb in eval_loader:
             xb = xb.to(device)
             yb = yb.to(device)
 
-            if model_config['pooling_method'] in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                for i, length in enumerate(lengths):
-                    input_mask[i, :length] = 1
+            if model_config['pooling_method'] in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                input_mask = mask.to(device)
                 out = model(xb, input_mask).squeeze(-1)
             else:
                 out = model(xb).squeeze(-1)

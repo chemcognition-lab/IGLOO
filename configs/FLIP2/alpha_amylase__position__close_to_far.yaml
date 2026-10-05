@@ -20,9 +20,9 @@ training:
   seed: 42
 
 model:
-  esm_model_name: "esmc_300m"
-  esm_layer: 33
-  pooling_method: "mean"
+  esm_model_name: "ankh_base"
+  esm_layer: 48
+  pooling_method: "esm_perres_mean"
   hidden_dim1: 1024
   hidden_dim2: 512
   hidden_dim3: 256

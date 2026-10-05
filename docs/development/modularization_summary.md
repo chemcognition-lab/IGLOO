@@ -57,7 +57,7 @@ We have successfully created a unified, config-driven integrated gradients analy
 - **README.md**: Comprehensive configuration documentation
 
 ### 4. Testing Infrastructure
-- **File**: `scripts/test_config_validation.py`
+- **File**: `scripts/utils/test_config_validation.py`
 - **Purpose**: Validate all configuration files
 - **Status**: ✅ All configs pass validation
 
@@ -72,7 +72,7 @@ python scripts/run_integrated_gradients_unified.py configs/betalactamase_config.
 python scripts/run_integrated_gradients_unified.py --validate-only configs/erbc_config.yaml
 
 # Test all configurations
-python scripts/test_config_validation.py
+python scripts/utils/test_config_validation.py
 ```
 
 ### Config File Structure

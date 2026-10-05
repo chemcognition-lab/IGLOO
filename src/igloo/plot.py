@@ -54,7 +54,8 @@ def _safe_filename(name: str) -> str:
     return re.sub(r'[^\w\-]', '_', name)
 
 
-def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[str] = None) -> None:
+def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[str] = None,
+                               max_sequences: int = 40) -> None:
     """
     Plot integrated gradients for multiple sequences.
 
@@ -62,10 +63,18 @@ def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[
     derived from *save_path*.  This avoids generating a single enormous stacked
     figure (which could be hundreds of MB for large proteins / many sequences).
 
+    These are purely diagnostic (never read by metric_suite.py or any downstream
+    analysis), so when a dataset has more than *max_sequences* entries, only a
+    deterministic evenly-spaced sample is plotted -- large landscapes (e.g.
+    T4Lysozyme, thousands of variants) were otherwise writing thousands of tiny
+    PNGs per run, which is what tipped the shared /project inode quota over in
+    practice (see jobs/maintenance/move_venvs_to_home.sh commit).
+
     Args:
         results_dict: Dictionary containing analysis results for each sequence
         save_path: Base path for output.  Individual files are written to
             ``<save_path without .png>_per_sequence/<sequence_name>.png``.
+        max_sequences: Cap on how many per-sequence PNGs to write.
     """
     setup_matplotlib_style()
     # Filter out special validation results keys that don't have sequence analysis data
@@ -76,6 +85,15 @@ def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[
     if n_sequences == 0:
         print("No valid sequences found for plotting.")
         return
+
+    if n_sequences > max_sequences:
+        names = list(analysis_results.keys())
+        idx = np.linspace(0, n_sequences - 1, max_sequences).round().astype(int)
+        keep = {names[i] for i in idx}
+        print(f"  ({n_sequences} sequences > max_sequences={max_sequences}; "
+              f"plotting an evenly-spaced sample of {len(keep)})")
+        analysis_results = {name: r for name, r in analysis_results.items() if name in keep}
+        n_sequences = len(analysis_results)
 
     # Derive per-sequence output directory from save_path
     if save_path:
@@ -1880,7 +1898,7 @@ def plot_interpolation_path(
 
 # ---------------------------------------------------------------------------
 # Synthetic-evaluation plotting utilities
-# (moved from scripts/evaluate_synthetic_ig.py)
+# (moved from scripts/evaluation/evaluate_synthetic_ig.py)
 # ---------------------------------------------------------------------------
 
 _FITNESS_MODEL_CMAPS: dict[str, any] = {

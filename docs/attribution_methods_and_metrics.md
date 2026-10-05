@@ -35,7 +35,7 @@ Each produces **one importance score per residue position**.
 | **crossattn** | Same per-residue MLP, but 1-2 real multi-head self-attention layers mix information **across positions** first | best chance at modeling true epistasis; attributions harder to interpret since positions now mix | Architecture test (item 3c). |
 | **perres_flatten** | Same per-residue MLP, but **no pooling at all** — the per-position hidden vectors are flattened and fed directly into one `Linear(L·H → 1)` head | freely-learned, per-position coefficients instead of a mean or a softmax-normalised convex combination; most unconstrained way to let position matter individually | Architecture test (item 3d). Requires fixed-length input (true here: point substitutions only, no indels) — does not generalise to variable-length sequences. |
 
-Items 2/3 are run at **pilot scale** (noise ∈ {0, 1} blend, ×3 seeds) before any full 9-level sweep — see `jobs/run_newarch_train_array.sh` / `jobs/run_newarch_perres_flatten_pilot.sh`.
+Items 2/3 are run at **pilot scale** (noise ∈ {0, 1} blend, ×3 seeds) before any full 9-level sweep — see `jobs/architectures/run_newarch_train_array.sh` / `jobs/smoketests/run_newarch_perres_flatten_pilot.sh`.
 
 ### Baselines (reference lines, not methods)
 

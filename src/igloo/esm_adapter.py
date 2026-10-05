@@ -362,15 +362,24 @@ class AnkhBackend:
         model = model.to(device).float().eval()
         return cls(model, tokenizer, model_name)
 
+    def num_layers(self) -> int:
+        """Number of encoder layers (hidden_states has this + 1 entries:
+        index 0 is the embedding output, index num_layers is the final
+        layer -- same as last_hidden_state)."""
+        return int(self.model.config.num_layers)
+
     def get_sequence_embeddings(
         self,
         sequences: list[str],
-        layer: int | None = None,   # ignored; Ankh always returns final-layer
+        layer: int | None = None,   # None = final layer (last_hidden_state);
+                                     # otherwise index into hidden_states,
+                                     # 0=embedding output .. num_layers=final
         batch_size: int = 16,
     ) -> np.ndarray:
         """Return ``(N, L, D)`` float32 numpy array (EOS/padding stripped)."""
         device = next(self.model.parameters()).device
         all_embs: list[torch.Tensor] = []
+        want_hidden_states = layer is not None
 
         for i in range(0, len(sequences), batch_size):
             batch_seqs = sequences[i : i + batch_size]
@@ -390,10 +399,23 @@ class AnkhBackend:
                 out = self.model(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
+                    output_hidden_states=want_hidden_states,
                 )
-            # T5EncoderModel returns BaseModelOutput; last_hidden_state is
-            # (batch, L+1, D) where the +1 is a trailing EOS token.
-            hidden = out.last_hidden_state.float().cpu()  # (batch, L+1, D)
+            if want_hidden_states:
+                n_hidden = len(out.hidden_states)
+                if not (0 <= layer < n_hidden):
+                    raise ValueError(
+                        f"layer={layer} out of range for {self._model_name} "
+                        f"(hidden_states has {n_hidden} entries: 0=embedding "
+                        f"output .. {n_hidden - 1}=final layer)"
+                    )
+                # T5EncoderModel hidden_states[i]: (batch, L+1, D), +1 = trailing EOS
+                hidden = out.hidden_states[layer].float().cpu()
+            else:
+                # last_hidden_state == hidden_states[-1]; kept as a separate
+                # path so the unlayered call (the common case) doesn't pay
+                # for output_hidden_states=True's extra memory.
+                hidden = out.last_hidden_state.float().cpu()  # (batch, L+1, D)
 
             # Strip EOS (last real token per sequence) and collect individually
             # so _concat_with_padding can pad to a uniform length.

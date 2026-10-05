@@ -21,7 +21,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .data_processing import CustomDataset, batch_pad_and_normalize
+from .data_processing import CustomDataset, batch_pad_and_normalize, compute_pool_masks
 from .embedding import get_embeddings
 
 
@@ -188,7 +188,7 @@ class ESMBasedPredictor(torch.nn.Module):
         print(f"ESMBasedPredictor: After normalization shape: {normalized_embeddings.shape}")
 
         # Apply prediction model
-        if self.pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
+        if self.pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
             # Create input mask (all positions are valid since we removed special tokens)
             input_mask = torch.ones(batch_size, seq_len, device=normalized_embeddings.device)
             print(f"ESMBasedPredictor: Using esm_attention with mask shape: {input_mask.shape}")
@@ -298,7 +298,7 @@ class ESMBasedPredictorGumbel(torch.nn.Module):
         normalized_embeddings = flat_normalized.reshape(batch_size, seq_len, embed_dim)
 
         # Apply prediction model
-        if self.pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
+        if self.pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
             input_mask = torch.ones(batch_size, seq_len, device=normalized_embeddings.device)
             predictions = self.predictor_model(normalized_embeddings, input_mask)
         else:
@@ -496,7 +496,7 @@ def integrated_gradients_tokens(
         normalized_embeddings = flat_normalized.reshape(batch_size_actual, seq_len, embed_dim)
 
         # Apply prediction model
-        if combined_model.pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
+        if combined_model.pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
             input_mask = torch.ones(batch_size_actual, seq_len, device=device)
             outputs = combined_model.predictor_model(normalized_embeddings, input_mask)
         else:
@@ -986,7 +986,7 @@ def _guided_ig_model_forward(
         sigma = flat.std(dim=1, keepdim=True)
         flat_norm = (flat - mu) / (sigma + 1e-8)
     norm_emb = flat_norm.reshape(b, L, D)
-    if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
+    if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
         mask = torch.ones(b, L, device=device)
         out = predictor_model(norm_emb, mask)
     else:
@@ -1084,8 +1084,16 @@ def _compute_path_integral(
     collect_umap: bool = False,
     training_embeddings: torch.Tensor | None = None,
     nn_waypoints: int = 10,
+    pool_mask: torch.Tensor | None = None,
 ) -> tuple:
     """Numerically approximate the integrated-gradients line integral.
+
+    ``pool_mask``, when given, is a ``(1, L)`` tensor of valid pooling
+    positions (only meaningful for ``pooling_method == 'esm_mutation_pool'``;
+    every other pooling method ignores it and uses an all-ones mask, matching
+    prior behaviour). It is constant across all interpolation steps since it
+    only depends on the two endpoint sequences (baseline vs variant), not on
+    the interpolated embedding itself.
 
     The integration rule is chosen to match the **geometric structure** of
     each path type (i.e. the correct path tangent dγ/dα is used at every
@@ -1169,8 +1177,11 @@ def _compute_path_integral(
     def _forward(norm_emb: torch.Tensor) -> torch.Tensor:
         """Forward pass on already-normalised embeddings. Returns rescaled output."""
         b, l, _ = norm_emb.shape
-        if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-            mask = torch.ones(b, l, device=device)
+        if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+            if pool_mask is not None:
+                mask = pool_mask.to(device).expand(b, -1)
+            else:
+                mask = torch.ones(b, l, device=device)
             out  = predictor_model(norm_emb, mask)
         else:
             out = predictor_model(norm_emb)
@@ -1479,25 +1490,29 @@ def analyze_sequence_with_integrated_gradients(
     # Use the same global normalization parameters that were used during training
     # This ensures the model sees inputs in the same distribution as during training
 
+    # Pooling mask: for esm_mutation_pool, mutated positions of `sequence`
+    # relative to `baseline_sequence` (usually WT); all other pooling methods
+    # get the usual all-(non-padding)-positions mask, matching training.
+    seq_pool_mask = compute_pool_masks([sequence], pooling_method, wildtype=baseline_sequence)
+    baseline_pool_mask = compute_pool_masks([baseline_sequence], pooling_method, wildtype=baseline_sequence)
+
     # Sequence prediction using DataLoader with global normalization
     dummy_target = np.zeros(1)
-    seq_dataset = CustomDataset(seq_embedding, dummy_target)
+    seq_dataset = CustomDataset(seq_embedding, dummy_target, pool_masks=seq_pool_mask)
     seq_loader = DataLoader(seq_dataset, batch_size=1, shuffle=False, collate_fn=batch_pad_and_normalize)
     with torch.no_grad():
-        for xb, lengths, yb in seq_loader:
+        for xb, lengths, mask, yb in seq_loader:
             xb = xb.to(device)
             yb = yb.to(device)
-            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                for i, length in enumerate(lengths):
-                    input_mask[i, :length] = 1
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                input_mask = mask.to(device)
                 seq_pred_norm = predictor_model(xb, input_mask).squeeze(-1).cpu().numpy()[0]
             else:
                 seq_pred_norm = predictor_model(xb).squeeze(-1).cpu().numpy()[0]
             break
 
     # Baseline prediction using DataLoader with global normalization
-    baseline_dataset = CustomDataset(baseline_embedding, dummy_target)
+    baseline_dataset = CustomDataset(baseline_embedding, dummy_target, pool_masks=baseline_pool_mask)
     baseline_loader = DataLoader(
         baseline_dataset,
         batch_size=1,
@@ -1506,13 +1521,11 @@ def analyze_sequence_with_integrated_gradients(
     )
 
     with torch.no_grad():
-        for xb, lengths, yb in baseline_loader:
+        for xb, lengths, mask, yb in baseline_loader:
             xb = xb.to(device)
             yb = yb.to(device)
-            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                for i, length in enumerate(lengths):
-                    input_mask[i, :length] = 1
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                input_mask = mask.to(device)
                 baseline_pred_norm = predictor_model(xb, input_mask).squeeze(-1).cpu().numpy()[0]
             else:
                 baseline_pred_norm = predictor_model(xb).squeeze(-1).cpu().numpy()[0]
@@ -1597,6 +1610,7 @@ def analyze_sequence_with_integrated_gradients(
             collect_umap=plot_interpolation_umap,
             training_embeddings=training_embeddings,
             nn_waypoints=nn_waypoints,
+            pool_mask=torch.tensor(seq_pool_mask[0], dtype=torch.float32, device=device).unsqueeze(0),
         )
 
     # Optionally visualise the interpolation path in UMAP-projected embedding space
@@ -1709,11 +1723,11 @@ def analyze_sequence_with_integrated_gradients(
             seq_normalized = normalize_like_ig(test_seq_emb)
             baseline_normalized = normalize_like_ig(test_baseline_emb)
 
-            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
-                seq_len = seq_normalized.size(1)
-                input_mask = torch.ones(1, seq_len, device=device)
-                seq_pred_direct = predictor_model(seq_normalized, input_mask).item()
-                baseline_pred_direct = predictor_model(baseline_normalized, input_mask).item()
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                seq_input_mask = torch.tensor(seq_pool_mask[0], dtype=torch.float32, device=device).unsqueeze(0)
+                baseline_input_mask = torch.tensor(baseline_pool_mask[0], dtype=torch.float32, device=device).unsqueeze(0)
+                seq_pred_direct = predictor_model(seq_normalized, seq_input_mask).item()
+                baseline_pred_direct = predictor_model(baseline_normalized, baseline_input_mask).item()
             else:
                 seq_pred_direct = predictor_model(seq_normalized).item()
                 baseline_pred_direct = predictor_model(baseline_normalized).item()
@@ -1928,7 +1942,7 @@ def analyze_sequence_with_token_level_integrated_gradients(
         normalized_embeddings = flat_normalized.reshape(batch_size_cur, seq_len, embed_dim)
 
         # Apply predictor model
-        if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
+        if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
             input_mask = torch.ones(batch_size_cur, seq_len, device=device)
             outputs = predictor_model(normalized_embeddings, input_mask)
         else:
@@ -1975,7 +1989,7 @@ def analyze_sequence_with_token_level_integrated_gradients(
         for xb, lengths, yb in seq_loader:
             xb = xb.to(device)
             yb = yb.to(device)
-            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1
@@ -1997,7 +2011,7 @@ def analyze_sequence_with_token_level_integrated_gradients(
         for xb, lengths, yb in baseline_loader:
             xb = xb.to(device)
             yb = yb.to(device)
-            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten'):
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
                 input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
                 for i, length in enumerate(lengths):
                     input_mask[i, :length] = 1

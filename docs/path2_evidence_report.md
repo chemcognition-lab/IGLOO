@@ -51,7 +51,7 @@ cannot say "position 34 matters more than position 12."
 
 ### 1. Mechanism verification — direct test of `∂F/∂xᵢ ≈ attnᵢ · g`
 
-`scripts/attribution_mechanism.py` extracts the attention weights, the
+`scripts/sanity_checks/attribution_mechanism.py` extracts the attention weights, the
 path-averaged gradient, and `g = ∂F/∂pooled` for ~300 test variants per run.
 
 ![mechanism](../results/synthetic/attribution_mechanism/mechanism_GB1_additive__noise_0.0.png)
@@ -69,7 +69,7 @@ path-averaged gradient, and `g = ∂F/∂pooled` for ~300 test variants per run.
 
 ### 2. Cascading model-parameter randomization (Adebayo et al. sanity check)
 
-`scripts/cascading_randomization.py` — randomize predictor layers output→input,
+`scripts/sanity_checks/cascading_randomization.py` — randomize predictor layers output→input,
 recompute IG, measure how much the attribution changes.
 
 ![cascading vs original](../results/synthetic/cascading_randomization/cascading_summary_original.png)
@@ -90,7 +90,7 @@ recompute IG, measure how much the attribution changes.
 
 ### 3. Factor ablation — decomposing the IG product
 
-The signed IG product is `⟨ ∫∇F dα , Δxᵢ ⟩`. `scripts/factor_ablation_analysis.py`
+The signed IG product is `⟨ ∫∇F dα , Δxᵢ ⟩`. `scripts/sanity_checks/factor_ablation_analysis.py`
 isolates each factor: `gradient` (`‖∇F‖`), `displacement` (`‖Δx‖`, no model),
 `signed` (the product).
 
@@ -115,7 +115,7 @@ weak, fixed, model-free contribution.**
 
 ### 4. k-predictor agreement — do independently-trained seeds agree?
 
-`scripts/k_predictor_agreement.py` — for 5 seeds per condition, mean pairwise
+`scripts/sanity_checks/k_predictor_agreement.py` — for 5 seeds per condition, mean pairwise
 agreement on test predictions vs on attribution rankings.
 
 ![k-predictor agreement](../results/synthetic/k_predictor_agreement/k_predictor_agreement_by_noise.png)
@@ -133,7 +133,7 @@ problem, not inherent to the task.)
 
 ### 5. ISM comparison — is the problem fixable?
 
-In-silico mutagenesis (`scripts/ism_attribution.py`): mutate every position to
+In-silico mutagenesis (`scripts/pipeline/ism_attribution.py`): mutate every position to
 all 19 AAs, measure the prediction change. Model-dependent by construction, no
 gradient.
 
@@ -152,7 +152,7 @@ gradient.
 
 ### 6. Metric choice — an important nuance
 
-`scripts/metric_suite.py`, discrimination = `|Pearson r(metric, model test Spearman)|`.
+`scripts/evaluation/metric_suite.py`, discrimination = `|Pearson r(metric, model test Spearman)|`.
 
 ![precision@k vs model performance](../results/synthetic/metric_suite/metric_precision_at_k.png)
 ![Spearman vs model performance](../results/synthetic/metric_suite/metric_spearman.png)
@@ -191,11 +191,11 @@ non-linearity, so IG can never see the MLP.
 
 | Experiment | Script | Output dir |
 |---|---|---|
-| Mechanism verification | `scripts/attribution_mechanism.py` | `results/synthetic/attribution_mechanism/` |
-| Cascading randomization | `scripts/cascading_randomization.py` (+ `_summary.py`) | `results/synthetic/cascading_randomization/` |
-| Factor ablation | `scripts/factor_ablation_analysis.py` | `results/synthetic/factor_ablation_analysis/` |
-| k-predictor agreement | `scripts/k_predictor_agreement.py` | `results/synthetic/k_predictor_agreement/` |
-| ISM vs IG | `scripts/ism_attribution.py` + `ism_attribution_analysis.py` | `results/synthetic/ism_attribution/` |
-| ISM seed agreement | `scripts/ism_seed_agreement.py` | `results/synthetic/ism_seed_agreement/` |
-| Metric suite | `scripts/metric_suite.py` | `results/synthetic/metric_suite/` |
+| Mechanism verification | `scripts/sanity_checks/attribution_mechanism.py` | `results/synthetic/attribution_mechanism/` |
+| Cascading randomization | `scripts/sanity_checks/cascading_randomization.py` (+ `_summary.py`) | `results/synthetic/cascading_randomization/` |
+| Factor ablation | `scripts/sanity_checks/factor_ablation_analysis.py` | `results/synthetic/factor_ablation_analysis/` |
+| k-predictor agreement | `scripts/sanity_checks/k_predictor_agreement.py` | `results/synthetic/k_predictor_agreement/` |
+| ISM vs IG | `scripts/pipeline/ism_attribution.py` + `ism_attribution_analysis.py` | `results/synthetic/ism_attribution/` |
+| ISM seed agreement | `scripts/sanity_checks/ism_seed_agreement.py` | `results/synthetic/ism_seed_agreement/` |
+| Metric suite | `scripts/evaluation/metric_suite.py` | `results/synthetic/metric_suite/` |
 | Metric / method definitions | — | `docs/attribution_methods_and_metrics.md` |
