@@ -27,6 +27,7 @@ Run every command **from the repository root**. Paths in configs (`data.path`,
 | **`ankh`** | Not in the Alliance wheelhouse, so install it from PyPI. Cluster compute nodes usually have no internet, so install from a login node. |
 | **Model weights** | ESM-C, Ankh and E1 weights download on first use and are cached by Hugging Face / the ESM package. Fetch them once before you submit many jobs. |
 | **Embedding cache** | Every sequence's embedding is cached at `data/embeddings/by_seq/<model>/L<layer>/<hh>/<sha1>.safetensors` and reused across runs, seeds and heads. Before a large sweep, warm the cache with one run per backbone/layer so parallel jobs don't all recompute it. |
+| **Outputs are not committed** | `results/`, `data/embeddings/`, `logs/` and `*.out` Slurm logs in the repository root are git-ignored. Delete them freely, and copy results you want to keep somewhere backed up (on Alliance clusters: `/project`, not `/scratch`). |
 
 ---
 
