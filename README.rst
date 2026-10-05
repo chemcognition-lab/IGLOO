@@ -175,7 +175,7 @@ Documentation
 -------------
 
 * `docs/README.md <docs/README.md>`_: setup notes, workflows, script reference, Slurm usage
-* `docs/REVIEWER_TEST.md <docs/REVIEWER_TEST.md>`_: a ~45-minute end-to-end test with expected
+* `docs/REVIEWER_TEST.md <docs/REVIEWER_TEST.md>`_: a ~30-minute end-to-end test with expected
   outputs and pass criteria (start here if you are new)
 * `configs/README.md <configs/README.md>`_: configuration schema
 * `docs/attribution_methods_and_metrics.md <docs/attribution_methods_and_metrics.md>`_

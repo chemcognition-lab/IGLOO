@@ -10,7 +10,7 @@ commands, see the top-level [`README.rst`](../README.rst).
 - [5. Script reference](#5-script-reference)
 - [6. Library reference (`src/igloo/`)](#6-library-reference-srcigloo)
 
-New to IGLOO? Start with [`REVIEWER_TEST.md`](REVIEWER_TEST.md), a ~45-minute
+New to IGLOO? Start with [`REVIEWER_TEST.md`](REVIEWER_TEST.md), a ~30-minute
 end-to-end run with expected outputs and pass criteria.
 
 Run every command **from the repository root**. Paths in configs (`data.path`,

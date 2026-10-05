@@ -10,13 +10,14 @@ the code. Those notes are the point of the exercise.
 | Workflow | Goal | Expected time |
 |---|---|---|
 | Setup | Install IGLOO and pass the health check | ~20–30 min* |
-| **A. Reproduce the main result** | Show that some attribution methods still look plausible for a model that has learned nothing | ~45 min, of which ~10 min hands-on and ~35 min of waiting for a GPU job |
+| **A. Reproduce the main result** | Show that some attribution methods still look plausible for a model that has learned nothing | ~30 min, of which ~10 min hands-on and ~20 min of GPU job (plus queue wait) |
 | B. Bring your own dataset | Run the pipeline on a CSV you choose | ~20–40 min* |
 
-\* Setup and Workflow B times are estimates and have not been timed yet. The Workflow A
-run times are measured from earlier runs with a warm embedding cache on an H100 MIG slice
-(`h100_1g.10gb`). Your first run also downloads the ESM-C weights and embeds about 1,500
-sequences, so expect it to take a few minutes longer.
+\* Setup and Workflow B times are estimates and have not been timed yet. Workflow A was
+measured on this branch from an empty embedding cache on an H100 MIG slice
+(`h100_1g.10gb`): 18.6 min for the whole job, 3.0 GB peak memory. That job reused
+already-downloaded ESM-C weights, so on a new account the first run also includes the
+weight download (allow a few extra minutes).
 
 ---
 
@@ -62,8 +63,8 @@ path. If the GPU request fails on your cluster, adjust `--gpus`.
 #SBATCH --account=<your-account>
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
-#SBATCH --time=1:30:00
+#SBATCH --mem=8G
+#SBATCH --time=0:45:00
 #SBATCH --output=reviewer_test_%j.out
 
 cd /path/to/IGLOO || exit 1
@@ -87,7 +88,9 @@ done
 sbatch reviewer_test.sh
 ```
 
-Each of the 4 runs takes about 7–9 minutes, so the job takes about 35 minutes in total.
+Each of the 4 runs takes about 4 minutes. The first run takes about 6, because it also
+embeds the ~1,450 GB1 variants and caches them in `data/embeddings/` (about 300 MB);
+the other runs reuse that cache. The whole job takes about 20 minutes once it starts.
 While you wait, read §2 "How a run works" in [`docs/README.md`](README.md).
 
 ### A2. Look at one run's output
@@ -115,15 +118,14 @@ The trained model is saved one level up (`noise_0.0/GB1_additive_training_model.
 python scripts/evaluation/check_ground_truth.py results/reviewer_test/*/noise_*/linear
 ```
 
-Expected output (values from previous runs with the same seed; small differences between
-GPUs are normal):
+Expected output (measured on this branch; small differences between GPUs are normal):
 
 ```text
                                                    run      dataset  model_rho  attr_rho  top10_hits
   results/reviewer_test/esm_attention/noise_0.0/linear GB1_additive       0.93      0.23        0.70
-  results/reviewer_test/esm_attention/noise_1.0/linear GB1_additive      -0.02      0.22        0.90
-results/reviewer_test/esm_perres_mean/noise_0.0/linear GB1_additive       0.95      0.64        1.00
-results/reviewer_test/esm_perres_mean/noise_1.0/linear GB1_additive      -0.01      0.02        0.60
+  results/reviewer_test/esm_attention/noise_1.0/linear GB1_additive      -0.03      0.25        0.90
+results/reviewer_test/esm_perres_mean/noise_0.0/linear GB1_additive       0.94      0.62        1.00
+results/reviewer_test/esm_perres_mean/noise_1.0/linear GB1_additive      -0.01      0.04        0.70
 ```
 
 ✅ **Pass if all of these hold:**
@@ -183,7 +185,7 @@ Branch / commit: <git rev-parse --short HEAD>
 | Step | Expected | Actual (hands-on) | Actual (waiting) |
 |---|---|---|---|
 | Setup | 20–30 min | | |
-| A: submit + inspect + check | ~10 min hands-on, ~35 min job | | |
+| A: submit + inspect + check | ~10 min hands-on, ~20 min job | | |
 | B: own dataset (optional) | 20–40 min | | |
 TOTAL lines from the 4 *_timing_report.txt files:
 
