@@ -67,8 +67,7 @@ def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[
     analysis), so when a dataset has more than *max_sequences* entries, only a
     deterministic evenly-spaced sample is plotted -- large landscapes (e.g.
     T4Lysozyme, thousands of variants) were otherwise writing thousands of tiny
-    PNGs per run, which is what tipped the shared /project inode quota over in
-    practice (see jobs/maintenance/move_venvs_to_home.sh commit).
+    PNGs per run, which can exhaust a shared filesystem's inode quota.
 
     Args:
         results_dict: Dictionary containing analysis results for each sequence

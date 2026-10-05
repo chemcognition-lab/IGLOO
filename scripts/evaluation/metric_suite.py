@@ -1921,7 +1921,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", type=Path,
-                    default=Path("/project/aip-bensl/ranaab/IGLOO/results/synthetic"))
+                    default=project_root / "results" / "synthetic")
     ap.add_argument("--out", type=Path,
                     default=project_root / "results" / "synthetic" / "metric_suite")
     args = ap.parse_args()

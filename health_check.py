@@ -193,10 +193,10 @@ def check_data_availability() -> dict[str, bool]:
 
     # Check for key datasets
     datasets = {
-        'betalactamase_train.csv': 'Beta-lactamase training data',
-        'betalactamase_test.csv': 'Beta-lactamase test data',
-        'PafA_data.csv': 'PafA dataset',
-        'Data_Donya_ERBC_Converted.csv': 'ERBC dataset'
+        'synthetic/GB1_additive.csv': 'Synthetic GB1 landscape',
+        'synthetic/T4Lysozyme_additive.csv': 'Synthetic T4 Lysozyme landscape',
+        'synthetic/p53_additive.csv': 'Synthetic p53 landscape',
+        'FLIP2_processed/alpha_amylase__mutation__by_mutation_combined.csv': 'FLIP2 alpha-amylase'
     }
 
     for filename, description in datasets.items():

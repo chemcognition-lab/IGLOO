@@ -16,8 +16,8 @@ For each cascade level we report, over a sample of test variants:
 
 Usage:
     python scripts/sanity_checks/cascading_randomization.py \
-        --run-dir /project/aip-bensl/ranaab/IGLOO/results/synthetic/GB1_additive/noise_0.0/linear \
-        --model-dir /project/aip-bensl/ranaab/IGLOO/results/synthetic/GB1_additive/noise_0.0 \
+        --run-dir results/synthetic/GB1_additive/noise_0.0/linear \
+        --model-dir results/synthetic/GB1_additive/noise_0.0 \
         [--n-variants 60] [--steps 100] [--out results/synthetic/cascading_randomization]
 """
 

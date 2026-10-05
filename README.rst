@@ -8,54 +8,34 @@
         :alt: Python Version
 
 .. image:: https://img.shields.io/badge/license-MIT-blue.svg
-        :target: https://github.com/ranaabarghout/IGLOO/blob/main/LICENSE
+        :target: https://github.com/ranaabarghout/IGLOO/blob/main/docs/LICENSE
         :alt: License
 
-IGLOO is a pipeline for checking how good attributions are on protein fitness landscapes.
-It trains regression heads on protein language model (pLM) embeddings and computes
-per-residue attributions: Integrated Gradients (IG) along configurable interpolation
-paths, plus gradient×input, input-difference and in-silico mutagenesis (ISM) baselines.
-It then scores those attributions against known ground truth on synthetic landscapes,
-and applies the same pipeline to real datasets (FLIP2, ProteinGym).
-
-.. image:: assets/IGLOO_F2.png
-        :alt: IGLOO overview figure
-        :align: center
-        :width: 100%
+IGLOO trains regression models on protein language model (pLM) embeddings and computes
+per-residue attributions that explain their predictions. It also measures how faithful
+those attributions are by checking them against synthetic fitness landscapes with known
+ground truth.
 
 .. contents:: **Contents**
    :local:
    :depth: 1
 
 
-Key features
+What it does
 ------------
 
-**Models**
-   * Pluggable pLM backbones: **ESM-C** (300M / 600M), **ESM-2**, **Ankh** (base / large,
-     including intermediate layers), **Profluent E1** (150M / 300M / 600M), and a
-     **one-hot** no-pLM baseline.
-   * Interchangeable regression heads (``model.pooling_method``): attention pooling
-     (*Pool First*), per-residue MLP before pooling (*PreMLP*), per-residue mean pooling
-     (*MeanPool*), and per-residue attention pooling (*AttnPool*).
-   * K-fold training with early stopping, controllable label noise (to make
-     deliberately worse models), and seeded runs for ensembles.
-
-**Attribution methods**
-   * Embedding-level IG with ``linear``, ``slerp``, ``nearest_neighbor`` and ``guided_ig``
-     interpolation paths, with completeness-axiom checks.
-   * Non-path baselines: ``gradient_x_input`` and ``input_difference``.
-   * In-silico mutagenesis (ISM) as a baseline that depends on the trained model.
-   * Token-level IG through the full ESM-C model (pilot).
-
-**Benchmarking**
-   * Synthetic ground-truth landscapes for GB1, T4 Lysozyme and p53, each in three
-     types: *additive*, *epistatic* and *nonlinear*.
-   * A metric suite (NDCG, AUROC, precision@k, sign accuracy, …) combined into a single
-     TOPSIS score, plus label-noise sweeps relating attribution quality to model quality.
-   * Sanity checks: cascading parameter randomization (Adebayo et al.), factor ablation,
-     and k-predictor agreement.
-   * Ensembles of attributions across seeds, and publication-ready figures.
+* **Models**: a frozen pLM backbone (**ESM-C** 300M/600M, **ESM-2**, **Ankh** base/large,
+  **Profluent E1** 150M/300M/600M, or a **one-hot** baseline) with a trainable regression
+  head (attention pooling, per-residue MLP, mean pooling or per-residue attention).
+  Training uses K-fold CV with early stopping, and label noise can be added on purpose.
+* **Attributions**: embedding-level Integrated Gradients with ``linear``, ``slerp``,
+  ``nearest_neighbor`` or ``guided_ig`` paths and completeness checks.
+  Baselines: gradient×input, input-difference and in-silico mutagenesis (ISM).
+* **Evaluation**: synthetic GB1, T4 Lysozyme and p53 landscapes (additive, epistatic,
+  nonlinear) with ground-truth position weights. A metric suite (Spearman, AUROC,
+  precision@k, sign accuracy, …) is combined into a TOPSIS score. Cascading parameter
+  randomization tests whether the attributions actually depend on the model.
+* **Real data**: ready-to-run configs for FLIP2 alpha-amylase and ProteinGym DMS assays.
 
 
 Repository layout
@@ -64,234 +44,142 @@ Repository layout
 .. code-block:: text
 
     IGLOO/
-    ├── src/igloo/           # Core library (models, embeddings, IG, metrics, plotting)
-    ├── scripts/             # Command-line entry points, grouped by stage
-    │   ├── pipeline/        #   train + attribute (start here)
-    │   ├── data/            #   generate datasets and configs
-    │   ├── evaluation/      #   score attributions (metric suite, TOPSIS, ensembles)
-    │   ├── sanity_checks/   #   randomization, factor ablation, k-predictor tests
-    │   ├── figures/         #   paper and diagnostic figures
-    │   ├── e15_crossplm/    #   E15 cross-pLM experiment (historical)
-    │   ├── utils/           #   tracker and config-validation helpers
-    │   └── archive/         #   superseded one-off scripts
-    ├── jobs/                # Slurm batch scripts, grouped by experiment
-    │   ├── cache/  synthetic/  architectures/  backbones/  attribution/
-    │   ├── analysis/  real_proteins/  smoketests/  maintenance/  e15_crossplm/
-    │   └── logs/            #   Slurm stdout/stderr (git-ignored)
-    ├── configs/             # YAML run configs (synthetic/, FLIP2/, ProteinGym/)
-    ├── data/                # Input datasets + embedding cache (data/embeddings/)
-    ├── results/             # All run outputs
-    ├── docs/                # Detailed documentation (start at docs/README.md)
-    ├── tests/               # pytest suite
-    └── vendor/E1/           # Vendored Profluent E1 package (separate venv)
-
-The full catalogue of every script and job, with what each one does, is in
-`docs/README.md <docs/README.md>`_.
+    ├── src/igloo/              # Core library
+    ├── scripts/
+    │   ├── pipeline/           # Train + attribute (main entry point: run_integrated_gradients.py)
+    │   ├── data/               # Generate synthetic datasets / ProteinGym configs
+    │   ├── evaluation/         # Score attributions (metric_suite.py, …)
+    │   ├── sanity_checks/      # Cascading parameter randomization
+    │   └── figures/            # Dataset overview plot
+    ├── configs/                # YAML run configs: synthetic/, FLIP2/, ProteinGym/
+    ├── data/                   # Datasets; embedding cache is written to data/embeddings/
+    ├── docs/                   # Detailed guide (docs/README.md), method/metric definitions
+    ├── tests/
+    └── health_check.py         # Environment check
 
 
 Installation
 ------------
 
-**Requirements:** Python 3.11 or 3.12. A CUDA GPU is required for training and
-attribution (development used H100 / L40S slices). Analysis and figure scripts run on CPU.
+Requires Python 3.11 or 3.12. Training and attribution need a CUDA GPU. Evaluation runs on CPU.
 
-On a Digital Research Alliance of Canada cluster
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Use the module system and the Alliance wheelhouse. Every dependency except ``ankh`` is
-available there.
+**On a Digital Research Alliance of Canada cluster**, use modules and the Alliance
+wheelhouse. Every dependency except ``ankh`` is available there:
 
 .. code-block:: bash
 
-    cd /path/to/IGLOO
     module load python/3.11 gcc arrow cuda/12.2
-
-    # Keep venvs in $HOME: they hold many small files, and /project has a tight inode quota
-    virtualenv --no-download ~/IGLOO_env
+    virtualenv --no-download ~/IGLOO_env          # keep venvs in $HOME (inode quota on /project)
     source ~/IGLOO_env/bin/activate
     pip install --no-index --upgrade pip
-    pip install --no-index -e .          # IGLOO + dependencies from the wheelhouse
-    pip install ankh                     # not in the wheelhouse; needs internet (login node)
-
-    ln -s ~/IGLOO_env IGLOO_env          # the job scripts expect ./IGLOO_env
-
-**Profluent E1 backbones only.** E1 needs Python 3.12 and its own environment:
-
-.. code-block:: bash
-
-    module load python/3.12 gcc arrow cuda/12.2
-    virtualenv --no-download ~/IGLOO_env_e1
-    source ~/IGLOO_env_e1/bin/activate
     pip install --no-index -e .
-    pip install -e vendor/E1
-    ln -s ~/IGLOO_env_e1 IGLOO_env_e1
+    pip install ankh                              # from PyPI; run on a login node (needs internet)
 
-Run anything heavier than ``--validate-only`` inside a job (``sbatch``) or an interactive
-allocation (``salloc``), never on a login node.
-
-On a local workstation
-~~~~~~~~~~~~~~~~~~~~~~
+**On a workstation:**
 
 .. code-block:: bash
 
-    git clone https://github.com/ranaabarghout/IGLOO.git
+    git clone -b pipeline/core https://github.com/ranaabarghout/IGLOO.git
     cd IGLOO
     python3.11 -m venv IGLOO_env && source IGLOO_env/bin/activate
     pip install -e . ankh
 
-Check the installation
-~~~~~~~~~~~~~~~~~~~~~~
+**Profluent E1 (optional)** needs Python 3.12 and a separate environment:
+
+.. code-block:: bash
+
+    python3.12 -m venv IGLOO_env_e1 && source IGLOO_env_e1/bin/activate
+    pip install -e .
+    git clone https://github.com/Profluent-AI/E1.git vendor/E1 && pip install -e vendor/E1
+
+**Check the install:**
 
 .. code-block:: bash
 
     python health_check.py
-    python scripts/pipeline/run_integrated_gradients.py \
-        configs/synthetic/GB1_additive_config.yaml --validate-only
+    python scripts/pipeline/run_integrated_gradients.py configs/synthetic/GB1_additive_config.yaml --validate-only
+
+pLM weights are downloaded on first use. On clusters where compute nodes have no internet
+access, run one small job, or download the weights on a login node, before you submit
+large runs.
 
 
 Quick start
 -----------
 
-All commands run from the repository root. The synthetic datasets in ``data/synthetic/``
-are already committed, so you can start at step 2.
+Run all commands from the repository root.
 
-**1. (Optional) Regenerate the synthetic landscapes**
-
-.. code-block:: bash
-
-    python scripts/data/generate_synthetic_datasets.py
-
-**2. Train a model and compute attributions** (GPU)
+**1. Train a model and compute attributions** (GPU):
 
 .. code-block:: bash
 
     python scripts/pipeline/run_integrated_gradients.py configs/synthetic/GB1_additive_config.yaml
 
-Any config value can be overridden from the command line with ``key.subkey=value``.
-Overrides are how the job arrays sweep backbones, heads, noise levels and seeds:
+This writes the trained model, test-set metrics, per-residue attributions
+(``*_amino_acid_effects_detailed.csv``), plots and a run log to the config's ``results_dir``.
+
+**2. Change anything from the command line** with ``key.subkey=value`` overrides:
 
 .. code-block:: bash
 
     python scripts/pipeline/run_integrated_gradients.py configs/synthetic/GB1_additive_config.yaml \
-        model.esm_model_name=esmc_300m \
+        model.esm_model_name=ankh_base \
         model.pooling_method=esm_perres_mean \
-        integrated_gradients.interpolation_path=linear \
+        integrated_gradients.interpolation_path=slerp \
         training.noise.label_noise_mode=blend training.noise.label_noise_level=0.35 \
-        training.seed=1 training.noise.label_noise_seed=1 \
-        model_dir=results/synthetic/demo/model results_dir=results/synthetic/demo/linear
+        training.seed=1 \
+        model_dir=results/demo/model results_dir=results/demo/slerp
 
-Add ``--skip-ig`` to train and evaluate without computing attributions.
+Add ``--skip-ig`` to train and evaluate only.
 
-**3. Score the attributions**
+**3. Score the attributions against ground truth** (CPU):
 
 .. code-block:: bash
 
     python scripts/evaluation/metric_suite.py --root results/synthetic
 
-**4. Run sanity checks and baselines** (GPU, on an already trained run)
+**4. Run it on real data:**
 
 .. code-block:: bash
 
-    python scripts/pipeline/ism_attribution.py --run-dir <run_dir> --model-dir <model_dir>
-    python scripts/sanity_checks/cascading_randomization.py --run-dir <run_dir> --model-dir <model_dir>
+    python scripts/pipeline/run_integrated_gradients.py configs/FLIP2/alpha_amylase__mutation__by_mutation.yaml
+    python scripts/pipeline/run_integrated_gradients.py configs/ProteinGym/BLAT_ECOLX_Firnberg_2014_config.yaml
 
-**5. Make figures**
-
-.. code-block:: bash
-
-    python scripts/figures/make_poolfirst_topsis_figure.py
-    python scripts/figures/export_final_figures_nature_methods.py
-
-Each stage, the scripts that belong to it, and the matching Slurm jobs are described in
-`docs/README.md <docs/README.md>`_.
+`docs/README.md <docs/README.md>`_ covers each workflow in detail: noise and seed sweeps,
+ISM and baselines, sanity checks, ensembles, using your own dataset, and running on Slurm.
 
 
-Running on Slurm
-----------------
+Configuration at a glance
+-------------------------
 
-The batch scripts in ``jobs/`` ``cd`` to the repository root, activate ``IGLOO_env``,
-and write logs to ``jobs/logs/``. Submit them from the repository root:
+=============================================  ==============================================================
+Key                                            Values
+=============================================  ==============================================================
+``model.esm_model_name``                       ``esmc_300m`` (default), ``esmc_600m``, ``esm2_*``,
+                                               ``ankh_base``, ``ankh_large``, ``e1_150m``, ``e1_300m``,
+                                               ``e1_600m``, ``onehot``
+``model.pooling_method``                       ``esm_attention`` (Pool First), ``esm_attention_premlp``
+                                               (PreMLP), ``esm_perres_mean`` (MeanPool),
+                                               ``esm_perres_attn`` (AttnPool)
+``integrated_gradients.interpolation_path``    ``linear``, ``slerp``, ``nearest_neighbor``, ``guided_ig``
+``training.noise.*``                           ``label_noise_mode``, ``label_noise_level``,
+                                               ``label_noise_seed``
+``results_dir`` / ``model_dir``                where outputs and the trained model go
+                                               (``force_retrain`` to retrain)
+=============================================  ==============================================================
 
-.. code-block:: bash
-
-    sbatch jobs/cache/rebuild_warm_cache_newbackbones.sh     # warm the embedding cache first
-    sbatch jobs/backbones/run_plm_backbone_train_array.sh    # then the training/attribution array
-    sbatch jobs/analysis/run_analysis.sh                     # then the CPU analysis suite
-
-Before reusing a job script, check its header for ``--account``, the hard-coded ``cd``
-path, and the GPU type. Several older scripts still point at paths from earlier clusters
-(``/project/aip-bensl``, ``/scratch``).
-
-Training arrays read embeddings from the content-addressed cache
-``data/embeddings/by_seq/<model>/L<layer>/``. Warm it with a ``jobs/cache/`` script first,
-so that hundreds of array tasks don't each recompute the same embeddings.
+The full schema is in `configs/README.md <configs/README.md>`_.
 
 
-Configuration
+Documentation
 -------------
 
-Each run is defined by one YAML file:
-
-.. code-block:: text
-
-    configs/
-    ├── synthetic/     # GB1 / T4Lysozyme / p53 × additive / epistatic / nonlinear
-    ├── FLIP2/         # alpha-amylase splits
-    ├── ProteinGym/    # one config per DMS assay (generated by scripts/data/generate_proteingym_configs.py)
-    └── *.yaml         # legacy real-data configs (beta-lactamase, ERBC, PafA)
-
-The main sections are ``data`` (CSV path, target column, wild-type definition), ``model``
-(backbone, layer, pooling head, training hyperparameters), ``integrated_gradients``
-(method, interpolation path, steps), ``analysis.sequence_selection``, and ``training``
-(seeds, folds, label/input noise). ``results_dir``, ``model_dir`` and ``force_retrain``
-control where outputs go and whether to reuse a trained model. The full schema is in
-`configs/README.md <configs/README.md>`_.
-
-======================  ======================================================================
-Option                  Values
-======================  ======================================================================
-``esm_model_name``      ``esmc_300m`` (default), ``esmc_600m``, ``esm2_*``, ``ankh_base``,
-                        ``ankh_large``, ``e1_150m``, ``e1_300m``, ``e1_600m``, ``onehot``
-``pooling_method``      ``esm_attention`` (Pool First), ``esm_attention_premlp`` (PreMLP),
-                        ``esm_perres_mean`` (MeanPool), ``esm_perres_attn`` (AttnPool);
-                        experimental: ``esm_attention_channel``, ``esm_mutation_pool``,
-                        ``esm_perres_flatten``, ``esm_crossattn_perres``
-``interpolation_path``  ``linear``, ``slerp``, ``nearest_neighbor``, ``guided_ig``
-======================  ======================================================================
-
-
-Core library (``src/igloo/``)
------------------------------
-
-* ``igloo.py``: top-level class that runs training and IG
-* ``esm_adapter.py``: one loader for the ESM-C, ESM-2, Ankh and E1 backends
-* ``embedding.py``: embedding extraction and the ``by_seq`` cache
-* ``models.py``: regression heads (all ``pooling_method`` variants)
-* ``train_and_eval.py``: K-fold training, early stopping, Pearson/Spearman evaluation
-* ``data_processing.py`` / ``dataset.py``: loading, normalisation, label noise, splits
-* ``integrated_gradients.py``, ``sequence_ig.py``, ``advanced_ig.py``: IG and interpolation paths
-* ``completeness_validation.py``: completeness-axiom checks
-* ``mutagenesis.py``: in-silico mutagenesis
-* ``ig_metrics.py``, ``method_selection.py``: attribution-quality metrics and ranking
-* ``synthetic_data.py``: synthetic landscape generation
-* ``config_utils.py``: YAML loading, validation and CLI overrides
-* ``plot.py``: plotting helpers
-
-
-Results layout
---------------
-
-.. code-block:: text
-
-    results/synthetic/
-    ├── seedsweep/<protein>_<landscape>/noise_<N>/seed_<S>/      # Pool First (IG) runs
-    ├── premlp/ | newarch_perres_mean/ | newarch_perres_attn/ | onehot/   # other heads (esmc_300m)
-    ├── <pooling_method>_<backbone>/                             # backbone comparison
-    ├── meanpool_ankh_base_layersweep/                           # Ankh intermediate-layer sweep
-    ├── ism_attribution/  cascading_randomization*/  factor_ablation_analysis/
-    ├── metric_suite/                                            # metrics + TOPSIS tables/figures
-    └── final_figures_nature_methods/                            # curated paper figures
-    results/FLIP2/   results/ProteinGym/                         # real-protein runs
+* `docs/README.md <docs/README.md>`_: setup notes, workflows, script reference, Slurm usage
+* `docs/REVIEWER_TEST.md <docs/REVIEWER_TEST.md>`_: a ~45-minute end-to-end test with expected
+  outputs and pass criteria (start here if you are new)
+* `configs/README.md <configs/README.md>`_: configuration schema
+* `docs/attribution_methods_and_metrics.md <docs/attribution_methods_and_metrics.md>`_
+  and `docs/attribution_formulas.md <docs/attribution_formulas.md>`_: method and metric definitions
 
 
 Tests
@@ -302,25 +190,15 @@ Tests
     pytest tests/
 
 
-License
--------
+License and acknowledgments
+---------------------------
 
-MIT License (see `LICENSE <docs/LICENSE>`_).
+MIT License (see `docs/LICENSE <docs/LICENSE>`_).
 
-Acknowledgments
----------------
+This work builds on ESM-C (EvolutionaryScale), Ankh (Elnaggar et al.), Profluent E1
+(Profluent Bio), PyTorch, Captum, and the FLIP2 and ProteinGym benchmarks.
 
-* ESM-C protein language models by EvolutionaryScale
-* Ankh protein language models (Elnaggar et al.)
-* Profluent E1 protein language models by Profluent Bio
-* PyTorch and Captum for attribution infrastructure
-* FLIP2 and ProteinGym benchmark datasets
-
-Support
--------
-
-* `Report issues <https://github.com/ranaabarghout/IGLOO/issues>`_
-* `Discussions <https://github.com/ranaabarghout/IGLOO/discussions>`_
-* `Contact <mailto:ranamoneim@gmail.com>`_
+Issues and questions: https://github.com/ranaabarghout/IGLOO/issues ·
+`Contact <mailto:ranamoneim@gmail.com>`_
 
 **Citation**: if you use IGLOO in your research, please cite our work (citation details coming soon).
