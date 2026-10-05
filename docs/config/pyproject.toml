@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "igloo"
 description = "IGLOO (Integrated Gradients for LOcational sensitivity in prOteins) - An ML pipeline for analyzing structural contributions to performance in protein variants."
 readme = "README.rst"
+requires-python = ">=3.11,<3.13"
 authors = [
   {name = "Rana Barghout", email = "ranamoneim@gmail.com"}
 ]
