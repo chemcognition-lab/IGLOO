@@ -44,7 +44,7 @@ analysis:
     include_median: true
     include_top_n: 0
     include_bottom_n: 0
-    include_all: false
+    include_all: true
     custom_sequences: []
 
 results_dir: "results/ProteinGym/BLAT_ECOLX_Stiffler_2015"
