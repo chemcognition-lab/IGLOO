@@ -31,7 +31,8 @@ python health_check.py
 python scripts/pipeline/run_integrated_gradients.py configs/synthetic/GB1_additive_config.yaml --validate-only
 ```
 
-✅ **Pass:** the second command prints `Validation complete. Exiting.`
+✅ **Pass:** the health check lists no critical issues, and the second command prints
+`Validation complete. Exiting.`
 
 ---
 

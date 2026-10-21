@@ -64,7 +64,8 @@ Installation
 Requires Python 3.11 or 3.12. Training and attribution need a CUDA GPU. Evaluation runs on CPU.
 
 **On a Digital Research Alliance of Canada cluster**, use modules and the Alliance
-wheelhouse. Every dependency except ``ankh`` is available there:
+wheelhouse. Every dependency except ``esm``, ``zstd`` and ``ankh`` is available there
+(the wheelhouse only has ``esm`` 3.0.4, which predates ESM-C):
 
 .. code-block:: bash
 
@@ -72,7 +73,8 @@ wheelhouse. Every dependency except ``ankh`` is available there:
     virtualenv --no-download ~/IGLOO_env          # keep venvs in $HOME (inode quota on /project)
     source ~/IGLOO_env/bin/activate
     pip install --no-index --upgrade pip
-    pip install --no-index -e .
+    pip install --no-deps "esm==3.2.1.post1" zstd   # from PyPI; run on a login node (needs internet)
+    pip install --no-index -e .                     # everything else, including esm's dependencies
     pip install ankh                              # from PyPI; run on a login node (needs internet)
 
 **On a workstation:**
