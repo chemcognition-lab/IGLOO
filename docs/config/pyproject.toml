@@ -78,9 +78,9 @@ viz = [
 
 [project.urls]
 
-bugs = "https://github.com/ranaabarghout/IGLOO/issues"
-changelog = "https://github.com/ranaabarghout/IGLOO/blob/master/changelog.md"
-homepage = "https://github.com/ranaabarghout/IGLOO"
+bugs = "https://github.com/chemcognition-lab/IGLOO/issues"
+changelog = "https://github.com/chemcognition-lab/IGLOO/blob/master/changelog.md"
+homepage = "https://github.com/chemcognition-lab/IGLOO"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

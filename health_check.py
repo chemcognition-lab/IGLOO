@@ -457,8 +457,8 @@ def main():
 
     print(f"\n{Colors.BOLD}Need help?{Colors.END}")
     print("📖 Check the installation guide: Installation in README.rst")
-    print("🐛 Report issues: https://github.com/ranaabarghout/IGLOO/issues")
-    print("💬 Ask questions: https://github.com/ranaabarghout/IGLOO/discussions")
+    print("🐛 Report issues: https://github.com/chemcognition-lab/IGLOO/issues")
+    print("💬 Ask questions: https://github.com/chemcognition-lab/IGLOO/discussions")
 
 if __name__ == "__main__":
     main()

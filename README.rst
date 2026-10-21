@@ -8,7 +8,7 @@
         :alt: Python Version
 
 .. image:: https://img.shields.io/badge/license-MIT-blue.svg
-        :target: https://github.com/ranaabarghout/IGLOO/blob/main/docs/LICENSE
+        :target: https://github.com/chemcognition-lab/IGLOO/blob/main/docs/LICENSE
         :alt: License
 
 IGLOO trains regression models on protein language model (pLM) embeddings and computes
@@ -81,7 +81,7 @@ wheelhouse. Every dependency except ``esm``, ``zstd`` and ``ankh`` is available 
 
 .. code-block:: bash
 
-    git clone -b pipeline/core https://github.com/ranaabarghout/IGLOO.git
+    git clone -b pipeline/core https://github.com/chemcognition-lab/IGLOO.git
     cd IGLOO
     python3.11 -m venv IGLOO_env && source IGLOO_env/bin/activate
     pip install -e . ankh
@@ -200,7 +200,7 @@ MIT License (see `docs/LICENSE <docs/LICENSE>`_).
 This work builds on ESM-C (EvolutionaryScale), Ankh (Elnaggar et al.), Profluent E1
 (Profluent Bio), PyTorch, and the FLIP2 and ProteinGym benchmarks.
 
-Issues and questions: https://github.com/ranaabarghout/IGLOO/issues ·
+Issues and questions: https://github.com/chemcognition-lab/IGLOO/issues ·
 `Contact <mailto:ranamoneim@gmail.com>`_
 
 **Citation**: if you use IGLOO in your research, please cite our work (citation details coming soon).
