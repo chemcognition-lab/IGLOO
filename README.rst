@@ -203,4 +203,4 @@ This work builds on ESM-C (EvolutionaryScale), Ankh (Elnaggar et al.), Profluent
 Issues and questions: https://github.com/chemcognition-lab/IGLOO/issues ·
 `Contact <mailto:ranamoneim@gmail.com>`_
 
-**Citation**: if you use IGLOO in your research, please cite our work (citation details coming soon).
+**Citation**: if you use IGLOO in your research, please cite our work [citation details coming soon].
