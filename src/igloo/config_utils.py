@@ -109,7 +109,9 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         },
         'training': {
             'noise': {
-                'label_noise_std': 0.0,   # σ in raw target units; 0 = no noise
+                'label_noise_mode': 'gaussian',  # 'gaussian' | 'blend'
+                'label_noise_std': 0.0,   # gaussian: σ in raw target units; 0 = no noise
+                'label_noise_level': 0.0, # blend: p in [0,1]; 0 = exact labels, 1 = full permutation
                 'label_noise_seed': 0,    # RNG seed for reproducibility
                 'input_noise_std': 0.0,   # σ for per-batch embedding augmentation; 0 = off
             }

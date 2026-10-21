@@ -112,36 +112,16 @@ IGLOO_env/
 # Data and embeddings
 /data/embeddings
 /src/igloo/data
-/data/Data_Donya_ERBC_Converted.csv
 
-# # Synthetic datasets (generated — recreate with scripts/generate_synthetic_datasets.py)
+# # Synthetic datasets (generated — recreate with scripts/data/generate_synthetic_datasets.py)
 # /data/synthetic/*.csv
 
-# Results folders (keep specific embedding_signed folders tracked)
-/results/ERBC_ig/
-/results/PafA/
-/results/PafA_3d_analysis/
-/results/PafA_embedding_magnitude/
-/results/PafA_embedding_signed_global_norm/
-/results/PafA_ig/
-/results/PafA_token_level_ig/
-/results/PafA_token_magnitude/
-/results/PafA_token_signed/
-/results/PafA_token_signed_global_norm/
-/results/betalactamase/
-/results/betalactamase_embedding_magnitude/
-/results/betalactamase_ig/
-/results/betalactamase_ig_train_test/
-/results/betalactamase_token_magnitude/
-/results/betalactamase_token_signed/
-/results/results_xgb/
-/results/synthetic/
-/results/FLIP2/
-/results/ProteinGym/
-# Keep these tracked: betalactamase_embedding_signed, ERBC_embedding_signed, PafA_embedding_signed
+# Run outputs (everything a run writes goes under results/)
+/results/
 
-# Logs
-/jobs/logs/
+# Slurm logs (docs examples write to logs/ or <name>_<jobid>.out in the repo root)
+/logs/
+/*.out
 
 # Configuration files that have been organized into docs/config/
 # pyproject.toml needs to stay in root for pip install -e . to work
@@ -163,3 +143,8 @@ setup_windows.bat
 
 generate_MLSB_figure.py
 ig_heatmap.png
+vendor/
+
+# Local virtualenv symlinks (venvs live in $HOME)
+/IGLOO_env
+/IGLOO_env_e1

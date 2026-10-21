@@ -91,6 +91,12 @@ def check_package_installation(packages: dict[str, str]) -> dict[str, bool]:
                 version = sklearn.__version__
                 print_success(f"{description}: {version}")
                 results[package] = True
+            elif package == "esm.models.esmc":
+                import esm.models.esmc  # noqa: F401 – missing in esm<3.1
+                from importlib.metadata import version as dist_version
+                version = dist_version("esm")
+                print_success(f"{description}: {version}")
+                results[package] = True
             else:
                 module = importlib.import_module(package)
                 version = getattr(module, '__version__', 'unknown')
@@ -193,10 +199,10 @@ def check_data_availability() -> dict[str, bool]:
 
     # Check for key datasets
     datasets = {
-        'betalactamase_train.csv': 'Beta-lactamase training data',
-        'betalactamase_test.csv': 'Beta-lactamase test data',
-        'PafA_data.csv': 'PafA dataset',
-        'Data_Donya_ERBC_Converted.csv': 'ERBC dataset'
+        'synthetic/GB1_additive.csv': 'Synthetic GB1 landscape',
+        'synthetic/T4Lysozyme_additive.csv': 'Synthetic T4 Lysozyme landscape',
+        'synthetic/p53_additive.csv': 'Synthetic p53 landscape',
+        'FLIP2_processed/alpha_amylase__mutation__by_mutation_combined.csv': 'FLIP2 alpha-amylase'
     }
 
     for filename, description in datasets.items():
@@ -409,7 +415,7 @@ def generate_report(results: dict) -> None:
         print_info("Consider reducing batch sizes for memory-constrained systems")
 
     if score < 80:
-        print_info("Run installation guide: see INSTALLATION.md")
+        print_info("Run installation guide: see Installation in README.rst")
 
 def main():
     """Main health check routine"""
@@ -433,8 +439,9 @@ def main():
         'matplotlib': 'Matplotlib',
         'seaborn': 'Seaborn',
         'tqdm': 'TQDM',
-        'captum': 'Captum',
-        'biopython': 'BioPython'
+        'Bio': 'BioPython',
+        'httpx': 'HTTPX',
+        'esm.models.esmc': 'ESM (with ESM-C)'
     }
 
     results['packages'] = check_package_installation(required_packages)
@@ -449,9 +456,9 @@ def main():
     generate_report(results)
 
     print(f"\n{Colors.BOLD}Need help?{Colors.END}")
-    print("📖 Check the installation guide: INSTALLATION.md")
-    print("🐛 Report issues: https://github.com/ranaabarghout/IGLOO/issues")
-    print("💬 Ask questions: https://github.com/ranaabarghout/IGLOO/discussions")
+    print("📖 Check the installation guide: Installation in README.rst")
+    print("🐛 Report issues: https://github.com/chemcognition-lab/IGLOO/issues")
+    print("💬 Ask questions: https://github.com/chemcognition-lab/IGLOO/discussions")
 
 if __name__ == "__main__":
     main()

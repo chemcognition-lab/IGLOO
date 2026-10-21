@@ -32,7 +32,6 @@ requests>=2.28.0,<3.0.0
 biopython>=1.79,<2.0.0
 
 # Attribution methods
-captum>=0.6.0,<1.0.0
 
 # 3D molecular visualization
 py3Dmol>=2.0.0,<3.0.0

@@ -24,11 +24,12 @@ def integrated_gradients_embeddings(
     device: torch.device,
     pooling_method: str = 'linear',
     steps: int = 50,
-    batch_size: int = 10
+    batch_size: int = 10,
+    interpolation_method: str = 'linear'
 ) -> np.ndarray:
     """
     Compute integrated gradients with respect to embedding space.
-    
+
     Args:
         model: Trained PyTorch model
         input_embedding: Input sequence embedding (1, L, D)
@@ -37,31 +38,67 @@ def integrated_gradients_embeddings(
         pooling_method: Model pooling method
         steps: Number of integration steps
         batch_size: Batch size for gradient computation
-        
+        interpolation_method: 'linear', 'slerp', or 'nearest_neighbor'
+
     Returns:
         Integrated gradients array (1, L, D)
     """
     model.eval()
-    
+
     # Convert to tensors
     input_tensor = torch.tensor(input_embedding, dtype=torch.float32, device=device)
     baseline_tensor = torch.tensor(baseline_embedding, dtype=torch.float32, device=device)
-    
+
     # Generate interpolated inputs
     alphas = torch.linspace(0, 1, steps + 1, device=device)
     interpolated_inputs = []
-    
-    for alpha in alphas:
-        interpolated = baseline_tensor + alpha * (input_tensor - baseline_tensor)
-        interpolated_inputs.append(interpolated)
+
+    if interpolation_method == 'linear':
+        for alpha in alphas:
+            interpolated = baseline_tensor + alpha * (input_tensor - baseline_tensor)
+            interpolated_inputs.append(interpolated)
+    elif interpolation_method == 'slerp':
+        # Spherical linear interpolation with fallback to linear for nearly-parallel vectors
+        for alpha in alphas:
+            eps = 1e-8
+            v0 = baseline_tensor.float()
+            v1 = input_tensor.float()
+
+            v0_norm = torch.nn.functional.normalize(v0, dim=-1)
+            v1_norm = torch.nn.functional.normalize(v1, dim=-1)
+
+            # Angle between the two unit vectors
+            dot = torch.clamp((v0_norm * v1_norm).sum(dim=-1, keepdim=True), -1.0, 1.0)
+            omega = torch.acos(dot)
+            sin_omega = torch.sin(omega)
+
+            # Slerp formula: (sin((1-α)ω)/sin(ω)) * v0 + (sin(αω)/sin(ω)) * v1
+            slerp = (
+                (torch.sin((1.0 - alpha) * omega) / (sin_omega + eps)) * v0
+                + (torch.sin(alpha * omega) / (sin_omega + eps)) * v1
+            )
+            linear = v0 + alpha * (v1 - v0)
+
+            # Fall back to linear where sin_omega is too small (nearly parallel)
+            interpolated = torch.where(sin_omega > eps, slerp, linear)
+            interpolated_inputs.append(interpolated)
+    elif interpolation_method == 'nearest_neighbor':
+        for alpha in alphas:
+            if alpha < 0.5:
+                interpolated = baseline_tensor.clone()
+            else:
+                interpolated = input_tensor.clone()
+            interpolated_inputs.append(interpolated)
+    else:
+        raise ValueError(f"Unknown interpolation method: {interpolation_method}")
     
     # Compute gradients for batches
     all_gradients = []
-    
+
     for i in range(0, len(interpolated_inputs), batch_size):
         batch = torch.stack(interpolated_inputs[i:i + batch_size])
         batch.requires_grad_(True)
-        
+
         # Forward pass
         if pooling_method == 'esm_attention':
             # Create input masks
@@ -70,7 +107,7 @@ def integrated_gradients_embeddings(
             outputs = model(batch, input_masks)
         else:
             outputs = model(batch)
-        
+
         # Compute gradients
         gradients = torch.autograd.grad(
             outputs=outputs.sum(),
@@ -78,16 +115,22 @@ def integrated_gradients_embeddings(
             create_graph=False,
             retain_graph=False
         )[0]
-        
+
         all_gradients.append(gradients.detach())
-    
+
     # Combine all gradients
     all_gradients = torch.cat(all_gradients, dim=0)
-    
+
     # Compute integrated gradients
-    avg_gradients = torch.mean(all_gradients, dim=0, keepdim=True)
+    avg_gradients = torch.mean(all_gradients, dim=0, keepdim=False)  # Don't keep dims
     integrated_grads = (input_tensor - baseline_tensor) * avg_gradients
-    
+
+    # Ensure output is (1, L, D)
+    if integrated_grads.dim() == 2:
+        integrated_grads = integrated_grads.unsqueeze(0)
+    elif integrated_grads.dim() == 4:
+        integrated_grads = integrated_grads.squeeze(1)
+
     return integrated_grads.cpu().numpy()
 
 

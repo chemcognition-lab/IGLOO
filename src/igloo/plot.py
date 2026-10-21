@@ -54,7 +54,8 @@ def _safe_filename(name: str) -> str:
     return re.sub(r'[^\w\-]', '_', name)
 
 
-def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[str] = None) -> None:
+def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[str] = None,
+                               max_sequences: int = 40) -> None:
     """
     Plot integrated gradients for multiple sequences.
 
@@ -62,11 +63,19 @@ def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[
     derived from *save_path*.  This avoids generating a single enormous stacked
     figure (which could be hundreds of MB for large proteins / many sequences).
 
+    These are purely diagnostic (never read by metric_suite.py or any downstream
+    analysis), so when a dataset has more than *max_sequences* entries, only a
+    deterministic evenly-spaced sample is plotted -- large landscapes (e.g.
+    T4Lysozyme, thousands of variants) were otherwise writing thousands of tiny
+    PNGs per run, which can exhaust a shared filesystem's inode quota.
+
     Args:
         results_dict: Dictionary containing analysis results for each sequence
         save_path: Base path for output.  Individual files are written to
             ``<save_path without .png>_per_sequence/<sequence_name>.png``.
+        max_sequences: Cap on how many per-sequence PNGs to write.
     """
+    setup_matplotlib_style()
     # Filter out special validation results keys that don't have sequence analysis data
     analysis_results = {name: result for name, result in results_dict.items()
                        if not name.startswith('_') and 'positions' in result}
@@ -75,6 +84,15 @@ def plot_integrated_gradients(results_dict: dict[str, Any], save_path: Optional[
     if n_sequences == 0:
         print("No valid sequences found for plotting.")
         return
+
+    if n_sequences > max_sequences:
+        names = list(analysis_results.keys())
+        idx = np.linspace(0, n_sequences - 1, max_sequences).round().astype(int)
+        keep = {names[i] for i in idx}
+        print(f"  ({n_sequences} sequences > max_sequences={max_sequences}; "
+              f"plotting an evenly-spaced sample of {len(keep)})")
+        analysis_results = {name: r for name, r in analysis_results.items() if name in keep}
+        n_sequences = len(analysis_results)
 
     # Derive per-sequence output directory from save_path
     if save_path:
@@ -270,6 +288,7 @@ def plot_variants_vs_wt_gradients(ig_results: dict[str, Any], save_path: Optiona
         save_path: Optional path to save the plot
         max_variants: Maximum number of variant subplots to show (default 9)
     """
+    setup_matplotlib_style()
     # Filter out special/validation keys
     analysis_results = {name: result for name, result in ig_results.items()
                        if not name.startswith('_') and 'positions' in result}
@@ -496,16 +515,38 @@ def plot_sequence_alignment_with_hotspots(sequences: dict[str, str], hotspots: l
 
 
 def setup_matplotlib_style() -> None:
-    """Set up consistent matplotlib style for all plots."""
+    """Set up consistent matplotlib style for all plots with Roboto font and color theme."""
     plt.style.use('default')
     plt.rcParams['figure.facecolor'] = 'white'
     plt.rcParams['axes.facecolor'] = 'white'
+    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['font.sans-serif'] = ['Roboto', 'DejaVu Sans', 'Arial', 'Helvetica']
     plt.rcParams['font.size'] = 10
     plt.rcParams['axes.labelsize'] = 12
     plt.rcParams['axes.titlesize'] = 14
     plt.rcParams['xtick.labelsize'] = 10
     plt.rcParams['ytick.labelsize'] = 10
     plt.rcParams['legend.fontsize'] = 10
+
+    # Color theme: professional palette
+    plt.rcParams['axes.spines.left'] = True
+    plt.rcParams['axes.spines.bottom'] = True
+    plt.rcParams['axes.spines.top'] = False
+    plt.rcParams['axes.spines.right'] = False
+    plt.rcParams['axes.edgecolor'] = '#333333'
+    plt.rcParams['axes.linewidth'] = 1.2
+    plt.rcParams['grid.color'] = '#e5e5e5'
+    plt.rcParams['grid.linewidth'] = 0.8
+    plt.rcParams['xtick.color'] = '#333333'
+    plt.rcParams['ytick.color'] = '#333333'
+    plt.rcParams['text.color'] = '#333333'
+    plt.rcParams['legend.framealpha'] = 0.95
+    plt.rcParams['legend.edgecolor'] = '#cccccc'
+
+    # Color cycle: modern palette (primary blue, secondary orange, supporting colors)
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    plt.rcParams['axes.prop_cycle'] = plt.cycler(color=colors)
 
 
 def plot_training_history(
@@ -523,6 +564,7 @@ def plot_training_history(
         save_path: Optional path to save the plot
         figsize: Figure size
     """
+    setup_matplotlib_style()
     fig, axes = plt.subplots(1, 2, figsize=figsize)
 
     # Loss plot
@@ -723,6 +765,7 @@ def plot_signed_gradient_effects(
         top_n: Number of top effects to label (default: 10)
         figsize: Figure size as tuple (width, height)
     """
+    setup_matplotlib_style()
     analysis_results = {name: result for name, result in results_dict.items()
                         if not name.startswith('_') and 'positions' in result}
 
@@ -845,6 +888,7 @@ def plot_averaged_gradient_effects_comparison(
         bottom_n: Number of bottom sequences to average (default: 5)
         figsize: Figure size as tuple (width, height)
     """
+    setup_matplotlib_style()
     # Filter out special validation results keys that don't have sequence analysis data
     analysis_results = {name: result for name, result in results_dict.items()
                        if not name.startswith('_') and 'positions' in result}
@@ -1339,10 +1383,11 @@ def plot_attribution_heatmap(
     Returns:
         str: Path to the saved figure
     """
-    # Set Noto Sans font with scalable size
+    # Set Roboto font with scalable size
     base_font_size = 14
     plt.rcParams.update({
-        'font.family': 'Noto Sans',
+        'font.family': 'sans-serif',
+        'font.sans-serif': ['Roboto', 'DejaVu Sans', 'Arial', 'Helvetica'],
         'font.size': int(base_font_size * font_scale),
         'axes.titlesize': int(16 * font_scale),
         'axes.labelsize': int(14 * font_scale),
@@ -1432,13 +1477,14 @@ def plot_mutation_frequency_heatmap(
 
     # Set font parameters
     plt.rcParams.update({
-        'font.family': 'Noto Sans',
-        'font.size': 20,           # Increased from 16
-        'axes.titlesize': 24,      # Increased from 18
-        'axes.labelsize': 20,      # Increased from 16
-        'xtick.labelsize': 16,     # Increased from 12
-        'ytick.labelsize': 16,     # Increased from 12
-        'legend.fontsize': 16      # Increased from 12
+        'font.family': 'sans-serif',
+        'font.sans-serif': ['Roboto', 'DejaVu Sans', 'Arial', 'Helvetica'],
+        'font.size': 20,
+        'axes.titlesize': 24,
+        'axes.labelsize': 20,
+        'xtick.labelsize': 16,
+        'ytick.labelsize': 16,
+        'legend.fontsize': 16
     })
 
     # Standard amino acids
@@ -1568,6 +1614,7 @@ def plot_interpolation_path_umap(
     random_state:
         Random seed for UMAP reproducibility.
     """
+    setup_matplotlib_style()
     try:
         import umap  # type: ignore
     except ImportError:
@@ -1716,6 +1763,7 @@ def plot_interpolation_path(
     save_path:
         If given, writes the figure to this path.
     """
+    setup_matplotlib_style()
     X = np.stack(emb_trajectory, axis=0).astype(np.float64)  # (n_steps, D)
     n_steps = X.shape[0]
 
@@ -1849,7 +1897,7 @@ def plot_interpolation_path(
 
 # ---------------------------------------------------------------------------
 # Synthetic-evaluation plotting utilities
-# (moved from scripts/evaluate_synthetic_ig.py)
+# (moved from scripts/evaluation/evaluate_synthetic_ig.py)
 # ---------------------------------------------------------------------------
 
 _FITNESS_MODEL_CMAPS: dict[str, any] = {

@@ -17,7 +17,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .data_processing import CustomDataset, batch_pad_and_normalize
+from .data_processing import CustomDataset, batch_pad_and_normalize, compute_pool_masks
 from .embedding import get_embeddings
 
 
@@ -30,7 +30,10 @@ def compute_mutation_effects(
     y_log_std: float = 1.0,
     pooling_method: str = 'linear',
     batch_size: int = 16,
-    progress: bool = True
+    progress: bool = True,
+    dataset_name: str = 'mutagenesis',
+    embeddings_subdir: Optional[str] = None,
+    esm_model_name: str = 'esmc_300m',
 ) -> pd.DataFrame:
     """
     Compute the predicted effect of all possible single amino acid mutations.
@@ -55,20 +58,21 @@ def compute_mutation_effects(
 
     # Get WT prediction for baseline using the same method as mutants
     print("Computing WT baseline prediction...")
-    wt_embedding = get_embeddings([wt_sequence], layer=esm_layer, batch_size=1, dataset_name='PafA_mutagenesis')
+    wt_embedding = get_embeddings([wt_sequence], layer=esm_layer, batch_size=1,
+                                  dataset_name=f'{dataset_name}_wt', subdir=embeddings_subdir,
+                                  esm_model_name=esm_model_name)
 
     # Use DataLoader approach for consistency
     dummy_target = np.zeros(1)
-    wt_dataset = CustomDataset(wt_embedding, dummy_target)
+    wt_pool_mask = compute_pool_masks([wt_sequence], pooling_method, wildtype=wt_sequence)
+    wt_dataset = CustomDataset(wt_embedding, dummy_target, pool_masks=wt_pool_mask)
     wt_loader = DataLoader(wt_dataset, batch_size=1, shuffle=False, collate_fn=batch_pad_and_normalize)
 
     with torch.no_grad():
-        for xb, lengths, _yb in wt_loader:
+        for xb, lengths, mask, _yb in wt_loader:
             xb = xb.to(device)
-            if pooling_method == 'esm_attention':
-                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                for i, length in enumerate(lengths):
-                    input_mask[i, :length] = 1
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                input_mask = mask.to(device)
                 wt_pred_norm = model(xb, input_mask).item()
             else:
                 wt_pred_norm = model(xb).item()
@@ -104,7 +108,9 @@ def compute_mutation_effects(
     all_embeddings = get_embeddings(sequences_to_embed,
                                     layer=esm_layer,
                                     batch_size=batch_size,
-                                    dataset_name='PafA_mutagenesis')
+                                    dataset_name=f'{dataset_name}_mutants',
+                                    subdir=embeddings_subdir,
+                                    esm_model_name=esm_model_name)
 
     print(f"Predicting activities for {len(sequences_to_embed)} mutations...")
 
@@ -116,17 +122,16 @@ def compute_mutation_effects(
     dummy_targets = np.zeros(len(all_embeddings))
 
     # Create dataset and dataloader
-    eval_dataset = CustomDataset(all_embeddings, dummy_targets)
+    mutant_pool_masks = compute_pool_masks(sequences_to_embed, pooling_method, wildtype=wt_sequence)
+    eval_dataset = CustomDataset(all_embeddings, dummy_targets, pool_masks=mutant_pool_masks)
     eval_loader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=False, collate_fn=batch_pad_and_normalize)
 
     pred_norm = []
     with torch.no_grad():
-        for xb, lengths, _yb in tqdm(eval_loader, disable=not progress, desc="Predicting"):
+        for xb, lengths, mask, _yb in tqdm(eval_loader, disable=not progress, desc="Predicting"):
             xb = xb.to(device)
-            if pooling_method == 'esm_attention':
-                input_mask = torch.zeros(xb.size(0), xb.size(1), device=device)
-                for i, length in enumerate(lengths):
-                    input_mask[i, :length] = 1
+            if pooling_method in ('esm_attention', 'esm_attention_premlp', 'esm_attention_channel', 'esm_perres_mean', 'esm_perres_attn', 'esm_crossattn_perres', 'esm_perres_flatten', 'esm_mutation_pool'):
+                input_mask = mask.to(device)
                 out = model(xb, input_mask).squeeze(-1).cpu().numpy()
             else:
                 out = model(xb).squeeze(-1).cpu().numpy()
