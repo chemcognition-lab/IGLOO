@@ -82,7 +82,7 @@ model:
 ```yaml
 integrated_gradients:
   method: "embedding"              # "embedding" or "token"
-  attribution_method: "magnitude"  # "magnitude" or "signed"
+  attribution_method: "signed"  # "magnitude" or "signed"
   steps: 50                       # Number of integration steps
   batch_size: 10                  # Batch size for gradient computation
 ```
