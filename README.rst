@@ -101,7 +101,7 @@ wheelhouse. Every dependency except ``esm``, ``zstd`` and ``ankh`` is available 
     python health_check.py
     python scripts/pipeline/run_integrated_gradients.py configs/synthetic/GB1_additive_config.yaml --validate-only
 
-pLM weights are downloaded on first use. On clusters where compute nodes have no internet
+pLM weights are downloaded upon first use. On clusters where compute nodes have no internet
 access, run one small job, or download the weights on a login node, before you submit
 large runs.
 
